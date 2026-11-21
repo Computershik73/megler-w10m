@@ -488,9 +488,17 @@ static bool wv_wanted(void)
     if (wanted < 0) {
         bool on = !mg_flag("no-webview-gpu") && mg_java_gfx_textures() && mg_java_gl_shares_frames() && wv_pick();
         wanted = on ? 1 : 0;
-        mg_info("webview: %s", on ? "pages are drawn on the graphics processor, through the platform's draw functor"
-                                  : "pages are drawn in software: no draw functor (the flag no-webview-gpu, no pictures kept on the graphics "
-                                    "processor, or no pbuffer whose texture is shared)");
+        /*
+         * On the app's own OpenGL ES, whichever its setting Graphics chose (megler_run_config.gles): Chromium's GPU code is
+         * the app's process's, and its EGL and OpenGL ES calls go to the one library the process has -- Mesa's DLLs and ANGLE's
+         * cannot both serve it, an app's code being bound to one of them. What the WebView needs of it is asked at run time
+         * either way (a pbuffer whose texture is shared, wv_pick; fences and images of textures, mg_egl.c), and where Mesa's has
+         * none of it, pages are drawn in software, as said here.
+         */
+        mg_info("webview: %s%s", on ? "pages are drawn on the graphics processor, through the platform's draw functor"
+                                    : "pages are drawn in software: no draw functor (the flag no-webview-gpu, no pictures kept on the graphics "
+                                      "processor, or no pbuffer whose texture is shared)",
+                mg_egl_is_mesa() ? "; Chromium draws on Mesa's freedreno, the app's OpenGL ES (a process has one)" : "");
     }
     return wanted > 0;
 }

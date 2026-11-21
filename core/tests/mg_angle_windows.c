@@ -17,6 +17,12 @@
  * 1 (no fallback to 2: mg_egl.c, es1_on_es2) and ANGLE's renderer must say level_9_3. And a pbuffer's texture shared by its
  * handle, as the WebView's draw functor hands its pictures to the shell, at either level (gl1_shared).
  *
+ * And, given a Mesa mode, the app's setting Graphics set to Mesa's freedreno where it cannot be had (megler_run_config.gles,
+ * mg_egl.c's mesa_load), before anything of OpenGL ES is loaded: "mesa-missing", its DLLs not in the package (the scratch
+ * folder, megler_config.package_dir); "mesa", stand-ins of them there and this PC's graphics processor, which is no Adreno;
+ * "mesa-any-gpu", the same with the flag mesa-any-gpu, the stand-ins then not loaded. Each time the process falls back to
+ * ANGLE, the log says why in one line, megler_gles says "angle", and the scenes are drawn on ANGLE as ever.
+ *
  * Only in the build tools/build-tests.sh win makes (MG_ANGLE_WINDOWS); elsewhere it says so and does nothing.
  */
 #include <stdarg.h>
@@ -1332,7 +1338,68 @@ static void gl1_shared(gl1_run *r, void *d, void *ctx, void *own_pb, bool level_
     if (pb565) destroy(d, pb565);
 }
 
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+/* The core's line of a fallback from Mesa (mg_egl.c, angle), caught as it is said. */
+static char g_mesa_line[600];
+static mg_log_sink g_mesa_was;
+static void *g_mesa_was_user;
+
+static void mesa_listen(int level, const char *line, void *user)
+{
+    (void)user;
+    if (strstr(line, "egl: Mesa's freedreno was asked for, ANGLE instead: ")) mg_strlcpy(g_mesa_line, line, sizeof(g_mesa_line));
+    if (g_mesa_was) g_mesa_was(level, line, g_mesa_was_user);
+}
+
+/*
+ * Before the first use of EGL: the package (the scratch folder) made as `mesa` says -- stand-ins of Mesa's three DLLs (no DLLs
+ * at all, so that none loads) or none, the flag mesa-any-gpu or not -- Mesa asked for, and the log listened to.
+ */
+static void gl1_mesa_ask(gl1_run *r, const char *mesa, const char *scratch)
+{
+    static const char *const files[] = { "libgallium_wgl.dll", "libGLESv2_mesa.dll", "libEGL_mesa.dll" };
+    char path[700];
+    size_t i;
+    for (i = 0; i < MG_COUNT(files); i++) {
+        snprintf(path, sizeof(path), "%s/%s", scratch, files[i]);
+        if (strcmp(mesa, "mesa-missing")) mg_file_write_all(path, "not a DLL", 9);
+        else mg_path_remove(path, NULL);
+    }
+    snprintf(path, sizeof(path), "%s/flags", scratch);
+    mg_path_mkdirs(path);
+    snprintf(path, sizeof(path), "%s/flags/mesa-any-gpu", scratch);
+    if (!strcmp(mesa, "mesa-any-gpu")) mg_file_write_all(path, "", 0);
+    else mg_path_remove(path, NULL);
+    gl1_say(r, "Mesa's freedreno asked for (%s), where it cannot be had: ANGLE instead, and why in one line",
+            !strcmp(mesa, "mesa-missing") ? "its DLLs not in the package"
+            : !strcmp(mesa, "mesa") ? "stand-ins of its DLLs in the package, on this PC's graphics processor"
+                                    : "stand-ins of its DLLs in the package, the flag mesa-any-gpu");
+    g_mesa_line[0] = 0;
+    mg_log_get_sink(&g_mesa_was, &g_mesa_was_user);
+    mg_log_set_sink(mesa_listen, NULL);
+    mg_egl_choose("mesa");
+}
+
+/* After the first use of EGL: the fallback said once, with the reason `mesa` makes, and megler_gles says ANGLE. */
+static void gl1_mesa_said(gl1_run *r, const char *mesa, const char *scratch)
+{
+    char gpu[128], path[700];
+    u32 vendor = 0;
+    const bool adreno = mg_host_gpu_adapter(gpu, sizeof(gpu), &vendor) && mg_egl_gpu_is_adreno(gpu, vendor);
+    const char *why = !strcmp(mesa, "mesa-missing") ? "its DLLs are not in this package (libgallium_wgl.dll, libGLESv2_mesa.dll, libEGL_mesa.dll)"
+                      : !strcmp(mesa, "mesa") && !adreno ? "not an Adreno"
+                                                         : "libGLESv2_mesa.dll did not load";
+    const char *gles = megler_gles();
+    mg_log_set_sink(g_mesa_was, g_mesa_was_user);
+    snprintf(path, sizeof(path), "%s/flags/mesa-any-gpu", scratch);
+    mg_path_remove(path, NULL);
+    gl1_say(r, "  %s", g_mesa_line[0] ? g_mesa_line : "(the core said nothing of Mesa)");
+    gl1_say(r, "  megler_gles: %s", gles ? gles : "(none)");
+    gl1_check(r, strstr(g_mesa_line, why) != NULL, "the fallback from Mesa was not said, or not for its reason");
+    gl1_check(r, gles && !strcmp(gles, "angle"), "megler_gles does not say angle after the fallback");
+    gl1_check(r, !mg_egl_is_mesa(), "the core takes its OpenGL ES for Mesa's");
+}
+
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, const char *mesa, mg_test_sink sink, void *user, int *checks,
                          bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user)
 {
     enum { EGL_NONE_ = 0x3038, EGL_SURFACE_TYPE_ = 0x3033, EGL_PBUFFER_BIT_ = 1, EGL_RED_SIZE_ = 0x3024, EGL_GREEN_SIZE_ = 0x3023,
@@ -1386,7 +1453,9 @@ int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, m
     MultiByteToWideChar(CP_UTF8, 0, dir, -1, wdir, (int)(sizeof(wdir) / sizeof(wdir[0])));
     if (!GetFullPathNameW(wdir, (DWORD)(sizeof(full) / sizeof(full[0])), full, NULL)) wcscpy(full, wdir);
     SetDllDirectoryW(full);
+    if (mesa) gl1_mesa_ask(&r, mesa, scratch);
     get_display = (fn_get_display)mg_egl_host("eglGetDisplay");
+    if (mesa) gl1_mesa_said(&r, mesa, scratch);
     initialize = (fn_initialize)mg_egl_host("eglInitialize");
     choose = (fn_choose)mg_egl_host("eglChooseConfig");
     pbuffer = (fn_pbuffer)mg_egl_host("eglCreatePbufferSurface");
@@ -1449,12 +1518,13 @@ done:
 
 #else
 
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, const char *mesa, mg_test_sink sink, void *user, int *checks,
                          bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user)
 {
     (void)dir;
     (void)scratch;
     (void)level_9_3;
+    (void)mesa;
     (void)checks;
     (void)label;
     (void)label_user;

@@ -17,6 +17,7 @@
 #include "../mg_core.h"
 #include "../host/mg_host.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_egl.h"
 #include "../ndk/mg_sensors.h"
 #include "mg_bluetooth.h"
 
@@ -774,6 +775,9 @@ bool mg_run_start(const megler_run_config *config)
     if (g_config.gms_package) mg_info("run: Google Play services go by %s in this app", g_config.gms_package);
     if (g_services_microg) mg_info("run: Google Play services are microG's: their data is the shared folder's services/data-microg");
     g_config.gsf_apk_path = config->gsf_apk_path ? mg_strdup(config->gsf_apk_path) : NULL;
+    /* Which OpenGL ES the app is to draw with, before anything of it is loaded (the string is the caller's: not kept). */
+    mg_egl_choose(config->gles);
+    g_config.gles = NULL;
     /* The host's fonts are the caller's until this returns (megler.h), and read by the driver on the app's thread: kept. */
     g_config.host_fonts = NULL;
     g_config.host_font_count = 0;

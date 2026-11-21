@@ -726,6 +726,13 @@ PY
       rm -rf "$OUT/scratch-angle"
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" || STATUS=1
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" 9_3 || STATUS=1
+      # And an app set to Mesa's freedreno (Settings, Graphics) where Mesa cannot be had, a process each: its DLLs not in the
+      # package, this PC's graphics processor no Adreno, its DLLs not loaded -- ANGLE instead, why said in one line, and the
+      # scenes drawn on it as ever.
+      for mesa in mesa-missing mesa mesa-any-gpu; do
+        rm -rf "$OUT/scratch-angle-$mesa"
+        "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle-$mesa")" "$mesa" || STATUS=1
+      done
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own. And Windows' pictures of files there: of a PNG,

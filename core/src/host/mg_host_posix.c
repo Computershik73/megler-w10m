@@ -2036,6 +2036,13 @@ bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
     return false;
 }
 
+bool mg_host_gpu_adapter(char *name, size_t size, u32 *vendor)
+{
+    if (size) name[0] = 0;
+    *vendor = 0;
+    return false;
+}
+
 bool mg_host_keyed_mutex(void *mutex, bool acquire, u32 ms)
 {
     (void)mutex; (void)acquire; (void)ms;

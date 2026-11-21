@@ -91,11 +91,13 @@
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
  *       name and password, CSRF token, an install, a refused one, the list of the packages, an uninstall. Only in the build
  *       tools/build-tests.sh win makes; any other says so and does nothing
- *   mg_tests --angle-windows <ANGLE dir> <scratch dir> [9_3]
+ *   mg_tests --angle-windows <ANGLE dir> <scratch dir> [9_3] [mesa|mesa-missing|mesa-any-gpu]
  *       OpenGL ES 1 on ANGLE itself (mg_angle_windows.c): Megler's own ANGLE for this PC from that folder
  *       (tools/build-angle.py --arch x64), loaded and driven by the core's EGL as an app's Java drives it, at Direct3D
  *       feature level 9_3 (the flag egl-level-9_3, as a Lumia 650's graphics processor has) or at this PC's own; scenes drawn
  *       as Google Maps' legacy renderer draws them, read back and checked, each written as a BMP into the scratch folder.
+ *       With a Mesa mode, Mesa's freedreno is asked for first where it cannot be had (its DLLs missing, this PC's graphics
+ *       processor no Adreno, its DLLs not loaded): ANGLE instead, and why in one line of the log.
  *       Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
@@ -1660,7 +1662,7 @@ static int window_windows_mode(void)
 /* ------------------------------------------------------- --angle-windows */
 
 /* mg_angle_windows.c: OpenGL ES 1 on ANGLE itself, through the core's EGL, at feature level 9_3 or at this PC's own. */
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, const char *mesa, mg_test_sink sink, void *user, int *checks,
                          bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user);
 
 #ifdef MG_GFX_WINDOWS
@@ -1734,7 +1736,14 @@ static bool angle_label(void *user, const char *ascii, u32 ink, u32 halo, int w,
 static int angle_windows_mode(int argc, char **argv)
 {
     megler_config config;
-    int checks = 0, failed;
+    int checks = 0, failed, i;
+    bool level_9_3 = false;
+    const char *mesa = NULL;
+    /* [9_3] [mesa | mesa-missing | mesa-any-gpu], in either order. */
+    for (i = 4; i < argc; i++) {
+        if (!strcmp(argv[i], "9_3")) level_9_3 = true;
+        else if (!strncmp(argv[i], "mesa", 4)) mesa = argv[i];
+    }
     memset(&config, 0, sizeof(config));
     mg_path_mkdirs(argv[3]);
     config.data_dir = argv[3];
@@ -1743,10 +1752,10 @@ static int angle_windows_mode(int argc, char **argv)
     megler_init(&config);
 #ifdef MG_GFX_WINDOWS
     /* Google Maps' labels as Megler draws them, by the shell's drawing in memory. */
-    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, angle_label,
+    failed = mg_angle_windows_run(argv[2], argv[3], level_9_3, mesa, print_line, NULL, &checks, angle_label,
                                   (void *)mg_gfx_windows_host(print_line, NULL, 2));
 #else
-    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, NULL, NULL);
+    failed = mg_angle_windows_run(argv[2], argv[3], level_9_3, mesa, print_line, NULL, &checks, NULL, NULL);
 #endif
     printf("%d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
