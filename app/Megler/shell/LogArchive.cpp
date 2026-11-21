@@ -5,6 +5,7 @@
 #include "megler.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/LogMirror.h"
 #include "shell/Placement.h"
 #include "shell/Platform.h"
@@ -231,6 +232,10 @@ std::string summary(const std::vector<Item>& items) {
                        (GlobalMemoryStatusEx(&memory) ? "; the device has " + formattedByteCount(memory.ullTotalPhys) : std::string()));
     line("Android Code", platform::canRunAndroidCode() ? "Can run" : "Cannot run");
     line("ANGLE", platform::angle().summary);
+    // (Mesa's freedreno beside it, where Megler carries it, and the Graphics this package goes by: Megler's, or its app's.)
+    if (appPackage::mesaChoosable())
+        line("Mesa", std::string(graphics::hasMesaFiles(platform::installDirectory()) ? "In the package" : "Not in this package") +
+                         "; Graphics: " + appPackage::glesFor(appPackage::single().package));
     line("Free space", freeSpace(platform::localStateDirectory()) + " (LocalState's drive); " + freeSpace(appPackage::sharedFolder()) +
                            " (the shared folder's)");
     line("Folders", placement::summary(platform::installDirectory(), platform::localStateDirectory(), appPackage::sharedFolder()));
