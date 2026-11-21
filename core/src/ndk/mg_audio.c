@@ -246,7 +246,9 @@ static MG_HOSTCB void mixer_thread(void *arg)
                 float a = mix[i] < 0 ? -mix[i] : mix[i];
                 if (a > peak) peak = a;
             }
-            want = peak * gain > 0.95f ? 0.95f / peak : 1.0f;
+            /* (What the chunk's own peak allows, whatever the gain now: from the peak after the gain, a steady loud mix's gain
+               went down and up again at every other chunk, a flutter fifty times a second.) */
+            want = peak > 0.95f ? 0.95f / peak : 1.0f;
             if (want < gain) gain = want;
             else gain += (want - gain) * 0.04f;
             for (i = 0; i < MG_AUDIO_CHUNK * 2; i++) {
