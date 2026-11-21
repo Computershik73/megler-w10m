@@ -359,6 +359,18 @@ public class PackageManager {
     public android.graphics.drawable.Drawable getApplicationIcon(ApplicationInfo a) { return a.loadIcon(this); }
     public android.graphics.drawable.Drawable getApplicationIcon(String pkg) throws NameNotFoundException { return getApplicationIcon(getApplicationInfo(pkg, 0)); }
     public android.graphics.drawable.Drawable getApplicationLogo(ApplicationInfo a) { return null; }
+    /*
+     * Android's hidden loadItemIcon and loadUnbadgedItemIcon (ApplicationPackageManager): an item's icon, else its
+     * application's, else the platform's default -- PackageItemInfo.loadIcon's (with no work profile, nothing to badge). They
+     * were generated stubs answering null, and Android's own Settings (AOSP 9), which gets every app's icon through them
+     * (IconDrawableFactory.getBadgedIcon), listed the apps in App info without icons.
+     */
+    public android.graphics.drawable.Drawable loadItemIcon(PackageItemInfo item, ApplicationInfo app) { return loadUnbadgedItemIcon(item, app); }
+    public android.graphics.drawable.Drawable loadUnbadgedItemIcon(PackageItemInfo item, ApplicationInfo app) {
+        android.graphics.drawable.Drawable d = item != null ? item.loadIcon(this) : null;
+        if (d == null && app != null && app != item) d = app.loadIcon(this);
+        return d != null ? d : getDefaultActivityIcon();
+    }
     public android.graphics.drawable.Drawable getActivityIcon(ComponentName c) throws NameNotFoundException { return getActivityInfo(c, 0).loadIcon(this); }
     // The platform's icon of an app that has none (sym_def_app_icon), as Android's; a transparent one if it cannot be read.
     public android.graphics.drawable.Drawable getDefaultActivityIcon() {
@@ -1294,8 +1306,6 @@ public class PackageManager {
     public boolean isPageSizeCompatEnabled(java.lang.String p0) { return false; }
     public boolean isUpgrade() { return false; }
     public boolean isWirelessConsentModeEnabled() { return false; }
-    public android.graphics.drawable.Drawable loadItemIcon(android.content.pm.PackageItemInfo p0, android.content.pm.ApplicationInfo p1) { return null; }
-    public android.graphics.drawable.Drawable loadUnbadgedItemIcon(android.content.pm.PackageItemInfo p0, android.content.pm.ApplicationInfo p1) { return null; }
     public void makeProviderVisible(int p0, java.lang.String p1) {}
     public void makeUidVisible(int p0, int p1) {}
     public java.lang.Object parseAndroidManifest(android.os.ParcelFileDescriptor p0, java.util.function.Function p1) { return null; }
