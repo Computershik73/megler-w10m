@@ -26,6 +26,9 @@ public abstract class BaseKeyListener extends MetaKeyKeyListener implements KeyL
         if (ch != 0 && ch != '\n' && acceptChar((char) ch)) {
             int a = Selection.getSelectionStart(c), b = Selection.getSelectionEnd(c);
             if (a < 0) { a = b = c.length(); }
+            // As Android's QwertyKeyListener and NumberKeyListener: a selection typed over is first made a cursor at its end,
+            // which ends up after the character typed; the selection's start, at the start of what is replaced, would stay.
+            if (a != b) Selection.setSelection(c, Math.max(a, b));
             c.replace(Math.min(a, b), Math.max(a, b), String.valueOf((char) ch));
             return true;
         }

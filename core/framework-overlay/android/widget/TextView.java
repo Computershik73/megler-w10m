@@ -47,6 +47,10 @@
 // onTextChanged, which a subclass hears after them, and no spans of the text. And a text set from another view's has that
 // view's ChangeWatcher taken off, as Android's setText takes it, or that view's watchers would hear of this one's edits.
 // They were spans of the text, which getSpans found, told after the view's own onTextChanged.
+//
+// And a paste, and an Enter of a field of lines, over a selection make the selection a cursor at its end first, as
+// Android's paste and its key listeners do: an edit keeps a cursor at the very start of the text it replaces where it is,
+// as Android's SpannableStringBuilder does, and the selection's start would stay before what went in.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -991,7 +995,8 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         int s = Math.max(0, Math.min(getSelectionStart(), getSelectionEnd())), e = Math.max(0, Math.max(getSelectionStart(), getSelectionEnd()));
         if (id == android.R.id.selectAll) { selectAll(); return true; }
         if (id == android.R.id.copy || id == android.R.id.cut) { if (e > s) cb.setPrimaryClip(android.content.ClipData.newPlainText(null, mText.subSequence(s, e))); if (id == android.R.id.cut && mText instanceof Editable) ((Editable) mText).delete(s, e); return true; }
-        if (id == android.R.id.paste && mText instanceof Editable) { CharSequence t = cb.getText(); if (t != null) ((Editable) mText).replace(s, e, t); return true; }
+        // (As Android's paste: the selection made a cursor at its end first, so that it ends up after the text pasted.)
+        if (id == android.R.id.paste && mText instanceof Editable) { CharSequence t = cb.getText(); if (t != null) { Selection.setSelection((Editable) mText, e); ((Editable) mText).replace(s, e, t); } return true; }
         return false;
     }
     @Override public boolean onKeyDown(int code, KeyEvent e) {
@@ -1001,7 +1006,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         }
         if (mKeyListener != null && mText instanceof Editable && mKeyListener.onKeyDown(this, (Editable) mText, code, e)) return true;
         if (mMovement != null && mText instanceof Spannable && mMovement.onKeyDown(this, (Spannable) mText, code, e)) return true;
-        if (code == KeyEvent.KEYCODE_ENTER && isMultiline() && mText instanceof Editable) { int s = Math.max(0, getSelectionStart()), en = Math.max(0, getSelectionEnd()); ((Editable) mText).replace(Math.min(s, en), Math.max(s, en), "\n"); return true; }
+        if (code == KeyEvent.KEYCODE_ENTER && isMultiline() && mText instanceof Editable) { int s = Math.max(0, getSelectionStart()), en = Math.max(0, getSelectionEnd()); Selection.setSelection((Editable) mText, Math.max(s, en)); ((Editable) mText).replace(Math.min(s, en), Math.max(s, en), "\n"); return true; }
         return super.onKeyDown(code, e);
     }
     @Override public boolean onKeyUp(int code, KeyEvent e) {
