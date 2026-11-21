@@ -4483,7 +4483,9 @@ static int run_data(void)
                                          "context-class-loader",
                                          /* And the window's system UI flags and bars' appearance given again as they are, from a
                                             view's insets listener: nothing changes (the line system-ui-same below). */
-                                         "system-ui-same" };
+                                         "system-ui-same",
+                                         /* And a second layout pass that asks nothing more after it (the line second-pass below). */
+                                         "second-pass" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -4734,6 +4736,10 @@ static int run_data(void)
        as they are, as YouTube's full-screen controller does; over 30 frames the insets came a few times and the window was laid
        out a few times, not at every frame (ReVanced Extended's watch page was laid out 57 times a second). */
     CHECK(wait_line("I/DataTest: system-ui-same held", 0, 30) >= 0);
+    /* The step "second-pass": a group that asks its child for layout from its own onLayout gets the second pass at once, and
+       the window asks for no layout after it, as Android's leaves the requests made for that pass (it was laid out once more
+       at the next frame). */
+    CHECK(wait_line("I/DataTest: second-pass layouts=2 pending=false", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);

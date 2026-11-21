@@ -464,7 +464,16 @@ public final class ViewRoot implements ViewParent {
     }
     /** Whether the frame being drawn draws only part of the screen (View.drawFromParent then skips what lies outside it). */
     public static boolean meglerDrawingPart() { return sDrawingPart; }
-    public void requestLayout() { mLayoutRequested = true; scheduleFrame(); }
+    /*
+     * (Not while the second pass is made, below: its requests, made again to reach this window, are that pass's own, as Android's
+     * ViewRootImpl.requestLayout leaves them while it handles layout requested during layout. Taken, they laid the window out
+     * once more at the next frame, and its global layout listeners were told again, after every second pass.)
+     */
+    public void requestLayout() {
+        if (mHandlingLayoutInLayoutRequest) return;
+        mLayoutRequested = true;
+        scheduleFrame();
+    }
     /*
      * Views that asked for layout while this window was being laid out, as Android's ViewRootImpl keeps them
      * (requestLayoutDuringLayout, mLayoutRequesters): after the pass, those still asking, attached and not under a GONE view

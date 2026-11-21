@@ -2473,6 +2473,7 @@ public class Main extends Activity {
         lineHeight();
         contextClassLoader();
         systemUiSame();
+        secondPass();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -12189,6 +12190,50 @@ public class Main extends Activity {
             boolean back = base.getClassLoader() == app;
             detail = base.getClass().getName() + " before=" + before + " was=" + was + " set=" + set + " kept=" + kept + " loads=" + loads + " back=" + back;
             return before == null && was && set && kept && loads && back;
+        });
+    }
+
+    /*
+     * A group that asks its child for layout once from its own onLayout, after laying the child out: the window makes a second
+     * pass at once, and after it asks nothing more, as Android's ViewRootImpl leaves the requests made for that pass (the
+     * window was laid out once more at the next frame, its global layout listeners told again). The line "second-pass".
+     */
+    private static final class AskingGroup extends android.widget.FrameLayout {
+        int layouts;
+        boolean asked;
+        AskingGroup(android.content.Context c) { super(c); }
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            layouts++;
+            if (!asked && getChildCount() > 0) {
+                asked = true;
+                getChildAt(0).requestLayout();
+            }
+        }
+    }
+    private void secondPass() {
+        step("second-pass", () -> {
+            final AskingGroup group = new AskingGroup(this);
+            group.addView(new android.view.View(this), new android.view.ViewGroup.LayoutParams(2, 2));
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener[] heard = new android.view.ViewTreeObserver.OnGlobalLayoutListener[1];
+            heard[0] = () -> {
+                if (!group.asked) return;
+                group.getViewTreeObserver().removeOnGlobalLayoutListener(heard[0]);
+                android.view.ViewParent root = group.getRootView().getParent();
+                boolean pending = root != null && root.isLayoutRequested();
+                int layouts = group.layouts;
+                ((android.view.ViewGroup) group.getParent()).removeView(group);
+                Log.i("DataTest", "second-pass layouts=" + layouts + " pending=" + pending);
+            };
+            group.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    group.removeOnAttachStateChangeListener(this);
+                    group.getViewTreeObserver().addOnGlobalLayoutListener(heard[0]);
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(group, new android.view.ViewGroup.LayoutParams(6, 6));
+            return true;
         });
     }
 
