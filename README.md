@@ -236,6 +236,20 @@ another project (GPL-2.0-or-later) and is licensed here under the GPL-3.0, as
 - [Donate](https://pay.cloudtips.ru/p/83821e32) (within the CIS for now; from
   outside the CIS, send a message to the Telegram channel)
 
+## Thanks
+
+- **Linh ([thaihoangduylinh](https://github.com/thaihoangduylinh))**: Mesa's freedreno on the
+  Adreno of Windows 10 Mobile through D3DKMT, without ANGLE. Megler's Mesa DLLs
+  ([drivers/mesa-arm32](drivers/mesa-arm32)) are built from their D3DKMT core and their patches to
+  Mesa. Their [pull request #34](https://github.com/Computershik73/megler-w10m/pull/34) also brought
+  the build with Visual Studio 2017, sound fixes, Install Data from ZIP and app fixes found with Mesa.
+- **mayconus**: video and streaming apps on a Lumia 950 XL
+  ([docs/LUMIA-950XL.md](docs/LUMIA-950XL.md)).
+- **WinArchive's developer**: installing apps the Store's way, so Windows 10 Mobile's limit of 20
+  developer packages doesn't stop them.
+- Everyone who reports what goes wrong on GitHub (wukenadela, DimaSWE, JOHN-decm, Jevil7452,
+  Xaker-USSR, dascaluvlad01-ux, msydh, sur-f0x) and everyone who sends logs from their phones.
+
 ## License
 
 Megler is licensed under the GNU General Public License version 3 (LICENSE). The vendored zlib is under the zlib license; ANGLE is
