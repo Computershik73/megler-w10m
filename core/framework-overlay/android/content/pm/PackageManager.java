@@ -414,7 +414,7 @@ public class PackageManager {
                 ResolveInfo r = new ResolveInfo();
                 r.activityInfo = activity(m);
                 r.system = megler.Native.platformApp();
-                l.add(r);
+                l.add(withFilter(r, m, i, flags));
             }
         }
         else if (hosted != null) { ResolveInfo r = new ResolveInfo(); r.activityInfo = hosted(hosted); l.add(r); return l; }
@@ -445,7 +445,7 @@ public class PackageManager {
      *  Then the other apps' services it reaches, which would be bound here (megler.PhoneApps.queryServices). */
     public List<ResolveInfo> queryIntentServices(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
-        for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(r); }
+        for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.services, i)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = service(c); l.add(withFilter(r, c, i, flags)); }
         for (ServiceInfo external : megler.MicroG.query(i, flags)) { ResolveInfo r = new ResolveInfo(); r.serviceInfo = external; l.add(r); }
         if (l.isEmpty() && !megler.MicroG.installed() && googleService(i)) {
             ResolveInfo r = new ResolveInfo(); ServiceInfo s = new ServiceInfo();
@@ -463,8 +463,26 @@ public class PackageManager {
     }
     public List<ResolveInfo> queryBroadcastReceivers(Intent i, int flags) {
         ArrayList<ResolveInfo> l = new ArrayList<>();
-        for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.receivers, i)) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(r); }
+        for (megler.Manifest.Component c : megler.Manifest.match(megler.Manifest.receivers, i)) { ResolveInfo r = new ResolveInfo(); r.activityInfo = activity(c); l.add(withFilter(r, c, i, flags)); }
         return l;
+    }
+    /*
+     * An implicit intent's answer for a component of the app's own, as Android's resolver gives it: the priority of the filter
+     * that took the intent, and with GET_RESOLVED_FILTER that filter itself (ResolveInfo.filter). The Google app's receivers
+     * (17.6.63, ekuf) check a broadcast against their own filter so, asking for it by that flag, and ended the app on the
+     * first push it got: "Attempt to invoke virtual method 'Object.getClass()' on a null object reference" in onReceive, the
+     * filter null. An intent that names its component takes no filter, as on Android.
+     */
+    private static ResolveInfo withFilter(ResolveInfo r, megler.Manifest.Component c, Intent i, int flags) {
+        if (i.getComponent() != null) return r;
+        String type = megler.IntentMatch.typeOf(i);
+        for (megler.Manifest.Filter f : c.filters) {
+            if (!megler.IntentMatch.matches(f, i, type, false)) continue;
+            r.priority = f.priority;
+            if ((flags & GET_RESOLVED_FILTER) != 0) r.filter = intentFilter(f);
+            break;
+        }
+        return r;
     }
     public List<ResolveInfo> queryBroadcastReceivers(Intent i, ResolveInfoFlags flags) { return queryBroadcastReceivers(i, (int) flags.getValue()); }
     public List<ResolveInfo> queryIntentContentProviders(Intent i, int flags) { return new ArrayList<>(); }

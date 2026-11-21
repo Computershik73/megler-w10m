@@ -1151,6 +1151,24 @@ public class Main extends Activity {
                     + " other=" + (other == null ? null : other.activityInfo.name);
             return homes == 0 && launcher != null && Main.class.getName().equals(launcher.activityInfo.name) && plain != null && other == null;
         });
+        // The filter that took an implicit intent, which Android's resolver gives with GET_RESOLVED_FILTER (and only then), and
+        // none for an intent that names its component: the Google app's receivers check a broadcast against it, and ended the
+        // app on a push when it was null.
+        step("resolved-filter", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent relay = new android.content.Intent("megler.test.RELAY").setPackage(getPackageName());
+            android.content.pm.ResolveInfo asked = null, plain = null;
+            for (android.content.pm.ResolveInfo r : pm.queryBroadcastReceivers(relay, android.content.pm.PackageManager.GET_RESOLVED_FILTER))
+                if (r.activityInfo.name.endsWith("$Relay")) asked = r;
+            for (android.content.pm.ResolveInfo r : pm.queryBroadcastReceivers(relay, 0))
+                if (r.activityInfo.name.endsWith("$Relay")) plain = r;
+            java.util.List<android.content.pm.ResolveInfo> named = pm.queryBroadcastReceivers(
+                    new android.content.Intent().setClassName(getPackageName(), Main.class.getName() + "$Relay"), android.content.pm.PackageManager.GET_RESOLVED_FILTER);
+            detail = "asked=" + (asked == null ? "none" : String.valueOf(asked.filter)) + " plain=" + (plain == null ? "none" : String.valueOf(plain.filter))
+                    + " named=" + named.size() + "/" + (named.isEmpty() ? "-" : String.valueOf(named.get(0).filter));
+            return asked != null && asked.filter != null && asked.filter.matchAction("megler.test.RELAY") && plain != null && plain.filter == null
+                    && named.size() == 1 && named.get(0).filter == null;
+        });
         // Who sent a broadcast, as Android 14 tells its receivers (getSentFromUid, getSentFromPackage, the receiver's and its
         // PendingResult's): the app itself where the options it sent with share its identity (BroadcastOptions
         // .setShareIdentityEnabled, through the options' bundle, which gives them back), no one where they do not or there are
