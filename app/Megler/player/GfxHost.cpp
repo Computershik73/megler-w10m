@@ -145,8 +145,6 @@
 #include <wincodec.h>
 
 #include "player/GfxHost.h"
-#include "shell/Files.h"
-#include "shell/Platform.h"
 
 #include <algorithm>
 #include <atomic>
@@ -3910,8 +3908,19 @@ void forgetVideo(int id) {
 /// Whether the OpenGL ES frames' shared textures hold their rows top first: Mesa's (freedreno over D3DKMT, in the package
 /// as libgallium_wgl.dll), which renders into the D3D11 texture as Direct3D lays it out, where ANGLE's keep OpenGL's order,
 /// the bottom row first, which the composing here is made for. GTA: Vice City's frames came out upside down on Mesa.
+/// (Looked for beside the program with Win32 alone: this file leans on nothing of the shell's, and it is built into the
+/// core's tests too, where there is nothing of the kind beside mg_tests.exe.)
 bool glFramesTopFirst() {
-    static const bool topFirst = files::exists(platform::installDirectory() + L"\\libgallium_wgl.dll");
+    static const bool topFirst = [] {
+        wchar_t path[MAX_PATH + 32] = {};
+        const DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH);
+        if (!n || n >= MAX_PATH) return false;
+        wchar_t* slash = wcsrchr(path, L'\\');
+        if (!slash) return false;
+        wcscpy(slash + 1, L"libgallium_wgl.dll");
+        WIN32_FILE_ATTRIBUTE_DATA data = {};
+        return GetFileAttributesExW(path, GetFileExInfoStandard, &data) && !(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+    }();
     return topFirst;
 }
 
