@@ -65,9 +65,10 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
                 moved[movedCount] = mSpans[i]; was[3 * movedCount] = os; was[3 * movedCount + 1] = oe; was[3 * movedCount + 2] = i; movedCount++;
             }
         }
-        // spans of a deleted range that are now empty and exclusive go away
+        // spans of a deleted range that are now empty and exclusive go away (an input method's composing text deleted whole too,
+        // its mark, as on Android: what it composes next goes where the cursor is)
         for (int i = mSpanCount - 1; i >= 0; i--) {
-            if (mStarts[i] == mEnds[i] && origLen > 0 && (mFlags[i] & SPAN_POINT_MARK_MASK) == SPAN_EXCLUSIVE_EXCLUSIVE && mStarts[i] == start && !(mSpans[i] instanceof NoCopySpan)) {
+            if (mStarts[i] == mEnds[i] && origLen > 0 && (mFlags[i] & SPAN_POINT_MARK_MASK) == SPAN_EXCLUSIVE_EXCLUSIVE && mStarts[i] == start && (!(mSpans[i] instanceof NoCopySpan) || (mFlags[i] & SPAN_COMPOSING) != 0)) {
                 Object w = mSpans[i]; int s = mStarts[i], e2 = mEnds[i]; removeSpanAt(i); sendSpanRemoved(w, s, e2);
             }
         }

@@ -4410,7 +4410,7 @@ static int run_data(void)
                                             (YouTube's comment field ended at a Backspace, the layout still the old text's); and the
                                             other edits of an input connection as Android's BaseInputConnection makes them, the
                                             composing text a span that follows the field's own edits. */
-                                         "watchers-see-the-edit",
+                                         "watchers-see-the-edit", "input-connection-edits",
                                          /* And ViewGroup.cleanupLayoutState takes a group's layout request back: a group whose requestLayout
                                             calls it on itself (Compose's AndroidViewsHandler) hears each requestLayout of a child. */
                                          "cleanup-layout-state",

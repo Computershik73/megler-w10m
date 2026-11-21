@@ -9124,6 +9124,55 @@ public class Main extends Activity {
                 + "\"; lines of a text set " + lines;
             return told && f.wrong.length() == 0 && noSpan && crossed.isEmpty() && lines == 3;
         });
+        /*
+         * The other ways an input method edits a field, as Android's BaseInputConnection makes them: deleteSurroundingText
+         * before the cursor first and after it then, around a selection, around the composing text (which it keeps); the
+         * composing text marked by a span that moves with the field's own edits, replaced by setComposingText, let go by
+         * finishComposingText; commitText over a selection, the cursor after the text, or before it (newCursorPosition 0).
+         * The composing text was two numbers that stayed where they were, and deleteSurroundingText deleted after the cursor
+         * first, around the selection alone, and forgot the composing text.
+         */
+        step("input-connection-edits", () -> {
+            final TypedField f = new TypedField(this);
+            f.setText("abcd");
+            f.frame();
+            f.ic.setSelection(2, 2);
+            String around = f.did(() -> f.ic.deleteSurroundingText(1, 1)) + " " + f.getText();
+            f.setText("hello world");
+            f.frame();
+            f.ic.setSelection(6, 11);
+            String selected = f.did(() -> f.ic.deleteSurroundingText(1, 0)) + " " + f.getSelectionStart() + "-" + f.getSelectionEnd();
+            f.setText("hello world");
+            f.frame();
+            f.ic.setSelection(11, 11);
+            f.ic.setComposingRegion(6, 11);
+            String composing = f.did(() -> f.ic.deleteSurroundingText(1, 0)) + " " + f.composing();
+            String recomposed = f.did(() -> f.ic.setComposingText("earth", 1)) + " " + f.composing();
+            f.ic.finishComposingText();
+            String finished = f.composing();
+            f.ic.setSelection(0, 5);
+            String over = f.did(() -> f.ic.commitText("HI", 1));
+            f.ic.setSelection(2, 7);
+            String before = f.did(() -> f.ic.commitText("ok", 0)) + " " + f.getSelectionStart();
+            // The field's own edit before the composing text: what is composed next replaces it where it went.
+            f.setText("ab");
+            f.frame();
+            f.ic.setSelection(2, 2);
+            f.ic.setComposingText("cd", 1);
+            f.getText().insert(0, "X");
+            String moved = f.composing();
+            f.ic.setComposingText("ef", 1);
+            String followed = f.getText() + " " + f.composing();
+            detail = "around a cursor: " + around + "; a selection: " + selected + "; composing text: " + composing + "; composed again: " + recomposed
+                + "; finished: " + finished + "; over a selection: " + over + "; with the cursor before: " + before + "; composing text moved to " + moved
+                + ", then " + followed + "; wrong: " + (f.wrong.length() == 0 ? "nothing" : f.wrong);
+            return around.equals("before(1,1,0) on(1,1,0)=acd@1 view after before(1,1,0) on(1,1,0)=ad@1 view after ad")
+                && selected.equals("before(5,1,0) on(5,1,0)=helloworld@5 view after 5-10")
+                && composing.equals("before(5,1,0) on(5,1,0)=helloworld@10 view after 5-10")
+                && recomposed.equals("before(5,5,5) on(5,5,5)=helloearth@10 view after 5-10") && finished.equals("none")
+                && over.equals("before(0,5,2) on(0,5,2)=HIearth@2 view after") && before.equals("before(2,5,2) on(2,5,2)=HIok@2 view after 2")
+                && moved.equals("3-5") && followed.equals("Xabef 3-5") && f.wrong.length() == 0;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */
