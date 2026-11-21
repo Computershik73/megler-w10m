@@ -23,8 +23,9 @@ bool set(const std::string& key, const std::optional<std::string>& value);
 /// Every "always." key whose answer is the app `package`'s taken out; how many went.
 int clearAlways(const std::string& package);
 
-/// A browser the phone has: an activity of an app of the library whose filter takes web links of any host (VIEW, BROWSABLE,
-/// http or https, no host), as the shell described it.
+/// A browser the phone has: an activity of an app of the library whose filter takes web links of any host as a browser does
+/// (VIEW, BROWSABLE, DEFAULT, https, no host and no type), as the shell described it -- the list megler.Resolver.browsers()
+/// makes for the apps.
 struct Browser {
     std::string id;    // "<package>/<activity>"
     std::string label; // the activity's label, else the app's
