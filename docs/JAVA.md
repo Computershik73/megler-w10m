@@ -9010,9 +9010,13 @@ generated signatures: `HttpEngine.Builder.build()` answered null.
 
 **Who takes it.** Cronet's own provider list (`CronetEngine.Builder`, which an
 app carrying Cronet's API makes) offers HttpEngine only where
-`SdkExtensions.getExtensionVersion(31)` is 7 or more; Megler says 0, so Cronet
-never picks it there, and an app's own Cronet, or Google Play services', is
-taken. The Google Play Store (53.7.23, `sxi.g` in the jadx of its classes3)
+`SdkExtensions.getExtensionVersion(31)` is 7 or more. Megler said 0 until
+0.1.0.748 (a generated stub, `SdkExtensions` in the overlay since), which no
+Android 14 says: Android 14 came with 7 of R, S, T and U, the level that
+brought `android.net.http` to Android 12 and 13. Cronet's list ranks an
+HttpEngine whose version is below the one it prefers (133) under the others,
+so an app's own Cronet, or Google Play services', is still taken where there
+is one. The Google Play Store (53.7.23, `sxi.g` in the jadx of its classes3)
 asks for HttpEngine itself on Android 14 when a server flag of its,
 `NetworkOptimizationsAutogen` / `enable_bypass_sdk_extensions_check_for_platform_cronet_on_u`,
 is on for the phone: "Device is eligible for platform Cronet and will attempt
@@ -9032,6 +9036,23 @@ the Cronet it carries ("source: Statically Linked") and all of that works.
 The Play Store has a fallback, OkHttp and gRPC's OkHttp transport, but only
 for an engine whose build throws (`aeus.e` catches it and uses none); a null
 it takes as an engine.
+
+The Play Store's build for Android 14 (54.3.08-34, "Android 14+" on
+APKMirror, the one Play gives a phone of SDK 34 when it updates itself)
+carries no Cronet: no `libcronet.*.so` of any ABI in its APK, and of Cronet's
+Java only `HttpEngineNativeProvider`. Its `ukb.a` takes HttpEngine where the S
+extension is 7 or more ("Device is eligible for platform Cronet") and builds
+Cronet's provider list otherwise, in which nothing is left
+(`PlayServicesCronetProvider`, `NativeCronetProvider` and `JavaCronetProvider`
+are names it tries, not classes it has), and `afdt.e` says what it says of any
+failure there, "Cronet native library failed to load; Possible ABI mismatch.",
+and falls back to OkHttp (a Spanish user's Elite x3 on 0.1.0.734, at every
+start). With Android 14's extension levels it takes HttpEngine, Megler's
+engine, and sets on its builder the options of stale DNS, QUIC (idle timeout,
+in-memory server configs, handshake user agent) and connection migration
+(path degradation): kept, as the others are. The earlier builds that carry
+Cronet take HttpEngine too now, as on any Android 14 (the data app's step
+"sdk-extensions").
 
 **Megler's engine** (`megler.http`, in the overlay; `HttpEngine.java` there
 hands the Builder's calls to `megler.http.EngineBuilder`, as Android hands them

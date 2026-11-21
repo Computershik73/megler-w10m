@@ -11720,6 +11720,55 @@ public class Main extends Activity {
         step("http-engine-stream-flow", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamFlow())));
         step("http-engine-stream-cancel", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamCancel())));
         step("http-engine-hpack", () -> !conscrypt || offMain(() -> said(h[0], h[0].hpack())));
+        sdkExtensions();
+    }
+
+    /**
+     * Android 14's SDK extensions, as an app asks them: 7 of R, S, T and U alike, what Android 14 came with (the stub said 0),
+     * none of the AdServices', 0 of a later version, and a version before R refused as Android refuses it. The Google Play Store
+     * for Android 14 (54.3.08-34) carries no Cronet of its own and takes HttpEngine only where the S extension is 7 or more: here
+     * it said "Cronet native library failed to load; Possible ABI mismatch" and fell back to OkHttp. The engine is then built
+     * with what the Play Store's wrapper sets (its stale DNS, QUIC and connection migration options among them): Megler's own.
+     */
+    private void sdkExtensions() {
+        step("sdk-extensions", () -> {
+            int r = android.os.ext.SdkExtensions.getExtensionVersion(30), s = android.os.ext.SdkExtensions.getExtensionVersion(31);
+            int t = android.os.ext.SdkExtensions.getExtensionVersion(33), u = android.os.ext.SdkExtensions.getExtensionVersion(34);
+            int ads = android.os.ext.SdkExtensions.getExtensionVersion(android.os.ext.SdkExtensions.AD_SERVICES);
+            int later = android.os.ext.SdkExtensions.getExtensionVersion(35);
+            String early;
+            try {
+                early = "accepted " + android.os.ext.SdkExtensions.getExtensionVersion(29);
+            } catch (IllegalArgumentException e) {
+                early = "refused";
+            }
+            java.util.Map<Integer, Integer> all = android.os.ext.SdkExtensions.getAllExtensionVersions();
+            boolean playStore = s >= 7;
+            java.time.Duration minutes = java.time.Duration.ofMinutes(5);
+            android.net.http.HttpEngine.Builder b = new android.net.http.HttpEngine.Builder(this);
+            b.setUserAgent("megler-test/1").setStoragePath(getCacheDir().getPath()).setEnableQuic(true)
+                    .addQuicHint("play-fe.googleapis.com", 443, 443).setEnableBrotli(true)
+                    .setQuicOptions(new android.net.http.QuicOptions.Builder().addAllowedQuicHost("play-fe.googleapis.com")
+                            .setInMemoryServerConfigsCacheSize(20).setIdleConnectionTimeout(java.time.Duration.ofSeconds(300))
+                            .setHandshakeUserAgent("megler-test/1").build())
+                    .setDnsOptions(new android.net.http.DnsOptions.Builder().setUseHttpStackDnsResolver(android.net.http.DnsOptions.DNS_OPTION_ENABLED)
+                            .setStaleDns(android.net.http.DnsOptions.DNS_OPTION_ENABLED).setPersistHostCache(android.net.http.DnsOptions.DNS_OPTION_ENABLED)
+                            .setPersistHostCachePeriod(minutes).setPreestablishConnectionsToStaleDnsResults(android.net.http.DnsOptions.DNS_OPTION_ENABLED)
+                            .setStaleDnsOptions(new android.net.http.DnsOptions.StaleDnsOptions.Builder().setFreshLookupTimeout(java.time.Duration.ofMillis(500))
+                                    .setMaxExpiredDelay(minutes).setAllowCrossNetworkUsage(android.net.http.DnsOptions.DNS_OPTION_DISABLED)
+                                    .setUseStaleOnNameNotResolved(android.net.http.DnsOptions.DNS_OPTION_ENABLED).build()).build())
+                    .setConnectionMigrationOptions(new android.net.http.ConnectionMigrationOptions.Builder()
+                            .setDefaultNetworkMigration(android.net.http.ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
+                            .setPathDegradationMigration(android.net.http.ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
+                            .setAllowNonDefaultNetworkUsage(android.net.http.ConnectionMigrationOptions.MIGRATION_OPTION_DISABLED).build());
+            android.net.http.HttpEngine e = b.build();
+            String engine = e == null ? null : e.getClass().getName();
+            if (e != null) e.shutdown();
+            detail = "R=" + r + " S=" + s + " T=" + t + " U=" + u + " ads=" + ads + " later=" + later + " early=" + early + " all=" + all
+                    + " playStore=" + playStore + " engine=" + engine;
+            return r == 7 && s == 7 && t == 7 && u == 7 && ads == 0 && later == 0 && "refused".equals(early) && all.size() == 5
+                    && Integer.valueOf(7).equals(all.get(31)) && playStore && engine != null && engine.startsWith("megler.http.");
+        });
     }
 
     /** A check of HttpEngineSteps' result, what it saw made the step's detail and said in the log. */
