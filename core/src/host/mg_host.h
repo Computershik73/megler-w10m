@@ -827,6 +827,13 @@ MG_HOSTAPI void mg_host_stderr_to_log_end(void);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 MG_HOSTAPI bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
 /*
+ * The flag kmt-trace (ndk/mg_egl.c): every call of the graphics kernel's functions (D3DKMT) the process makes from now on,
+ * by any module -- Qualcomm's Direct3D driver, Mesa's core -- written with its private data and the command buffers it
+ * submits into the file `path` (host/mg_kmt_trace.c; tools/kmt-trace.py reads it). How many functions are traced, and in
+ * `why` what was done or why nothing was. Windows 10 Mobile's ARM32 alone; once a process.
+ */
+MG_HOSTAPI int mg_host_kmt_trace_start(const char *path, char *why, size_t size);
+/*
  * The linker's time stamp of the module an address is in (a PE file's TimeDateStamp), which its build's map says at its top
  * ("Timestamp is ..."): which build a report's module+offset addresses are of. False where there is none (an ELF, POSIX).
  */

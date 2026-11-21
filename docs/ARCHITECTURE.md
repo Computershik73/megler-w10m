@@ -692,6 +692,17 @@ Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GL
   (`mg_host_stderr_to_log_begin`, `_end`), whose lines the log takes as `mesa: <line>` (2000 a process at most, then
   counted); warnings and errors (`MESA_LOG_LEVEL=warning`; Mesa's default, information too, under `mesa-diag`). A
   texture GTA: Vice City's map could not be given memory for ended the game, its reason lost (package 745).
+- **What goes to the kernel's driver, by the flag `kmt-trace`.** Every call of the graphics kernel's functions the
+  app's process makes from the first use of EGL on -- ANGLE's Direct3D 11 device through Qualcomm's own driver, the
+  shell's, Mesa's D3DKMT core -- with its arguments, its private driver data and the command buffers it submits (and the
+  buffers they call), into `LocalState\kmt-trace.bin` (96 MB at most), and the context creations, escapes, adapter
+  queries and first submits in the log as `kmt: ...` (`host/mg_kmt_trace.c`). Windows 10 Mobile's win32u.dll has one
+  stub a function, `movw r12, #<call>; svc #1; bx lr`, which every caller comes to (gdi32's D3DKMT functions jump to them,
+  dxgi.dll looks gdi32's up by name): each is copied to a page of the trace's and made a jump to the trace's function,
+  which calls the copy. A buffer is read where its allocation was seen mapped for the CPU (`Lock2`, `Lock`) and the GPU
+  (`MapGpuVirtualAddress`, `UpdateGpuVirtualAddress`). `tools/kmt-trace.py` prints the calls and decodes the buffers as
+  PM4 packets with a5xx's register names (Mesa's freedreno XML). For comparing Mesa with Qualcomm's driver, which renders
+  in GMEM tiles without hanging the GPU (drivers/mesa-arm32/src/ISSUES.md, 1).
 - **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
   first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
   (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`

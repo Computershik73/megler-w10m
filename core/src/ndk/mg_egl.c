@@ -199,6 +199,19 @@ static void *angle(const char *name)
         mg_lock_acquire(&g_angle_lock);
         if (!g_angle_tried) {
             char why[400];
+            /*
+             * The flag kmt-trace: what this process asks of the graphics kernel from now on -- ANGLE's Direct3D 11 device
+             * through Qualcomm's own driver, or Mesa's D3DKMT core -- with the command buffers it submits, into
+             * kmt-trace.bin beside the log (host/mg_kmt_trace.c, tools/kmt-trace.py). Before either loads: a device's
+             * context and its first buffers are made as it starts.
+             */
+            if (mg_flag("kmt-trace")) {
+                char *path = mg_sprintf("%s/kmt-trace.bin", megler_data_dir()), said[700];
+                int traced = mg_host_kmt_trace_start(path, said, sizeof(said));
+                if (traced) mg_info("egl: the flag kmt-trace: %s, into %s", said, path);
+                else mg_warn("egl: the flag kmt-trace: no trace: %s", said);
+                free(path);
+            }
             if (g_mesa_asked) {
                 g_mesa_loaded = mesa_load(why, sizeof(why));
                 if (!g_mesa_loaded) mg_warn("egl: Mesa's freedreno was asked for, ANGLE instead: %s", why);
