@@ -34,6 +34,23 @@
 // changes nothing, as on Android (the comment at setAllCaps has why).
 //
 // And the selection's spans put on the text are told to onSelectionChanged, as Android's spanChange tells them.
+//
+// And the layout is of the text as it is now whenever it is asked for (getLayout, getLineCount, getLineBounds,
+// getOffsetForPosition, getBaseline): an edit, or a text set, has it made again at the width it had, as Android's
+// DynamicLayout reflows within the edit, before the field's watchers hear of it. It was made again at the next measure
+// only. YouTube's comment field (alox, 21.13.164) works out what its first line shows in its watcher's onTextChanged,
+// text.substring(0, getLayout().getLineVisibleEnd(0)), and the layout was still the one of the text before the edit: a
+// Backspace at the end of a comment of one line ended YouTube with "length=1; index=2" (an HP Elite x3, 0.1.0.734).
+//
+// And the text's watchers added by addTextChangedListener are the view's, told by its ChangeWatcher, as Android's
+// TextView tells them (sendBeforeTextChanged, sendOnTextChanged, sendAfterTextChanged): before the view's own
+// onTextChanged, which a subclass hears after them, and no spans of the text. And a text set from another view's has that
+// view's ChangeWatcher taken off, as Android's setText takes it, or that view's watchers would hear of this one's edits.
+// They were spans of the text, which getSpans found, told after the view's own onTextChanged.
+//
+// And a paste, and an Enter of a field of lines, over a selection make the selection a cursor at its end first, as
+// Android's paste and its key listeners do: an edit keeps a cursor at the very start of the text it replaces where it is,
+// as Android's SpannableStringBuilder does, and the selection's start would stay before what went in.
 // Everything else is the original's, unchanged.
 package android.widget;
 
@@ -96,6 +113,11 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     private CharSequence mError;
     private int mAutoLinkMask;
     private boolean mLayoutDirty = true;
+    /* The text changed since the layout was made (an edit, a text set): the layout is made again, at the width it was made
+       for (mLayoutWidth), when it is asked for before the next measure (currentLayout()). And whether something besides the
+       text has the next measure make it again all the same (relayout: the paint, the lines, the gravity...). */
+    private boolean mLayoutStale, mLayoutDirtyOther = true;
+    private int mLayoutWidth = -1;
     private long mBlinkStart;
     private final Paint mHighlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int mHighlightColor = 0x6633B5E5;
@@ -421,30 +443,38 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         mText = text;
         if (text instanceof Spannable) {
             Spannable sp = (Spannable) text;
+            // As Android's: the ChangeWatchers a text copied from another view's brought along are taken off, or that view
+            // and its watchers would hear of this one's edits.
+            for (ChangeWatcher w : sp.getSpans(0, sp.length(), ChangeWatcher.class)) sp.removeSpan(w);
             if (mChangeWatcher == null) mChangeWatcher = new ChangeWatcher();
             sp.setSpan(mChangeWatcher, 0, text.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE | (100 << Spanned.SPAN_PRIORITY_SHIFT));
-            if (mListeners != null) for (TextWatcher w : mListeners) sp.setSpan(w, 0, text.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE);
             if (mMovement != null) { mMovement.initialize(this, sp); if (mText instanceof Editable && Selection.getSelectionStart(sp) < 0) Selection.setSelection(sp, text.length()); }
         }
         mTransformed = mTransformation == null ? text : mTransformation.getTransformation(text, this);
         if (mTransformed == null) mTransformed = text;
-        relayout();
+        relayoutText();
         sendOnTextChanged(text, 0, oldLen, text.length());
         onTextChanged(text, 0, oldLen, text.length());
         sendAfterTextChanged(text instanceof Editable ? (Editable) text : null);
         if (megler.InputMethods.focused() == this) megler.InputMethods.restart(this);
     }
-    /** Edits to an Editable buffer, as they happen: relayout and the watchers' callbacks. */
+    /**
+     * Edits to an Editable buffer, as they happen: relayout and the watchers' callbacks. As Android's: the view's watchers
+     * (addTextChangedListener) told of each, then the view's own onTextChanged; of an edit of a copy of the text too (the
+     * copy has this watcher, as on Android), whose layout is not the view's.
+     */
     private final class ChangeWatcher implements TextWatcher, SpanWatcher {
-        public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+        public void beforeTextChanged(CharSequence s, int st, int c, int a) { sendBeforeTextChanged(s, st, c, a); }
         public void onTextChanged(CharSequence s, int st, int b, int c) {
-            if (s != mText) return;
-            mTransformed = mTransformation == null ? mText : mTransformation.getTransformation(mText, TextView.this);
-            relayout();
+            if (s == mText) {
+                mTransformed = mTransformation == null ? mText : mTransformation.getTransformation(mText, TextView.this);
+                relayoutText();
+                mBlinkStart = android.os.SystemClock.uptimeMillis();
+            }
+            sendOnTextChanged(s, st, b, c);
             TextView.this.onTextChanged(s, st, b, c);
-            mBlinkStart = android.os.SystemClock.uptimeMillis();
         }
-        public void afterTextChanged(Editable s) {}
+        public void afterTextChanged(Editable s) { sendAfterTextChanged(s); }
         // A selection's end put on a text is told too, as Android's spanChange tells it (from -1): a text set or set again
         // has its cursor put at the start by the movement method, and a view that keeps its cursor as onSelectionChanged
         // says (the Google app's Gemini field) heard nothing of it.
@@ -473,10 +503,9 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public void addTextChangedListener(TextWatcher w) {
         if (mListeners == null) mListeners = new ArrayList<>();
         mListeners.add(w);
-        if (mText instanceof Spannable) ((Spannable) mText).setSpan(w, 0, mText.length(), Spanned.SPAN_INCLUSIVE_INCLUSIVE);
     }
-    public void removeTextChangedListener(TextWatcher w) { if (mListeners != null) mListeners.remove(w); if (mText instanceof Spannable) ((Spannable) mText).removeSpan(w); }
-    private void sendBeforeTextChanged(CharSequence t, int s, int b, int a) { if (mListeners != null && !(mText instanceof Spannable)) for (TextWatcher w : new ArrayList<>(mListeners)) w.beforeTextChanged(t, s, b, a); else if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.beforeTextChanged(t, s, b, a); }
+    public void removeTextChangedListener(TextWatcher w) { if (mListeners != null) mListeners.remove(w); }
+    private void sendBeforeTextChanged(CharSequence t, int s, int b, int a) { if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.beforeTextChanged(t, s, b, a); }
     private void sendOnTextChanged(CharSequence t, int s, int b, int a) { if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.onTextChanged(t, s, b, a); }
     private void sendAfterTextChanged(Editable e) { if (mListeners != null) for (TextWatcher w : new ArrayList<>(mListeners)) w.afterTextChanged(e != null ? e : new SpannableStringBuilder(mText)); }
     public void append(CharSequence text) { append(text, 0, text.length()); }
@@ -533,9 +562,10 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public void setCursorVisible(boolean v) { mCursorVisible = v; invalidate(); }
     public boolean isCursorVisible() { return mCursorVisible; }
     public int getOffsetForPosition(float x, float y) {
-        if (mLayout == null) return -1;
-        int line = mLayout.getLineForVertical((int) (y - getTotalPaddingTop() + getScrollY()));
-        return mLayout.getOffsetForHorizontal(line, x - getTotalPaddingLeft() + getScrollX());
+        Layout l = currentLayout();
+        if (l == null) return -1;
+        int line = l.getLineForVertical((int) (y - getTotalPaddingTop() + getScrollY()));
+        return l.getOffsetForHorizontal(line, x - getTotalPaddingLeft() + getScrollX());
     }
 
     // ---- lines and sizes
@@ -642,7 +672,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         }
         float size = mAutoSizes[best];
         mTextPaint.setTextSize(size);
-        if (size != orig || mLayout == null || mLayout.getWidth() != availW) { mLayout = makeLayout(mTransformed, availW, false); mHintLayout = null; }
+        if (size != orig || mLayout == null || mLayout.getWidth() != availW) { makeTextLayout(availW); mHintLayout = null; }
     }
     private boolean fits(int availW, int availH) {
         CharSequence t = mTransformed;
@@ -659,11 +689,11 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         if (g != mGravity) { mGravity = g; relayout(); }
     }
     public int getGravity() { return mGravity; }
-    public final Layout getLayout() { return mLayout; }
+    public final Layout getLayout() { return currentLayout(); }
     public final Layout getHintLayout() { return mHintLayout; }
-    public int getLineCount() { return mLayout != null ? mLayout.getLineCount() : 0; }
-    public int getLineBounds(int line, Rect bounds) { if (mLayout == null) { if (bounds != null) bounds.set(0, 0, 0, 0); return 0; } int b = mLayout.getLineBounds(line, bounds); int dx = getTotalPaddingLeft(), dy = getTotalPaddingTop() + verticalOffset(); if (bounds != null) bounds.offset(dx, dy); return b + dy; }
-    @Override public int getBaseline() { if (mLayout == null) return super.getBaseline(); return getExtendedPaddingTop() + verticalOffset() + mLayout.getLineBaseline(0); }
+    public int getLineCount() { Layout l = currentLayout(); return l != null ? l.getLineCount() : 0; }
+    public int getLineBounds(int line, Rect bounds) { Layout l = currentLayout(); if (l == null) { if (bounds != null) bounds.set(0, 0, 0, 0); return 0; } int b = l.getLineBounds(line, bounds); int dx = getTotalPaddingLeft(), dy = getTotalPaddingTop() + verticalOffset(); if (bounds != null) bounds.offset(dx, dy); return b + dy; }
+    @Override public int getBaseline() { Layout l = currentLayout(); if (l == null) return super.getBaseline(); return getExtendedPaddingTop() + verticalOffset() + l.getLineBaseline(0); }
 
     // ---- compound drawables
     public void setCompoundDrawables(Drawable l, Drawable t, Drawable r, Drawable b) {
@@ -712,7 +742,29 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     public int getTotalPaddingBottom() { return getExtendedPaddingBottom() + bottomVerticalOffset(); }
 
     // ---- layout
-    private void relayout() { mLayoutDirty = true; mHintLayout = null; requestLayout(); invalidate(); }
+    private void relayout() { mLayoutDirty = true; mLayoutDirtyOther = true; mHintLayout = null; requestLayout(); invalidate(); }
+    /** The text changed (an edit, a text set): its layout is made again when it is asked for (currentLayout()), else at the next measure. */
+    private void relayoutText() { mLayoutDirty = true; mLayoutStale = true; mHintLayout = null; requestLayout(); invalidate(); }
+    /**
+     * The layout of the text as it is now, as Android's is between two measures: made again at the width it was made for
+     * where the text changed since (an EditText's DynamicLayout reflows within the edit, before the watchers hear of it;
+     * setText makes a new one at once where the view's width is fixed). The next measure leaves it be unless something
+     * besides the text asks for another, or the width is another.
+     */
+    private Layout currentLayout() {
+        if (mLayoutStale && mLayout != null && mLayoutWidth >= 0) {
+            mLayout = makeLayout(mTransformed, mLayoutWidth, false);
+            mLayoutStale = false;
+            if (!mLayoutDirtyOther) mLayoutDirty = false;
+        }
+        return mLayout;
+    }
+    /** The text's layout made for this width: what the next measure would make, and what currentLayout() makes again. */
+    private void makeTextLayout(int width) {
+        mLayout = makeLayout(mTransformed, width, false);
+        mLayoutWidth = width;
+        mLayoutDirty = mLayoutStale = mLayoutDirtyOther = false;
+    }
     private int desiredWidth(CharSequence t) { return t == null ? 0 : (int) Math.ceil(Layout.getDesiredWidth(t, mTextPaint)); }
     private Layout makeLayout(CharSequence text, int width, boolean hint) {
         if (width < 0) width = 0;
@@ -753,8 +805,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         }
         int avail = width - padH;
         if (mLayoutDirty || mLayout == null || mLayout.getWidth() != avail && !(mHorizontallyScrolling && mEllipsize == null && mLayout.getWidth() >= avail)) {
-            mLayout = makeLayout(mTransformed, avail, false);
-            mLayoutDirty = false;
+            makeTextLayout(avail);
             mHintLayout = null;
         }
         if (mHint != null && mText.length() == 0 && (mHintLayout == null || mHintLayout.getWidth() != avail)) mHintLayout = makeLayout(mHint, avail, true);
@@ -808,7 +859,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         if (mDrawables[2] != null) { c.save(); c.translate(sx + w - getPaddingRight() - dw(2), sy + ct + (vspace - dh(2)) / 2); mDrawables[2].draw(c); c.restore(); }
         if (mDrawables[1] != null) { c.save(); c.translate(sx + cl + (hspace - dw(1)) / 2, sy + getPaddingTop()); mDrawables[1].draw(c); c.restore(); }
         if (mDrawables[3] != null) { c.save(); c.translate(sx + cl + (hspace - dw(3)) / 2, sy + h - getPaddingBottom() - dh(3)); mDrawables[3].draw(c); c.restore(); }
-        if (mLayout == null || mLayoutDirty) { if (hspace > 0) { mLayout = makeLayout(mTransformed, hspace, false); mLayoutDirty = false; } else return; }
+        if (mLayout == null || mLayoutDirty) { if (hspace > 0) makeTextLayout(hspace); else return; }
         Layout layout = mLayout;
         boolean hint = mText.length() == 0 && mHint != null;
         if (hint) { if (mHintLayout == null) mHintLayout = makeLayout(mHint, hspace, true); layout = mHintLayout; }
@@ -944,7 +995,8 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         int s = Math.max(0, Math.min(getSelectionStart(), getSelectionEnd())), e = Math.max(0, Math.max(getSelectionStart(), getSelectionEnd()));
         if (id == android.R.id.selectAll) { selectAll(); return true; }
         if (id == android.R.id.copy || id == android.R.id.cut) { if (e > s) cb.setPrimaryClip(android.content.ClipData.newPlainText(null, mText.subSequence(s, e))); if (id == android.R.id.cut && mText instanceof Editable) ((Editable) mText).delete(s, e); return true; }
-        if (id == android.R.id.paste && mText instanceof Editable) { CharSequence t = cb.getText(); if (t != null) ((Editable) mText).replace(s, e, t); return true; }
+        // (As Android's paste: the selection made a cursor at its end first, so that it ends up after the text pasted.)
+        if (id == android.R.id.paste && mText instanceof Editable) { CharSequence t = cb.getText(); if (t != null) { Selection.setSelection((Editable) mText, e); ((Editable) mText).replace(s, e, t); } return true; }
         return false;
     }
     @Override public boolean onKeyDown(int code, KeyEvent e) {
@@ -954,7 +1006,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
         }
         if (mKeyListener != null && mText instanceof Editable && mKeyListener.onKeyDown(this, (Editable) mText, code, e)) return true;
         if (mMovement != null && mText instanceof Spannable && mMovement.onKeyDown(this, (Spannable) mText, code, e)) return true;
-        if (code == KeyEvent.KEYCODE_ENTER && isMultiline() && mText instanceof Editable) { int s = Math.max(0, getSelectionStart()), en = Math.max(0, getSelectionEnd()); ((Editable) mText).replace(Math.min(s, en), Math.max(s, en), "\n"); return true; }
+        if (code == KeyEvent.KEYCODE_ENTER && isMultiline() && mText instanceof Editable) { int s = Math.max(0, getSelectionStart()), en = Math.max(0, getSelectionEnd()); Selection.setSelection((Editable) mText, Math.max(s, en)); ((Editable) mText).replace(Math.min(s, en), Math.max(s, en), "\n"); return true; }
         return super.onKeyDown(code, e);
     }
     @Override public boolean onKeyUp(int code, KeyEvent e) {

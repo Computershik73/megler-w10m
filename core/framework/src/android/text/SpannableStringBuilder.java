@@ -22,7 +22,15 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
     public void clear() { replace(0, mLen, "", 0, 0); }
     public void clearSpans() { for (int i = mSpanCount - 1; i >= 0; i--) { Object w = mSpans[i]; int s = mStarts[i], e = mEnds[i]; removeSpanAt(i); sendSpanRemoved(w, s, e); } }
     public SpannableStringBuilder replace(int start, int end, CharSequence tb) { return replace(start, end, tb, 0, tb.length()); }
+    /*
+     * As Android's: the range checked first (it was not, and an edit beyond the end moved what it should not); the text
+     * watchers found once, where the edit is, and each told before, on and after it -- they were found again after the
+     * edit for onTextChanged and afterTextChanged, where the new text is, so that one put on during beforeTextChanged
+     * heard the rest of an edit it had not heard begin; and a cursor or selection's end inside the replaced text keeps its
+     * place relative to it (a point at its start stays there, see adjust).
+     */
     public SpannableStringBuilder replace(int start, int end, CharSequence tb, int tbstart, int tbend) {
+        checkRange("replace", start, end);
         for (InputFilter f : mFilters) {
             CharSequence repl = f.filter(tb, tbstart, tbend, this, start, end);
             if (repl != null) { tb = repl; tbstart = 0; tbend = repl.length(); }
@@ -39,6 +47,7 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
         mLen += delta;
         // the spans: those after move, those inside shrink, points and marks at the edges follow their flags; those that moved
         // are noted, with where they were, for the span watchers (below)
+        boolean adjustSelection = origLen != 0 && newLen != 0;
         boolean watched = false;
         for (int i = 0; i < mSpanCount && !watched; i++) watched = mSpans[i] instanceof SpanWatcher;
         Object[] moved = null;
@@ -49,14 +58,17 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
             mStarts[i] = adjust(mStarts[i], start, end, delta, (mFlags[i] & 0xf0) >> 4, true, origLen);
             mEnds[i] = adjust(mEnds[i], start, end, delta, mFlags[i] & 0x0f, false, origLen);
             if (mEnds[i] < mStarts[i]) mEnds[i] = mStarts[i];
+            if (adjustSelection && os > start && os < end && (mSpans[i] == Selection.SELECTION_START || mSpans[i] == Selection.SELECTION_END))
+                mStarts[i] = mEnds[i] = start + (int) ((long) (os - start) * newLen / origLen);
             if (watched && (mStarts[i] != os || mEnds[i] != oe)) {
                 if (moved == null) { moved = new Object[mSpanCount]; was = new int[3 * mSpanCount]; }
                 moved[movedCount] = mSpans[i]; was[3 * movedCount] = os; was[3 * movedCount + 1] = oe; was[3 * movedCount + 2] = i; movedCount++;
             }
         }
-        // spans of a deleted range that are now empty and exclusive go away
+        // spans of a deleted range that are now empty and exclusive go away (an input method's composing text deleted whole too,
+        // its mark, as on Android: what it composes next goes where the cursor is)
         for (int i = mSpanCount - 1; i >= 0; i--) {
-            if (mStarts[i] == mEnds[i] && origLen > 0 && (mFlags[i] & SPAN_POINT_MARK_MASK) == SPAN_EXCLUSIVE_EXCLUSIVE && mStarts[i] == start && !(mSpans[i] instanceof NoCopySpan)) {
+            if (mStarts[i] == mEnds[i] && origLen > 0 && (mFlags[i] & SPAN_POINT_MARK_MASK) == SPAN_EXCLUSIVE_EXCLUSIVE && mStarts[i] == start && (!(mSpans[i] instanceof NoCopySpan) || (mFlags[i] & SPAN_COMPOSING) != 0)) {
                 Object w = mSpans[i]; int s = mStarts[i], e2 = mEnds[i]; removeSpanAt(i); sendSpanRemoved(w, s, e2);
             }
         }
@@ -69,7 +81,6 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
                 if (indexOfSpan(o) < 0) setSpan(o, st, en, sp.getSpanFlags(o));
             }
         }
-        watchers = getSpans(start, start + newLen, TextWatcher.class);
         for (TextWatcher w : watchers) w.onTextChanged(this, start, origLen, newLen);
         for (TextWatcher w : watchers) w.afterTextChanged(this);
         sendMoved(moved, was, movedCount);
@@ -105,7 +116,13 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
             }
         }
     }
-    /** A span edge after replacing [start, end) with delta more characters: 1 mark (stays left), 2 point (moves right). */
+    /**
+     * A span edge after replacing [start, end) with delta more characters: 1 mark (stays left), 2 point (moves right). Inside
+     * the replaced text a point goes to the end of the new text, but for one at its very start where there is new text,
+     * which stays, as Android's updatedIntervalBound keeps it: an input method's commitText(text, 0) over a selection puts
+     * the cursor at the selection's start before the text goes in, for the text to be after the cursor, and the cursor
+     * went to its end.
+     */
     private static int adjust(int pos, int start, int end, int delta, int kind, boolean isStart, int origLen) {
         if (pos > end) return pos + delta;
         if (pos < start) return pos;
@@ -115,7 +132,14 @@ public class SpannableStringBuilder extends SpannableStringInternal implements C
         }
         if (pos == end && pos != start) return pos + delta;
         // inside the replaced range
-        return kind == 2 ? start + Math.max(0, (end - start) + delta) : start;
+        int newLen = Math.max(0, (end - start) + delta);
+        if (kind == 2) return pos > start || newLen == 0 ? start + newLen : start;
+        return start;
+    }
+    private void checkRange(String op, int start, int end) {
+        if (end < start) throw new IndexOutOfBoundsException(op + " (" + start + " ... " + end + ") has end before start");
+        if (start > mLen || end > mLen) throw new IndexOutOfBoundsException(op + " (" + start + " ... " + end + ") ends beyond length " + mLen);
+        if (start < 0 || end < 0) throw new IndexOutOfBoundsException(op + " (" + start + " ... " + end + ") starts before 0");
     }
     public void setSpan(Object what, int start, int end, int flags) {
         if (start < 0 || end > mLen || start > end) throw new IndexOutOfBoundsException("setSpan (" + start + " ... " + end + ") ends beyond length " + mLen);
