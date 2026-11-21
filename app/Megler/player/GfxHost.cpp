@@ -3865,20 +3865,23 @@ struct Composition {
         l.rect = rect;
         l.flags = flags;
     }
-    /// A TextureView's video under the views (drawTexture on the window's canvas): its picture is the id's newest in
-    /// KeptTextures, rows top first, scaled to `rect`, shown where the views left `clip` open for it.
+    /// A TextureView's or a SurfaceView's video under the views (drawTexture on the window's canvas): its picture is the id's
+    /// newest in KeptTextures, rows top first, scaled to `rect`, shown where the views left `clip` open for it.
     struct Video {
         int id = 0;
         Box rect, clip;              // in the window's (the views') pixels
         uint64_t order = 0;          // later ones over earlier ones: the order the views last drew them in
-        uint64_t seen = 0;           // the drawing of the views (cycle) that last drew it
     };
     std::mutex mutex;
     bool layered = false;            // frames or places have come: present keeps the views and composes the window here
     Layer layers[8];
+    /// The videos as the views were last shown (present): where `views` has their holes, and what the window is composed of.
     std::vector<Video> videos;
+    /// The places the drawing of the views going on now took (drawTexture), the videos' from that drawing's present on. Not
+    /// before: a picture that comes meanwhile (showVideoFrame) is composed with the views as they were last shown, which have
+    /// the holes where `videos` has the places.
+    std::vector<Video> placing;
     uint64_t videoOrder = 0;
-    uint64_t cycle = 1;              // the drawing of the views going on now: one more at each present
     Ref<ID2D1Bitmap1> views;         // the views' picture as present last showed it, rows top first
     int width = 0, height = 0;
     bool haveViews = false;
@@ -3893,8 +3896,7 @@ Composition& composition() {
     return *c;
 }
 
-/// A video no longer under the views (its view draws it among them now, or its texture is gone): what it covered is
-/// composed again at the next showing.
+/// A video no longer under the views (its texture is gone): what it covered is composed again at the next showing.
 void forgetVideo(int id) {
     Composition& c = composition();
     std::lock_guard<std::mutex> lock(c.mutex);
@@ -3903,6 +3905,45 @@ void forgetVideo(int id) {
         c.pending.include(c.videos[i].clip);
         c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
     }
+    for (size_t i = c.placing.size(); i-- > 0;)
+        if (c.placing[i].id == id) c.placing.erase(c.placing.begin() + std::ptrdiff_t(i));
+}
+
+/// With the composition's lock held, as present shows a drawing of the views that changed `part`: the places that drawing
+/// took (drawTexture) are the videos' from now on, and what they covered and cover now is composed again. Drawn again where
+/// it was, a place keeps what the views left open for it before too: a drawing of a part of the window (a small view's
+/// animation over the video) clips the list to that part, and what it did not draw keeps the hole it had. Drawn elsewhere
+/// (moved), it is where it is now. And a video the drawing did not place where it drew is no longer under the views (its
+/// view scrolled away, was hidden, or draws it among them now): every view in a part drawn again is drawn again, the video's
+/// view too. It no longer goes under them, nor over another video put there since.
+/// Only here, with the views that have the holes. Taken at once, a picture that came while the views were being drawn with
+/// the video moved was composed with the views as last shown and the video at its new place, where they have no hole yet:
+/// the video hidden, and its old hole shown empty, black -- for a picture, whenever one came so while the video moved or
+/// grew (suspected of the flicker of YouTube's Shorts, swiped from one to the next, on an HP Elite x3, 748).
+void takePlaces(Composition& c, const Box& part) {
+    for (size_t i = c.videos.size(); i-- > 0;) {
+        const Composition::Video& v = c.videos[i];
+        bool placed = false;
+        for (const Composition::Video& p : c.placing) placed = placed || p.id == v.id;
+        Box both = v.clip;
+        both.intersect(part);
+        if (placed || both.empty()) continue;
+        c.pending.include(v.clip);
+        c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
+    }
+    for (Composition::Video& p : c.placing) {
+        bool known = false;
+        for (Composition::Video& w : c.videos) {
+            if (w.id != p.id) continue;
+            if (w.rect.l == p.rect.l && w.rect.t == p.rect.t && w.rect.r == p.rect.r && w.rect.b == p.rect.b) p.clip.include(w.clip);
+            else c.pending.include(w.clip);
+            w = p;
+            known = true;
+        }
+        if (!known) c.videos.push_back(p);
+        c.pending.include(p.clip);
+    }
+    c.placing.clear();
 }
 
 /// Whether the OpenGL ES frames' shared textures hold their rows top first: Mesa's (freedreno over D3DKMT), which renders into
@@ -4379,9 +4420,10 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
         // no turn): the window is composed of the picture and the views over it, as of an OpenGL ES view's frames, and here
         // the views get a hole where it shows. A new picture then needs the views neither drawn again nor shown from them,
         // only the composition (GfxHost::showVideoFrame), as a SurfaceView's surface on Android or a video's layer in
-        // Chromium. Its place is taken as the list is drawn, so it follows the view through a scroll that only moves it.
-        if (topFirst && alpha >= 255 && s.videoUnder && windowCanvas && target == &cv->base && !cv->clip().g && m._12 == 0.0f && m._21 == 0.0f &&
-            m._11 > 0.0f && m._22 > 0.0f) {
+        // Chromium. Its place is taken as the list is drawn, so it follows the view through a scroll that only moves it; it is
+        // the window's once this drawing of the views is shown (present), whose hole it is.
+        const bool straight = m._12 == 0.0f && m._21 == 0.0f && m._11 > 0.0f && m._22 > 0.0f;
+        if (topFirst && alpha >= 255 && s.videoUnder && windowCanvas && target == &cv->base && !cv->clip().g && straight) {
             Composition::Video v;
             v.id = id;
             v.rect.l = int(std::lround(l * m._11 + m._31));
@@ -4404,29 +4446,25 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
             Composition& c = composition();
             std::lock_guard<std::mutex> lock(c.mutex);
             c.layered = true;
-            // Drawn again where it was, the place keeps what the views left open for it before too: a drawing of a part of the
-            // window (a small view's animation over the video) clips the list to that part, and what it did not draw keeps the
-            // hole it had. Drawn elsewhere (moved), it is where it is now. Either way it is over what the views drew before it.
-            v.seen = c.cycle;
+            // Taken for this drawing; present makes it the window's (takePlaces). Drawn twice in it, the place keeps what both
+            // left open where they are the same; else the later one's. Either way it is over what the views drew before it.
             v.order = ++c.videoOrder;
             bool known = false;
-            for (Composition::Video& w : c.videos) {
+            for (Composition::Video& w : c.placing) {
                 if (w.id != id) continue;
-                if (w.rect.l == v.rect.l && w.rect.t == v.rect.t && w.rect.r == v.rect.r && w.rect.b == v.rect.b) {
-                    v.clip.include(w.clip);
-                } else {
-                    c.pending.include(w.clip);
-                }
+                if (w.rect.l == v.rect.l && w.rect.t == v.rect.t && w.rect.r == v.rect.r && w.rect.b == v.rect.b) v.clip.include(w.clip);
                 w = v;
                 known = true;
             }
-            if (!known) c.videos.push_back(v);
-            c.pending.include(v.clip);
+            if (!known) c.placing.push_back(v);
             ++s.videosPlaced;
             return;
         }
-        // (Drawn among the views: no longer under them, if it was.)
-        if (topFirst) forgetVideo(id);
+        // Drawn among the views. On the window's canvas the video is no longer under them once this drawing is shown: present
+        // gives up a video the drawing did not place where it drew. Not before, as the views shown until then have its hole.
+        // On another canvas nothing of the window changes: a bitmap an app draws a view into (a snapshot for an animation,
+        // TextureView.getBitmap's) while the view itself draws the video under the window's views. That drawing once took
+        // the video from under them at once, and the window composed before its view drew it again showed the hole empty.
         target->useClip(cv->clip());
         // An OpenGL ES picture is turned over, its rows bottom first -- but Mesa's, whose rows come top first as a video's do
         // (glFramesTopFirst): a TextureView's frames and the WebView's pages of an app set to Mesa.
@@ -4533,18 +4571,8 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
                     s.windowCanvas = cv->serial;
                 }
                 if (fresh) part = base.bounds();
-                // A video under the views that this drawing of them did not draw where it drew is no longer there (its view
-                // scrolled away, or was hidden): every view in a part drawn again is drawn again, its TextureView too. It no
-                // longer goes under them, nor over another video put there since.
-                for (size_t i = comp.videos.size(); i-- > 0;) {
-                    const Composition::Video& v = comp.videos[i];
-                    Box both = v.clip;
-                    both.intersect(part);
-                    if (v.seen == comp.cycle || both.empty()) continue;
-                    comp.pending.include(v.clip);
-                    comp.videos.erase(comp.videos.begin() + std::ptrdiff_t(i));
-                }
-                comp.cycle++;
+                // The videos under the views where this drawing of them put them, as the views get their holes.
+                takePlaces(comp, part);
                 const D2D1_POINT_2U at = D2D1::Point2U(UINT32(part.l), UINT32(part.t));
                 const D2D1_RECT_U source = D2D1::RectU(UINT32(part.l), UINT32(part.t), UINT32(part.r), UINT32(part.b));
                 const HRESULT hr = comp.views->CopyFromBitmap(&at, base.gpu.get(), &source);
@@ -7798,8 +7826,9 @@ int GfxHost::showVideoFrame(int id, ID3D11Texture2D* picture, int width, int hei
             t.have = true;
             shown = 1;
         }
-        // A video under the views already (drawTexture placed it): composed with them as present last showed them, and
-        // shown, nothing of the views drawn or shown again.
+        // A video under the views already (drawTexture placed it, and present showed the views with its hole): composed with
+        // them as present last showed them, at the place they have its hole -- not at one a drawing of them under way took,
+        // shown at that drawing's present -- and shown, nothing of the views drawn or shown again.
         Composition& c = composition();
         std::lock_guard<std::mutex> lock(c.mutex);
         for (const Composition::Video& v : c.videos) {

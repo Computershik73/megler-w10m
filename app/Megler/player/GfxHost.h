@@ -236,9 +236,10 @@ public:
     /// graphics processor, so the caller may reuse its texture at once.
     /// 0 where it cannot be (the caller then has it read back); 1 kept, for
     /// the view to draw; 2 shown already: the id's video is under the views
-    /// (draw_texture put it there, setVideoUnder) and the window has been
-    /// composed of the new picture and the views as they were last shown,
-    /// so the view need not be drawn again.
+    /// (draw_texture put it there and present showed the views with its
+    /// hole, setVideoUnder) and the window has been composed of the new
+    /// picture and the views as they were last shown, the video where they
+    /// have its hole, so the view need not be drawn again.
     int showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height);
     /// Whether a TextureView's video drawn onto the window's own canvas,
     /// upright, opaque and whole, goes under the views as a layer of the

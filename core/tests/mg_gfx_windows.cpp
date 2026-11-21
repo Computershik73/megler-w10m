@@ -593,8 +593,9 @@ int mg_gfx_windows_check_present(const megler_gfx_host* h, void (*line)(const ch
 /// the graphics processor shows its pictures: the window has the video's picture where the view drew it, scaled up, the
 /// views over it there and their own picture elsewhere; a new picture is shown composed with the views as they were last
 /// shown, nothing of them drawn (showVideoFrame says 2); drawn at half its alpha it is among the views again, and no longer
-/// under them (1). The pictures are textures of the device as a decoder's are, top row first. Lines to `line`; checks
-/// that failed.
+/// under them (1). Moved by a drawing of the views not shown yet, a new picture is composed where the views as last shown
+/// have its hole, and the drawing shown has it where it moved to; drawn on another canvas too, it stays under the window's
+/// views. The pictures are textures of the device as a decoder's are, top row first. Lines to `line`; checks that failed.
 int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
     megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     int failed = 0;
@@ -692,6 +693,31 @@ int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char
         h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 128);
         h->present(h->user, cv, 0, 0, w, hgt);
         check(gfx.showVideoFrame(id, green, 16, 16) == 1, "a video its view draws among the views was still taken as under them");
+        // Its view moved (a pager swiped: the views drawn again with the video 4 pixels higher), and a picture comes before that
+        // drawing is shown: composed where the views as last shown have its hole, not at the new place, where they have none
+        // yet, leaving the old hole empty. Shown, the drawing puts it where it moved to.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 255);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && gfx.showVideoFrame(id, green, 16, 16) == 2, "a video drawn again by its view was not under the views");
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 4, 48, 36, 255);
+        check(gfx.showVideoFrame(id, blue, 16, 16) == 2 && readWindow(shown) && shown[37 * w + 40] == 0xFFC0C000u && shown[6 * w + 40] == 0xFFFFFFFFu,
+              "a picture that came while the views were drawn with the video moved is not where they were last shown with it (yellow at 40,37, white at 40,6)");
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && shown[37 * w + 40] == 0xFFFFFFFFu && shown[6 * w + 40] == 0xFF0000C0u &&
+                  shown[34 * w + 40] == 0xFFC0C000u,
+              "the views shown with the video moved do not have it where it moved to (blue at 40,6, yellow at 40,34, white at 40,37)");
+        // Drawn on another canvas too (a bitmap an app draws the view into, as TextureView.getBitmap draws its frame): it is
+        // still under the window's views, and its next picture is shown composed there.
+        std::vector<uint32_t> bitmap(16 * 16, 0);
+        void* snapshot = h->canvas_new(h->user, bitmap.data(), 16, 16, 16 * 4);
+        if (snapshot) {
+            h->draw_texture(h->user, snapshot, id, 0, 0, 16, 16, 255);
+            h->flush(h->user, snapshot);
+            check(bitmap[2 * 16 + 8] == 0xFF0000C0u, "the video's picture was not drawn on another canvas (blue at 8,2)");
+            check(gfx.showVideoFrame(id, green, 16, 16) == 2 && readWindow(shown) && shown[6 * w + 40] == 0xFF00C000u,
+                  "a video drawn on another canvas too was taken from under the window's views");
+            h->canvas_free(h->user, snapshot);
+        }
         h->texture_frame(h->user, id, nullptr, 0, 0);
         h->canvas_free(h->user, cv);
     }
