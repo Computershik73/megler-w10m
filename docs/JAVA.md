@@ -4990,7 +4990,9 @@ platform's own (`J.platform_app`, `megler.Native.platformApp()`):
   calls go to what answers for that interface here -- `IPackageManager` (Megler's
   `PackageManager`, which knows the phone's apps), `IActivityManager` (the one user,
   running), `INotificationManager` (allowed, one channel), `IBatteryStats` (a parcel of
-  Android 9's `BatteryStatsImpl` made now, its timers made and nothing counted) -- and
+  Android 9's `BatteryStatsImpl` made now, its timers made and nothing counted),
+  `IProcessStats` (a parcel of Android 9's `ProcessStats` made now, nothing counted, as a
+  descriptor: Developer options' Memory reads it without looking for null) -- and
   every other method answering as a service with nothing would: false, 0, null, an empty
   list or array. `AppGlobals.getPackageManager()`, `ActivityThread.getPackageManager()`
   and `ActivityManager.getService()` give those interfaces (declared to the framework's
