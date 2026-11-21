@@ -243,7 +243,11 @@ static bool file_fill(sl_object *o)
     return true;
 }
 
-/* A file player started (again): its buffers filled, from where its decoder is. */
+/*
+ * A file player started (again): its buffers filled, from where its decoder is. Only on an empty queue: a stop or a seek
+ * empties it under file_lock, so the decoding thread cannot have queued a buffer of before after that; one it had would
+ * leave the player never primed, its thread waiting for that, and the sound ending after the stale buffer.
+ */
 static void file_prime(sl_object *o)
 {
     int i;
@@ -456,9 +460,10 @@ static u32 play_SetPlayState(sl_itf *self, u32 state)
     if (o->dec && o->voice) {
         /* A file: stopping goes back to its start; paused or playing, its buffers are filled (a prefetch, at once). */
         if (state == 1) {
+            /* (The queue emptied under file_lock, so that the decoding thread queues nothing after it: see file_prime.) */
+            mg_lock_acquire(&o->file_lock);
             mg_voice_set_playing(o->voice, false);
             mg_voice_clear(o->voice);
-            mg_lock_acquire(&o->file_lock);
             if (o->dec) mg_audio_dec_seek(o->dec, 0);
             o->file_ended = o->file_primed = false;
             mg_lock_release(&o->file_lock);
@@ -589,9 +594,10 @@ static u32 seek_SetPosition(sl_itf *self, u32 ms, u32 mode)
     bool playing = o->play_state == 3;
     (void)mode;
     if (!o->dec || !o->voice) return SL_OK;
+    /* (Emptied under file_lock, as a stop is.) */
+    mg_lock_acquire(&o->file_lock);
     mg_voice_set_playing(o->voice, false);
     mg_voice_clear(o->voice);
-    mg_lock_acquire(&o->file_lock);
     if (o->dec) mg_audio_dec_seek(o->dec, (i64)ms * o->rate / 1000);
     o->file_ended = o->file_primed = false;
     mg_lock_release(&o->file_lock);
