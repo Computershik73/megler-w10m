@@ -254,6 +254,30 @@ MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char 
 MEGLER_API char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
                          void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user);
 
+/*
+ * An app's data from a ZIP file the user picked (its page's Install Data from ZIP): its expansion files and its files in
+ * Android/data, written into the app's own part of Android's storage under `storage_dir` (`storage_dir`/apps/<package>/sdcard,
+ * where the app finds them as /sdcard/Android/obb/<package> and /sdcard/Android/data/<package>). What goes where:
+ *
+ *     Android/obb/<package>/..., Android/data/<package>/...  as it is (also after "sdcard/" or "storage/emulated/0/")
+ *     obb/<package>/..., data/<package>/...                   into Android/obb/<package>, Android/data/<package>
+ *     <package>/...                                           an .obb into Android/obb/<package>, anything else into
+ *                                                             Android/data/<package> as it is in the ZIP
+ *     anything else                                           an .obb into Android/obb/<package>, the rest into
+ *                                                             Android/data/<package>/files (getExternalFilesDir), or
+ *                                                             into Android/data/<package> where it starts with files/
+ *                                                             or cache/
+ *
+ * A folder every file of the ZIP is in, as a ZIP made of a folder has one ("Grand Theft Auto Vice City/" over a game's
+ * files), is left out first, unless it is one of those above (Android, sdcard, storage, obb, data, the package), files or
+ * cache. Another package's folders, and paths that would leave the app's, are left out. Files there already are written
+ * over.
+ * { "ok": true, "files": 3, "obbs": 1, "bytes": 123, "to": "<the app's storage>" } or { "ok": false, "error": "..." }.
+ * Takes as long as the files take to write: not on the UI thread. Freed with megler_free.
+ */
+MEGLER_API char *megler_data_zip_install(const char *zip_path, const char *storage_dir, const char *package,
+                                         void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user);
+
 /* ---------------------------------------------------------------- running
  *
  * One app runs per process: Android libraries cannot be unloaded, so after

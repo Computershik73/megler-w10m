@@ -75,4 +75,16 @@ void mg_pcm_close(mg_pcm *p);
 }
 #endif
 
+/*
+ * A compressed sound file decoded to 16-bit PCM (drivers/mg_java_audio.c: Ogg Vorbis and WAV here, the rest through the
+ * shell's decoder): OpenSL ES players that read a file descriptor or a URI. NULL when it cannot be read or decoded.
+ * `channels` 1 or 2 (more are cut to two); `ms` 0 when not known. read gives up to `frames` frames, 0 at the end.
+ */
+void *mg_audio_dec_open_fd(int fd, i64 offset, i64 length);
+void *mg_audio_dec_open_path(const char *guest_path);
+void mg_audio_dec_info(void *dec, int *rate, int *channels, u32 *ms);
+int mg_audio_dec_read(void *dec, i16 *out, int frames);
+void mg_audio_dec_seek(void *dec, i64 frame);
+void mg_audio_dec_close(void *dec);
+
 #endif

@@ -858,3 +858,201 @@ end:
     free(obbs);
     return out;
 }
+
+/* ------------------------------------------------------------ an app's data from a ZIP file */
+
+/*
+ * Where a file of a data ZIP goes, under the app's own storage (mg_run_own_storage), as "Android/obb/<package>/..." or
+ * "Android/data/<package>/...": a path the ZIP gives whole (with "sdcard/" or "storage/emulated/0/" before it, or none),
+ * "obb/<package>/..." and "data/<package>/...", and "<package>/..." (the app's folder of Android/data as it is, its
+ * files/ in it); else an .obb into Android/obb/<package>, and anything else into Android/data/<package>/files, which is
+ * the app's getExternalFilesDir, unless it starts with files/ or cache/ itself -- a game's files as a ZIP of them has
+ * them (GTA: Vice City's, whose STORAGE_ROOT is getExternalFilesDir). The first `strip` characters of the name are left
+ * out first: the folder the whole ZIP is in (data_zip_folder). Empty (false) for another package's folders or a path
+ * that leaves.
+ */
+static bool data_zip_target(const char *name, size_t strip, const char *package, char *out, size_t cap)
+{
+    static const char *const roots[] = { "sdcard/", "storage/emulated/0/", "/storage/emulated/0/", "/sdcard/" };
+    size_t plen = strlen(package), n = strlen(name), i;
+    const char *rest = name + (strip < n ? strip : n);
+    bool obb = n > 4 && name[n - 4] == '.' && (name[n - 3] | 32) == 'o' && (name[n - 2] | 32) == 'b' && (name[n - 1] | 32) == 'b';
+    bool own_folder = false;
+    for (i = 0; i < MG_COUNT(roots); i++)
+        if (!strncmp(rest, roots[i], strlen(roots[i]))) { rest += strlen(roots[i]); break; }
+    if (!strncmp(rest, "Android/obb/", 12) || !strncmp(rest, "Android/data/", 13)) {
+        const char *p = rest + (rest[8] == 'o' ? 12 : 13);
+        if (strncmp(p, package, plen) || p[plen] != '/' || !safe_rest(p)) return false;
+        return (size_t)snprintf(out, cap, "%s", rest) < cap;
+    }
+    if (!strncmp(rest, "obb/", 4) || !strncmp(rest, "data/", 5)) {
+        const char *p = rest + (rest[0] == 'o' ? 4 : 5);
+        if (!strncmp(p, package, plen) && p[plen] == '/' && safe_rest(p))
+            return (size_t)snprintf(out, cap, "Android/%s", rest) < cap;
+    }
+    if (!strncmp(rest, package, plen) && rest[plen] == '/') {
+        rest += plen + 1;
+        own_folder = true;
+    }
+    if (!safe_rest(rest)) return false;
+    if (obb) {
+        const char *base = strrchr(rest, '/');
+        return (size_t)snprintf(out, cap, "Android/obb/%s/%s", package, base ? base + 1 : rest) < cap;
+    }
+    if (own_folder || !strncmp(rest, "files/", 6) || !strncmp(rest, "cache/", 6))
+        return (size_t)snprintf(out, cap, "Android/data/%s/%s", package, rest) < cap;
+    return (size_t)snprintf(out, cap, "Android/data/%s/files/%s", package, rest) < cap;
+}
+
+typedef struct data_zip {
+    const char *package;
+    const mg_zip_entry **list;
+    int n, cap;
+    u64 total;
+} data_zip;
+
+/* Every file of the ZIP (not its folders' own entries), into the list. */
+static void data_zip_seen(const mg_zip_entry *e, void *user)
+{
+    data_zip *d = (data_zip *)user;
+    size_t len = strlen(e->name);
+    if (!len || e->name[len - 1] == '/') return;
+    if (d->n == d->cap) {
+        const mg_zip_entry **more;
+        d->cap = d->cap ? d->cap * 2 : 64;
+        more = (const mg_zip_entry **)realloc((void *)d->list, sizeof(*d->list) * (size_t)d->cap);
+        if (!more) mg_fatal("out of memory");
+        d->list = more;
+    }
+    d->list[d->n++] = e;
+}
+
+/* Whether the n characters at s are `word`, letters of either case alike. */
+static bool folder_is(const char *s, size_t n, const char *word)
+{
+    size_t i;
+    if (strlen(word) != n) return false;
+    for (i = 0; i < n; i++) {
+        char a = s[i], b = word[i];
+        if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+/*
+ * The folder every file of the ZIP is in, as a ZIP made of a folder has it ("Grand Theft Auto Vice City/" over a game's
+ * files): how many characters of each name it takes, with its '/'; 0 when there is none, or when it is a folder that
+ * says where its files go (Android, sdcard, storage, obb, data, files, cache, or the package's own).
+ */
+static size_t data_zip_folder(const data_zip *d)
+{
+    const char *first, *slash;
+    size_t len;
+    int i;
+    if (!d->n) return 0;
+    first = d->list[0]->name;
+    slash = strchr(first, '/');
+    if (!slash || slash == first) return 0;
+    len = (size_t)(slash - first);
+    for (i = 1; i < d->n; i++)
+        if (strncmp(d->list[i]->name, first, len + 1)) return 0;
+    if (folder_is(first, len, "android") || folder_is(first, len, "sdcard") || folder_is(first, len, "storage") || folder_is(first, len, "obb") ||
+        folder_is(first, len, "data") || folder_is(first, len, "files") || folder_is(first, len, "cache") || folder_is(first, len, d->package))
+        return 0;
+    return len + 1;
+}
+
+typedef struct data_zip_progress {
+    void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total);
+    void *user;
+    u64 before, total;
+} data_zip_progress;
+
+static void data_zip_written(void *user, u64 written)
+{
+    data_zip_progress *p = (data_zip_progress *)user;
+    if (p->progress) p->progress(p->user, p->before + written, p->total);
+}
+
+char *megler_data_zip_install(const char *zip_path, const char *storage_dir, const char *package,
+                              void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user)
+{
+    mg_zip z;
+    data_zip d;
+    data_zip_progress p;
+    mg_jbuf j;
+    char err[300] = { 0 }, to[400];
+    char *own = NULL;
+    int i, obbs = 0;
+    size_t strip = 0;
+    memset(&z, 0, sizeof(z));
+    memset(&d, 0, sizeof(d));
+    memset(&j, 0, sizeof(j));
+    if (!zip_path || !storage_dir || !package || !*package || strchr(package, '/') || strchr(package, '\\')) {
+        mg_strlcpy(err, "nothing to install the data of", sizeof(err));
+    } else if (!mg_zip_open(&z, zip_path, err, sizeof(err))) {
+        if (!err[0]) mg_strlcpy(err, "the file is not a ZIP file", sizeof(err));
+    } else {
+        int kept = 0;
+        d.package = package;
+        mg_zip_each(&z, "", data_zip_seen, &d);
+        strip = data_zip_folder(&d);
+        if (strip) mg_info("data zip: %s: its files are all in the folder %.*s, which is left out", last_part(zip_path), (int)strip - 1, d.list[0]->name);
+        /* (The files with a place in the app's storage, kept in the list's order.) */
+        for (i = 0; i < d.n; i++) {
+            if (!data_zip_target(d.list[i]->name, strip, package, to, sizeof(to))) continue;
+            d.list[kept++] = d.list[i];
+            d.total += d.list[i]->usize;
+        }
+        d.n = kept;
+        if (!d.n) mg_strlcpy(err, "there is no file in it for this app", sizeof(err));
+    }
+    if (!err[0]) {
+        own = mg_run_own_storage(storage_dir, package);
+        p.progress = progress;
+        p.user = user;
+        p.before = 0;
+        p.total = d.total;
+        for (i = 0; i < d.n && !err[0]; i++) {
+            char *path;
+            data_zip_target(d.list[i]->name, strip, package, to, sizeof(to));
+            if (!strncmp(to, "Android/obb/", 12)) obbs++;
+            path = mg_sprintf("%s/%s", own, to);
+            if (!make_parent(path)) snprintf(err, sizeof(err), "a folder for %s could not be made", to);
+            else if (!mg_zip_extract(&z, d.list[i], path, data_zip_written, &p, err, sizeof(err)) && !err[0])
+                snprintf(err, sizeof(err), "%s could not be written", to);
+            free(path);
+            p.before += d.list[i]->usize;
+        }
+    }
+    if (err[0]) {
+        mg_warn("data zip: %s: %s", zip_path ? last_part(zip_path) : "?", err);
+        mg_jraw(&j, "{");
+        mg_jkey(&j, "ok", true);
+        mg_jraw(&j, "false");
+        mg_jkey(&j, "error", false);
+        mg_jstr(&j, err);
+        mg_jraw(&j, "}");
+    } else {
+        mg_info("data zip: %s: %d files, %llu bytes, into %s (%d of them expansion files)", last_part(zip_path), d.n,
+                (unsigned long long)d.total, own, obbs);
+        mg_jraw(&j, "{");
+        mg_jkey(&j, "ok", true);
+        mg_jraw(&j, "true");
+        mg_jkey(&j, "files", false);
+        mg_jint(&j, d.n);
+        mg_jkey(&j, "obbs", false);
+        mg_jint(&j, obbs);
+        mg_jkey(&j, "bytes", false);
+        mg_jint(&j, (long long)d.total);
+        mg_jkey(&j, "to", false);
+        mg_jstr(&j, own);
+        mg_jraw(&j, "}");
+    }
+    if (z.file) mg_zip_close(&z);
+    free((void *)d.list);
+    free(own);
+    return j.s;
+}

@@ -13,6 +13,7 @@
 #include "player/Session.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/PickedFile.h"
 #include "shell/Platform.h"
 #include "shell/ShellLog.h"
 #include "shell/Strings.h"
@@ -20,7 +21,10 @@
 #include "ui/Components.h"
 #include "ui/SeparateApps.h"
 
+#include <atomic>
 #include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Data.Json.h>
+#include <winrt/Windows.Storage.Pickers.h>
 
 namespace megler::app::ui {
 
@@ -53,6 +57,106 @@ UIElement libraryRow(const ApkLibrary& library) {
     if (!library.needs.empty())
         add(column, text("needs " + joined(library.needs, ", "), font::caption, weightNormal(), p.tertiaryLabel));
     return column;
+}
+
+/// How far Install Data from ZIP is: the bytes written of all the files it writes (megler_data_zip_install's progress).
+struct DataZipProgress {
+    std::atomic<uint64_t> done{0}, total{0};
+    std::atomic<bool> finished{false};
+    static void MEGLER_CB moved(void* user, uint64_t done, uint64_t total) {
+        auto* p = static_cast<DataZipProgress*>(user);
+        p->total = total;
+        p->done = done;
+    }
+};
+
+/*
+ * Install Data from ZIP: a ZIP of the app's data the user picks (a game's OBB and its files in Android/data, as sites hand
+ * them out apart from the APK) written into the app's own part of Android's storage (megler_data_zip_install says what goes
+ * where). That is the shared folder's when the app is installed as an app of the phone's own and Megler's storage is not
+ * the shared folder already, else Megler's own. The ZIP is read where it is (shell/PickedFile.h), off the UI thread.
+ */
+winrt::fire_and_forget installDataZip(AppShell* shell, std::string package, std::string title) {
+    using namespace winrt::Windows::Storage;
+    using namespace winrt::Windows::Storage::Pickers;
+    StorageFile file{nullptr};
+    try {
+        FileOpenPicker picker;
+        picker.ViewMode(PickerViewMode::List);
+        picker.SuggestedStartLocation(PickerLocationId::Downloads);
+        picker.FileTypeFilter().Append(L".zip");
+        file = co_await picker.PickSingleFileAsync();
+    } catch (const hresult_error& e) {
+        shellLog::write("app page: data zip: the picker failed: " + narrow(e.message()));
+    }
+    if (!file) co_return;
+    // The separate app's storage is the shared folder's; so is Megler's own once it was moved there (shell/Platform.cpp gives the
+    // core that folder then). Only a Megler whose storage is still its LocalState, for an app not installed apart, writes there.
+    const bool separate = separateApps::status(package).installed == separateApps::Installed::yes;
+    const std::wstring shared = appPackage::sharedFolder();
+    const bool toShared = !shared.empty() && (separate || appPackage::meglersStorageShared());
+    const std::wstring root = toShared ? shared : platform::localStateDirectory();
+    const std::string name = narrow(file.Name());
+    shellLog::write("app page: data zip " + name + " for " + package + ", into " + narrow(root) + (separate ? " (the separate app's)" : ""));
+    // A dialog with a bar of how far it is, which closes itself when the files are written; the answer follows it
+    // (dialogWhenFree waits for it to go). Hide leaves the work going on.
+    auto state = std::make_shared<DataZipProgress>();
+    AppShell::DialogSpec spec;
+    spec.title = "Installing Data";
+    spec.message = name + " is being written into " + title + "'s storage.";
+    spec.buttons = {"Hide"};
+    spec.live = [state](AppShell::DialogSpec::Live& live) {
+        if (state->finished) return false;
+        const uint64_t done = state->done, total = state->total;
+        if (!total) {
+            live.text = "Reading the ZIP file…";
+            live.fraction = -1;
+        } else {
+            live.fraction = double(done) / double(total);
+            live.text = format("%d%% · %s of %s", int(live.fraction * 100), formattedByteCount(done).c_str(),
+                               formattedByteCount(total).c_str());
+        }
+        return true;
+    };
+    shell->dialog(std::move(spec), [](int, std::string) {});
+    co_await winrt::resume_background();
+    std::string error, done;
+    try {
+        // (A name of its own for each: the core finds a picked file by that name, and another install started meanwhile
+        // from the page, which Hide lets the user go back to, would have taken this one's and then let go of it.)
+        static std::atomic<int> installs{0};
+        PickedFile picked(file, platform::localStateDirectory() + L"\\data-zip-" + std::to_wstring(++installs) + L".picked");
+        if (!picked.ok()) {
+            error = "Windows didn't let Megler read the file where it is.";
+        } else {
+            std::string answer;
+            if (char* json = megler_data_zip_install(narrow(picked.path()).c_str(), narrow(root).c_str(), package.c_str(),
+                                                          &DataZipProgress::moved, state.get())) {
+                answer = json;
+                megler_free(json);
+            }
+            winrt::Windows::Data::Json::JsonObject o{nullptr};
+            if (!winrt::Windows::Data::Json::JsonObject::TryParse(hs(answer), o) || !o || !o.HasKey(L"ok"))
+                error = "The ZIP file could not be read.";
+            else if (!o.GetNamedBoolean(L"ok", false))
+                error = narrow(o.GetNamedString(L"error", L"The ZIP file could not be read."));
+            else
+                done = format("%d files (%s), %d of them expansion files, are in %s's storage now.", int(o.GetNamedNumber(L"files", 0)),
+                              formattedByteCount(uint64_t(o.GetNamedNumber(L"bytes", 0))).c_str(), int(o.GetNamedNumber(L"obbs", 0)),
+                              title.c_str());
+        }
+    } catch (const hresult_error& e) {
+        error = narrow(e.message());
+    }
+    shellLog::write("app page: data zip " + name + ": " + (error.empty() ? done : "failed: " + error));
+    state->finished = true;
+    shell->runOnUiThread([shell, error, done] {
+        AppShell::DialogSpec answer;
+        answer.title = error.empty() ? "Data Installed" : "Couldn't Install the Data";
+        answer.message = error.empty() ? done : error;
+        answer.buttons = {"OK"};
+        shell->dialogWhenFree(std::move(answer), [](int, std::string) {});
+    });
 }
 
 class AppDetailScreen final : public Page {
@@ -257,6 +361,20 @@ private:
             }, p.error));
         }
         if (manage.Children().Size()) add(column, manage);
+        if (!package.empty()) {
+            // The app's data from a ZIP file (installDataZip): a game's OBB, or its files in Android/data.
+            auto data = hstack(0);
+            data.Margin(ThicknessHelper::FromLengths(-12, -12, 0, 0));
+            add(data, textButton("Install Data from ZIP", [this, package, title] {
+                shell_.confirm("Install data for " + title + "?",
+                               "Pick a ZIP file of the app's data. Its .obb files go to Android/obb/" + package +
+                                   ", the rest to Android/data/" + package + "/files (a ZIP that has the Android/obb or Android/data "
+                                   "folders, or the app's own folder, in it keeps them). Files already there are written over. If "
+                                   "the app is open now, close it first.",
+                               "Pick ZIP", false, [this, package, title] { installDataZip(&shell_, package, title); });
+            }));
+            add(column, data);
+        }
         // What its files take, as its own package last measured them (Megler cannot read that package's files).
         if (!package.empty()) {
             const AppStorageSizes sizes = appStorageSizes(package);

@@ -66,6 +66,33 @@ static void *angle(const char *name)
     }
     p = g_lib_egl ? mg_dl_sym(g_lib_egl, name) : NULL;
     if (!p && g_lib_gles) p = mg_dl_sym(g_lib_gles, name);
+    if (!p && g_lib_egl && name[0] == 'e' && mg_egl_is_mesa()) {
+        /* Mesa's libEGL.dll exports EGL 1.5's functions alone: its extensions' (eglQuerySurfacePointerANGLE, for the
+           shared textures of EGL_ANGLE_surface_d3d_texture_2d_share_handle) come from its eglGetProcAddress. */
+        typedef void *(*fn_proc_address)(const char *);
+        fn_proc_address get = (fn_proc_address)mg_dl_sym(g_lib_egl, "eglGetProcAddress");
+        if (get) p = get(name);
+    }
+    if (!p && g_lib_gles && name[0] == 'g' && mg_egl_is_mesa()) {
+        /*
+         * Mesa's DLLs export the core functions alone, where ANGLE's export the extensions' too: cocos2d-x 3 asks for
+         * glGenVertexArraysOES and called NULL (Kingdom Rush Vengeance, cocos2d::Renderer::setupVBOAndVAO). The core
+         * function the extension became (ES 3's glGenVertexArrays for GL_OES_vertex_array_object), else Mesa's own
+         * eglGetProcAddress, which has every extension it offers.
+         */
+        size_t n = strlen(name);
+        if (n > 5 && n < 120 && (!strcmp(name + n - 3, "OES") || !strcmp(name + n - 3, "EXT"))) {
+            char core[128];
+            memcpy(core, name, n - 3);
+            core[n - 3] = 0;
+            p = mg_dl_sym(g_lib_gles, core);
+        }
+        if (!p && g_lib_egl) {
+            typedef void *(*fn_proc_address)(const char *);
+            fn_proc_address get = (fn_proc_address)mg_dl_sym(g_lib_egl, "eglGetProcAddress");
+            if (get) p = get(name);
+        }
+    }
     return ADAPTED(name, p);
 }
 
@@ -206,6 +233,26 @@ static int below_9_3(void)
 }
 static bool g_said_software;
 
+/*
+ * Whether the package's OpenGL ES is Mesa's (tools/build-appx.sh, MEGLER_GLES=mesa) rather than ANGLE: told by the libEGL.dll
+ * loaded, whose exports Mesa's alone has MesaGLInteropEGLQueryDeviceInfo among (MESA_GLINTEROP). Not by loading
+ * libgallium_wgl.dll to see: in a package of ANGLE that failed, and the host said so as an error in every app's log.
+ * The flag egl-default-display says yes with any EGL.
+ */
+static int g_mesa = -1;
+bool mg_egl_is_mesa(void)
+{
+    if (g_mesa < 0) {
+        bool mesa = mg_flag("egl-default-display");
+        if (!mesa && !g_provider) {
+            if (!g_angle_tried) (void)angle("eglGetDisplay");
+            mesa = g_lib_egl && mg_dl_sym(g_lib_egl, "MesaGLInteropEGLQueryDeviceInfo");
+        }
+        g_mesa = mesa ? 1 : 0;
+    }
+    return g_mesa == 1;
+}
+
 static void make_display(made_display *m)
 {
     /*
@@ -242,7 +289,26 @@ static void make_display(made_display *m)
     fn_initialize init = A(fn_initialize, "eglInitialize");
     size_t i;
     if (!get) get = A(fn_platform_display, "eglGetPlatformDisplay");
-    if (!get || !init) return;
+    if (!init) return;
+    /* Mesa's freedreno (MEGLER_GLES=mesa, tools/build-appx.sh) in ANGLE's place: it knows no ANGLE platform, and its display
+       is the default one, drawing through the phone's own kernel-mode graphics driver (D3DKMT). Its libgallium_wgl.dll
+       beside libEGL.dll says it is there. */
+    if (mg_egl_is_mesa()) {
+        typedef EGLDisplay (*fn_get_display)(void *);
+        fn_get_display plain = A(fn_get_display, "eglGetDisplay");
+        EGLDisplay d;
+        mg_info("egl: asking Mesa for its default display%s%s", m->whose ? " for " : "", m->whose ? m->whose : "");
+        /* (EGL_DEFAULT_DISPLAY: the WebView's own native display is ANGLE's alone, and Mesa gives the one display to both.) */
+        d = plain ? plain(NULL) : NULL;
+        if (d && init(d, &m->major, &m->minor)) {
+            mg_strlcpy(m->how, "Mesa (freedreno, D3DKMT)", sizeof(m->how));
+            m->d = d;
+            return;
+        }
+        mg_warn("egl: Mesa made no display%s%s", m->whose ? " for " : "", m->whose ? m->whose : "");
+        return;
+    }
+    if (!get) return;
     for (i = 0; i < MG_COUNT(tries); i++) {
         EGLDisplay d;
         /* The flag egl-level-9_3: the display is made at feature level 9_3 whatever the graphics processor has, to see a Lumia 650's
@@ -2465,6 +2531,88 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
     return 1;
 }
 
+/*
+ * Mesa's frames (MEGLER_GLES=mesa). Mesa has no surface over the shell's Direct3D texture (ANGLE's EGL_D3D_TEXTURE_ANGLE), so
+ * an app's window surface is an off-screen buffer of Mesa's, and each swap reads it back and hands it to the shell as
+ * pixels (megler_window_host.present_pixels): B, G, R, A, the top row first, where OpenGL's rows are the bottom first.
+ */
+typedef void (*fn_read_pixels)(i32 x, i32 y, i32 width, i32 height, u32 format, u32 type, void *pixels);
+typedef void (*fn_pixel_store)(u32 pname, i32 param);
+#define GL_RGBA_ 0x1908
+#define GL_UNSIGNED_BYTE_ 0x1401
+#define GL_PACK_ALIGNMENT_ 0x0D05
+#define GL_PACK_ROW_LENGTH_ 0x0D02
+#define GL_PIXEL_PACK_BUFFER_ 0x88EB
+#define GL_PIXEL_PACK_BUFFER_BINDING_ 0x88ED
+#define GL_READ_FRAMEBUFFER_BINDING_ 0x8CAA
+#define GL_READ_FRAMEBUFFER_ 0x8CA8
+typedef void (*fn_bind_buffer)(u32 target, u32 buffer);
+typedef void (*fn_bind_framebuffer)(u32 target, u32 framebuffer);
+static mg_lock g_readback_lock = MG_LOCK_INIT;
+static u8 *g_readback, *g_readback_rgba;
+static size_t g_readback_size;
+static int g_read_bgra = -1;   /* glReadPixels gives B, G, R, A here (GL_EXT_read_format_bgra): 1, 0, -1 not asked */
+
+static void mesa_present(int width, int height)
+{
+    const megler_run_config *run = mg_run_config();
+    fn_read_pixels read = A(fn_read_pixels, "glReadPixels");
+    fn_pixel_store store = A(fn_pixel_store, "glPixelStorei");
+    fn_gl_get_integerv get = A(fn_gl_get_integerv, "glGetIntegerv");
+    fn_bind_buffer bind_buffer = A(fn_bind_buffer, "glBindBuffer");
+    fn_bind_framebuffer bind_fb = A(fn_bind_framebuffer, "glBindFramebuffer");
+    size_t row = (size_t)width * 4, size = row * (size_t)height;
+    int pack = 0, pbo = 0, fb = 0, y;
+    if (!read || !store || !get || width <= 0 || height <= 0 || !run->window.present_pixels) return;
+    mg_lock_acquire(&g_readback_lock);
+    if (size > g_readback_size) {
+        free(g_readback);
+        free(g_readback_rgba);
+        g_readback = (u8 *)malloc(size);
+        g_readback_rgba = (u8 *)malloc(size);
+        g_readback_size = g_readback && g_readback_rgba ? size : 0;
+    }
+    if (g_readback_size) {
+        /* The app's own state is put back as it was: its pack alignment, a pack buffer it has bound, the framebuffer it reads. */
+        get(GL_PACK_ALIGNMENT_, &pack);
+        get(GL_PIXEL_PACK_BUFFER_BINDING_, &pbo);
+        get(GL_READ_FRAMEBUFFER_BINDING_, &fb);
+        if (pbo && bind_buffer) bind_buffer(GL_PIXEL_PACK_BUFFER_, 0);
+        if (fb && bind_fb) bind_fb(GL_READ_FRAMEBUFFER_, 0);
+        store(GL_PACK_ALIGNMENT_, 4);
+        if (g_read_bgra < 0) {
+            typedef const u8 *(*fn_get_string_)(u32);
+            fn_get_string_ string = A(fn_get_string_, "glGetString");
+            const u8 *ext = string ? string(0x1F03) : NULL;
+            g_read_bgra = ext && strstr((const char *)ext, "GL_EXT_read_format_bgra") ? 1 : 0;
+        }
+        read(0, 0, width, height, g_read_bgra ? 0x80E1 : GL_RGBA_, GL_UNSIGNED_BYTE_, g_readback_rgba);
+        store(GL_PACK_ALIGNMENT_, pack ? pack : 4);
+        if (pbo && bind_buffer) bind_buffer(GL_PIXEL_PACK_BUFFER_, (u32)pbo);
+        if (fb && bind_fb) bind_fb(GL_READ_FRAMEBUFFER_, (u32)fb);
+        for (y = 0; y < height; y++) {
+            const u8 *from = g_readback_rgba + (size_t)(height - 1 - y) * row;
+            u8 *to = g_readback + (size_t)y * row;
+            int x;
+            if (g_read_bgra) {
+                /* Already B, G, R, A (GL_EXT_read_format_bgra): the rows turned over, and made opaque a word at a time. */
+                u32 *w = (u32 *)to;
+                memcpy(to, from, row);
+                for (x = 0; x < width; x++) w[x] |= 0xff000000u;
+                continue;
+            }
+            for (x = 0; x < width; x++, from += 4, to += 4) {
+                to[0] = from[2];
+                to[1] = from[1];
+                to[2] = from[0];
+                to[3] = 0xff;
+            }
+        }
+        run->window.present_pixels(run->window.user, g_readback, width, height, (int)row);
+    }
+    mg_lock_release(&g_readback_lock);
+}
+
 static EGLBoolean g_eglSwapBuffers(EGLDisplay d, EGLSurface handle)
 {
     surface *w = window_surface(handle), *s;
@@ -2480,6 +2628,8 @@ static EGLBoolean g_eglSwapBuffers(EGLDisplay d, EGLSurface handle)
         fn_gl_void flush = A(fn_gl_void, "glFlush");
         if (flush) flush();
         if (run->window.present) run->window.present(run->window.user);
+    } else if (s->window && mg_egl_is_mesa()) {
+        mesa_present(s->width, s->height);
     }
     mg_run_count_frame();
     return 1;

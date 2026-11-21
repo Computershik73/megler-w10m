@@ -6201,6 +6201,22 @@ public class Main extends Activity {
             detail = "duration " + duration + " ms";
             return duration >= 450 && duration <= 550;
         });
+        // A MediaPlayer given a file's descriptor keeps its own copy of it, as Android's setDataSource dups it: cocos2d-x's
+        // Cocos2dxMusic closes its FileInputStream right after, before prepare (Metal Slug 3's music: "unsupported or damaged
+        // media source"). Prepared after the stream is closed, and released.
+        step("media-player-closed-fd", () -> {
+            java.io.File wav = new java.io.File(getCacheDir(), "tone-fd.wav");
+            writeWav(wav, 22050, 11025);
+            android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            try (java.io.FileInputStream in = new java.io.FileInputStream(wav)) {
+                mp.setDataSource(in.getFD());
+            }
+            mp.prepare();
+            int duration = mp.getDuration();
+            mp.release();
+            detail = "duration " + duration + " ms";
+            return duration >= 450 && duration <= 550;
+        });
         step("sound-pool", () -> {
             android.media.SoundPool pool = new android.media.SoundPool(4, android.media.AudioManager.STREAM_MUSIC, 0);
             pool.setOnLoadCompleteListener((p, id, status) -> {
@@ -7675,6 +7691,19 @@ public class Main extends Activity {
             detail = "si=" + si + " two=" + two + " iec=" + iec + " zero=" + zero + " bytes=" + bytes + " shorter=" + shorter + " none=[" + none + "] minutes=" + minutes + " shown=" + shown;
             return ("1" + point + "23 MB").equals(si) && ("12" + point + "35 MB").equals(two) && ("1" + point + "50 kB").equals(iec) && "0 B".equals(zero)
                     && "900 B".equals(bytes) && "12 MB".equals(shorter) && "".equals(none) && "1 min".equals(minutes) && shown.toString().equals("Size: " + two);
+        });
+        // Android's FloatMath, gone from the SDK since API 23 and still in Android 9's framework, where cocos2d-x 2.x sizes its
+        // labels' bitmaps with its ceil (Metal Slug 3's buttons had no text: the stub answered 0). By reflection, as the SDK
+        // this app is built with has no such class.
+        step("float-math", () -> {
+            Class<?> m = Class.forName("android.util.FloatMath");
+            float ceil = (Float) m.getMethod("ceil", float.class).invoke(null, 1.25f);
+            float floor = (Float) m.getMethod("floor", float.class).invoke(null, -1.25f);
+            float sqrt = (Float) m.getMethod("sqrt", float.class).invoke(null, 2.25f);
+            float hypot = (Float) m.getMethod("hypot", float.class, float.class).invoke(null, 3f, 4f);
+            float pow = (Float) m.getMethod("pow", float.class, float.class).invoke(null, 2f, 10f);
+            detail = "ceil " + ceil + " floor " + floor + " sqrt " + sqrt + " hypot " + hypot + " pow " + pow;
+            return ceil == 2f && floor == -2f && sqrt == 1.5f && hypot == 5f && pow == 1024f;
         });
     }
 

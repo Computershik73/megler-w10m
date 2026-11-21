@@ -4317,6 +4317,8 @@ static int run_data(void)
                                          /* And DateUtils' ranges into a Formatter, and a duration in words (both answered null). And
                                             a size as Android 9's Formatter words and rounds it, with flags and without (issue #17). */
                                          "date-range", "format-file-size",
+                                         /* And Android's FloatMath, which cocos2d-x 2.x sizes its labels with (the stub answered 0). */
+                                         "float-math",
                                          /* And dates as Android words them: DateFormat's patterns for a skeleton, ICU's for en-US and
                                             ru-RU (Messenger's chat list's "MMMd, yyyy" through a medium format's clone), the locale's
                                             clock; DateFormat.format's letters and the names, the 12/24 hours of the settings; DateUtils'
@@ -4468,7 +4470,7 @@ static int run_data(void)
                                             the controller, a remote session's volume through its VolumeProvider, a Rating. */
                                          "session-token", "session-controller", "session-controller-callback", "session-controller-command",
                                          "session-remote-volume", "rating",
-                                         "audio-track", "media-player", "media-player-ogg", "sound-pool",
+                                         "audio-track", "media-player", "media-player-ogg", "media-player-closed-fd", "sound-pool",
                                          /* And MediaCodec over the stand-in for the shell's decoders: H.264 shown on a Surface in display
                                             order, a flush, parameter sets in a codec-config buffer, the asynchronous mode, AAC with an
                                             AudioSpecificConfig and with ADTS headers, a decoder that fills while its pictures wait, MP3. */

@@ -131,6 +131,8 @@
 #                          taken from (build/angle/dist, Megler's own ANGLE, where
 #                          tools/build-angle.py has made it; else C:/rw-obj/dist/bin,
 #                          gecko-w10m's build)
+#   MEGLER_GLES         "mesa": Mesa's freedreno instead of ANGLE (ARM only)
+#   MEGLER_MESA         where Mesa's DLLs are (drivers/mesa-arm32, the repository's; or a Mesa build folder)
 #   MEGLER_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Megler's own;
 #                          else <ANGLE>/../../third_party/angle)
 #   MEGLER_ANGLE_DESKTOP  desktop Windows: where libEGL.dll and libGLESv2.dll of the
@@ -268,7 +270,17 @@ done
 [ -d "$SDK/Lib/$SDKV_LIB/um/$ARCH" ] || { echo "missing: SDK $SDKV_LIB libraries for $ARCH" >&2; exit 1; }
 
 w() { cygpath -w "$1"; }
-export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um");$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")"
+# VS 2017's MSVC 14.16 (MEGLER_VC=.../2017/.../MSVC/14.16.*): no C++20 and no C11 _Static_assert. The shell is compiled
+# as C++17 with the coroutines of /await, against C++/WinRT of SDK 10.0.19041 (MEGLER_CPPWINRT_SDK), whose base.h still
+# takes <experimental/coroutine>; 10.0.22621's does not with this compiler. The core's C gets tools/vs2017/mg_vs2017.h.
+VS2017=0
+case "$(basename "$VC")" in 14.1[0-9].*) VS2017=1 ;; esac
+CPPWINRT_SDKV="$SDKV"
+if [ "$VS2017" = 1 ]; then
+  CPPWINRT_SDKV="${MEGLER_CPPWINRT_SDK:-10.0.19041.0}"
+  [ -f "$SDK/Include/$CPPWINRT_SDKV/cppwinrt/winrt/base.h" ] || { echo "VS 2017: no C++/WinRT in SDK $CPPWINRT_SDKV (MEGLER_CPPWINRT_SDK)" >&2; exit 1; }
+fi
+export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um");$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$CPPWINRT_SDKV/cppwinrt")"
 export LIB="$(w "$VC/lib/$ARCH");$(w "$SDK/Lib/$SDKV_LIB/ucrt/$ARCH");$(w "$SDK/Lib/$SDKV_LIB/um/$ARCH")"
 # The cross compiler loads its helper DLLs (mspdb and friends) from the x64 host bin.
 export PATH="$VC/bin/Hostx64/x64:$PATH"
@@ -297,6 +309,8 @@ COMMON=(/nologo /c /O2 /MT /utf-8 /Zi /FS
         /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DNDEBUG)
 [ "$ARCH" = arm ] && COMMON+=(/D_ARM_)
 CXX=(/EHsc /GR /permissive- /Zc:__cplusplus)
+CXXSTD=/std:c++20
+[ "$VS2017" = 1 ] && CXXSTD="/std:c++17 /await /Zm400"
 
 # newest_mtime <dir> <name pattern>...: the newest modification time among
 # the matching files, so an edited header recompiles what may include it.
@@ -360,6 +374,7 @@ TESTS="$ROOT/core/tests"
 # (mg_diag.c the tests' header, the tests the core's).
 CORE_HEADERS="$(newest_mtime "$ROOT/core" '*.h')"
 CORE_FLAGS=(/TC /std:c11 /W3 "/I$(w "$ZLIB")")
+[ "$VS2017" = 1 ] && CORE_FLAGS=(/TC /W3 "/FI$(w "$ROOT/tools/vs2017/mg_vs2017.h")" "/I$(w "$ZLIB")")
 # SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c: tools/sqlite-fetch.sh fetches it;
 # core/src/sqlite/mg_sqlite3.c includes it). Without it the package is built all the same, and a Java app that asks for
 # a database is told, once and in a sentence, that this build has none.
@@ -407,7 +422,7 @@ if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
   echo "$AUTO_HEADER" > "$AUTO_CONFIG/AutoConfig.h"
   rm -f "$OBJ/shell/AutoRun.obj"
 fi
-SHELL_FLAGS=("${CXX[@]}" /std:c++20 /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
+SHELL_FLAGS=("${CXX[@]}" $CXXSTD /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
              "/Fp$(w "$OBJ/shell/pch.pch")")
 # (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp. Xbox: it installs through the console's
 # Device Portal, shell/AppPackage.cpp.)
@@ -435,7 +450,7 @@ compile_group "$OBJ/shell" "$SHELL_HEADERS" "${SHELL_FLAGS[@]}" /Yu"pch.h" -- "$
 # A Java app's drawing (player/GfxHost.cpp: Direct2D, DirectWrite, WIC) is plain COM with no WinRT in it and is also
 # built into the core's test program on a PC (tools/build-tests.sh win): the one shell file compiled without the
 # precompiled header, so that it cannot come to lean on what that brings in.
-compile_group "$OBJ/gfx" "$SHELL_HEADERS" "${CXX[@]}" /std:c++20 /W3 "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" -- "$APP/player/GfxHost.cpp"
+compile_group "$OBJ/gfx" "$SHELL_HEADERS" "${CXX[@]}" $CXXSTD /W3 "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" -- "$APP/player/GfxHost.cpp"
 
 # MARK: Link
 
@@ -471,6 +486,13 @@ echo mg_dvm_interpret > "$BUILD/link/order.txt"
 # (On the desktop the interpreter is in the core's ELF, which this link does not see.)
 ORDER=("/ORDER:@$(w "$BUILD/link/order.txt")")
 [ "$DESKTOP" = 1 ] && ORDER=()
+if [ "$VS2017" = 1 ]; then
+  # (VS 2017: the processor affinity its Concurrency Runtime asks for, tools/vs2017/mg_vs2017_link.c.)
+  mkdir -p "$OBJ/vs2017"
+  "$CL" "${COMMON[@]}" /TC /W3 "$(w "$ROOT/tools/vs2017/mg_vs2017_link.c")" "/Fo$(w "$OBJ/vs2017/mg_vs2017_link.obj")" > /dev/null ||
+    { echo "compile failed: tools/vs2017/mg_vs2017_link.c" >&2; exit 1; }
+  OBJS_W+=("$(w "$OBJ/vs2017/mg_vs2017_link.obj")")
+fi
 "$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Megler.exe")" "/PDB:$(w "$BUILD/link/Megler.pdb")" \
   "/MAP:$(w "$BUILD/link/Megler.map")" ${ORDER[@]+"${ORDER[@]}"} /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
   /APPCONTAINER /SUBSYSTEM:WINDOWS "/MACHINE:$MACHINE" /DYNAMICBASE /NXCOMPAT /MANIFEST:NO \
@@ -897,9 +919,44 @@ PY
   echo "    ANGLE from $angle: libEGL.dll, libGLESv2.dll, mozglue.dll, the C runtime and $(ls "$STAGE" | grep -c -i -E '^(api|ext)-ms-win-') api-set forwarders"
   angle_patches_said "$angle" "python tools/build-angle.py makes Megler's own (MEGLER_GECKO set; build/angle/dist, which this script takes first)"
 }
-if [ "$ARCH" = arm ]; then
+# MEGLER_GLES=mesa: OpenGL ES from Mesa's freedreno over D3DKMT (OpenGLES-For-Windows-Phone) instead of ANGLE. Its three DLLs
+# link their C runtime in and import KERNEL32.dll, api-sets and d3d11.dll alone. Its pbuffers have ANGLE's Direct3D share
+# handles: an app's Java surfaces go to the shell as shared textures (mg_java_gl.c); a NativeActivity's window is still
+# read back and handed over as pixels (mg_egl.c, "Mesa"). drivers/mesa-arm32/README.md says where they came from.
+stage_mesa() {
+  local mesa="${MEGLER_MESA:-$ROOT/drivers/mesa-arm32}" src dll need missing=""
+  local -A from=([libEGL.dll]="src/egl" [libGLESv2.dll]="src/mesa/glapi/es2api" [libgallium_wgl.dll]="src/gallium/targets/wgl")
+  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
+    src="$mesa/${from[$dll]}/$dll"
+    [ -f "$src" ] || src="$mesa/$dll"
+    [ -f "$src" ] || { ANGLE_WHY="no $dll in $mesa (MEGLER_MESA)"; return 1; }
+    cp "$src" "$STAGE/"
+  done
+  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
+    while IFS= read -r need; do
+      [ -n "$need" ] || continue
+      case "${need,,}" in
+        kernel32.dll|libgallium_wgl.dll|d3d11.dll|dxgi.dll|api-ms-win-*|ext-ms-win-*) ;;
+        *) missing="$missing $dll->$need" ;;
+      esac
+    done < <(dependents "$STAGE/$dll")
+  done
+  [ -z "$missing" ] || { ANGLE_WHY="imports with nothing to satisfy them:$missing"; return 1; }
+  echo "    Mesa (freedreno, D3DKMT) from $mesa: libEGL.dll, libGLESv2.dll, libgallium_wgl.dll ($(stat -c %s "$STAGE/libgallium_wgl.dll") bytes)"
+}
+if [ "$ARCH" = arm ] && [ "${MEGLER_GLES:-angle}" = mesa ]; then
+  echo "=== Mesa (instead of ANGLE) ==="
+  ANGLE_WHY=""
+  rm -f "$STAGE"/mozglue.dll "$STAGE"/msvcp140.dll "$STAGE"/vcruntime140.dll "$STAGE"/api-ms-win-*.dll "$STAGE"/ext-ms-win-*.dll
+  if ! stage_mesa; then
+    rm -f "$STAGE"/libEGL.dll "$STAGE"/libGLESv2.dll "$STAGE"/libgallium_wgl.dll
+    echo "    WARNING: Mesa is NOT in this package: $ANGLE_WHY" >&2
+    if [ "$PACK" = 1 ]; then echo "MEGLER_GLES=mesa: refusing to pack without it" >&2; exit 1; fi
+  fi
+elif [ "$ARCH" = arm ]; then
   echo "=== ANGLE ==="
   ANGLE_WHY=""
+  rm -f "$STAGE"/libgallium_wgl.dll
   if ! stage_angle; then
     # Nothing half-staged: an ANGLE that loads and then misbehaves is worse
     # than none.
