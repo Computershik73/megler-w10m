@@ -2472,6 +2472,10 @@ public class Main extends Activity {
         attachPairs();
         lineHeight();
         ringtonePicker();
+        contextClassLoader();
+        systemUiSame();
+        secondPass();
+        visibleRectTransformed();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -12220,6 +12224,179 @@ public class Main extends Activity {
     private static int sPickedResult;
     private static android.net.Uri sPicked;
     private static boolean sPickedHad;
+
+    /*
+     * The base context's class loader in Android's field, mClassLoader, which Chromium's BundleUtils sets by reflection on the
+     * context under the wrappers (Chrome 101 ended at its start without it): set, it is the context's class loader and that of
+     * a context made from it; the app's classes come through it; null again, the app's own.
+     */
+    private void contextClassLoader() {
+        step("context-class-loader", () -> {
+            android.content.Context base = getBaseContext();
+            while (base instanceof android.content.ContextWrapper) base = ((android.content.ContextWrapper) base).getBaseContext();
+            ClassLoader app = Main.class.getClassLoader(), split = new dalvik.system.PathClassLoader(getApplicationInfo().sourceDir, app);
+            java.lang.reflect.Field f = base.getClass().getDeclaredField("mClassLoader");
+            f.setAccessible(true);
+            Object before = f.get(base);
+            boolean was = base.getClassLoader() == app && getClassLoader() == app;
+            f.set(base, split);
+            boolean set = base.getClassLoader() == split && getClassLoader() == split;
+            boolean kept = base.createConfigurationContext(new android.content.res.Configuration()).getClassLoader() == split;
+            boolean loads = split.loadClass(Main.class.getName()) == Main.class;
+            f.set(base, before);
+            boolean back = base.getClassLoader() == app;
+            detail = base.getClass().getName() + " before=" + before + " was=" + was + " set=" + set + " kept=" + kept + " loads=" + loads + " back=" + back;
+            return before == null && was && set && kept && loads && back;
+        });
+    }
+
+    /*
+     * A view's visible rectangle in the window under a transformed parent, as Android's ViewGroup.getChildVisibleRect makes it:
+     * a leaf of 40 x 40 at 10,10 in a group at 20,30 scaled by a half about its corner and moved down 5 is at 25,40 to 45,60 of
+     * its outer group, and so is its offset; local, it is its own 0,0 to 20,20; a leaf moved out of the group is not visible.
+     * The line "visible-rect-transformed".
+     */
+    private void visibleRectTransformed() {
+        step("visible-rect-transformed", () -> {
+            final android.widget.FrameLayout outer = new android.widget.FrameLayout(this), inner = new android.widget.FrameLayout(this);
+            final android.view.View leaf = new android.view.View(this), away = new android.view.View(this);
+            android.widget.FrameLayout.LayoutParams at = new android.widget.FrameLayout.LayoutParams(100, 100);
+            at.leftMargin = 20;
+            at.topMargin = 30;
+            outer.addView(inner, at);
+            android.widget.FrameLayout.LayoutParams leafAt = new android.widget.FrameLayout.LayoutParams(40, 40);
+            leafAt.leftMargin = 10;
+            leafAt.topMargin = 10;
+            inner.addView(leaf, leafAt);
+            android.widget.FrameLayout.LayoutParams awayAt = new android.widget.FrameLayout.LayoutParams(10, 10);
+            awayAt.leftMargin = 300;
+            inner.addView(away, awayAt);
+            inner.setPivotX(0);
+            inner.setPivotY(0);
+            inner.setScaleX(0.5f);
+            inner.setScaleY(0.5f);
+            inner.setTranslationY(5);
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener[] heard = new android.view.ViewTreeObserver.OnGlobalLayoutListener[1];
+            heard[0] = () -> {
+                if (leaf.getWidth() == 0) return;
+                outer.getViewTreeObserver().removeOnGlobalLayoutListener(heard[0]);
+                android.graphics.Rect o = new android.graphics.Rect(), r = new android.graphics.Rect(), local = new android.graphics.Rect();
+                android.graphics.Point off = new android.graphics.Point();
+                outer.getGlobalVisibleRect(o);
+                boolean seen = leaf.getGlobalVisibleRect(r, off);
+                leaf.getLocalVisibleRect(local);
+                boolean awaySeen = away.getGlobalVisibleRect(new android.graphics.Rect());
+                r.offset(-o.left, -o.top);
+                off.offset(-o.left, -o.top);
+                ((android.view.ViewGroup) outer.getParent()).removeView(outer);
+                Log.i("DataTest", "visible-rect-transformed seen=" + seen + " " + r.toShortString() + " offset=" + off.x + "," + off.y + " local=" + local.toShortString()
+                      + " away=" + awaySeen);
+            };
+            outer.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    outer.removeOnAttachStateChangeListener(this);
+                    outer.getViewTreeObserver().addOnGlobalLayoutListener(heard[0]);
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) findViewById(android.R.id.content)).addView(outer, new android.view.ViewGroup.LayoutParams(200, 200));
+            return true;
+        });
+    }
+
+    /*
+     * A group that asks its child for layout once from its own onLayout, after laying the child out: the window makes a second
+     * pass at once, and after it asks nothing more, as Android's ViewRootImpl leaves the requests made for that pass (the
+     * window was laid out once more at the next frame, its global layout listeners told again). The line "second-pass".
+     */
+    private static final class AskingGroup extends android.widget.FrameLayout {
+        int layouts;
+        boolean asked;
+        AskingGroup(android.content.Context c) { super(c); }
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            layouts++;
+            if (!asked && getChildCount() > 0) {
+                asked = true;
+                getChildAt(0).requestLayout();
+            }
+        }
+    }
+    private void secondPass() {
+        step("second-pass", () -> {
+            final AskingGroup group = new AskingGroup(this);
+            group.addView(new android.view.View(this), new android.view.ViewGroup.LayoutParams(2, 2));
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener[] heard = new android.view.ViewTreeObserver.OnGlobalLayoutListener[1];
+            heard[0] = () -> {
+                if (!group.asked) return;
+                group.getViewTreeObserver().removeOnGlobalLayoutListener(heard[0]);
+                android.view.ViewParent root = group.getRootView().getParent();
+                boolean pending = root != null && root.isLayoutRequested();
+                int layouts = group.layouts;
+                ((android.view.ViewGroup) group.getParent()).removeView(group);
+                Log.i("DataTest", "second-pass layouts=" + layouts + " pending=" + pending);
+            };
+            group.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    group.removeOnAttachStateChangeListener(this);
+                    group.getViewTreeObserver().addOnGlobalLayoutListener(heard[0]);
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(group, new android.view.ViewGroup.LayoutParams(6, 6));
+            return true;
+        });
+    }
+
+    /*
+     * The window's system UI flags and its bars' appearance given again as they are, from a view's own insets listener, as
+     * YouTube's full-screen controller gives its flags again as the insets come: nothing changes, as on Android, so the
+     * insets come once and not at every frame (the window was laid out at every frame, ReVanced Extended's watch page). The
+     * line "system-ui-same" after 30 frames: how many times the insets came and the window was laid out.
+     */
+    private void systemUiSame() {
+        step("system-ui-same", () -> {
+            final int[] insets = { 0 }, layouts = { 0 }, frames = { 0 };
+            final android.view.View probe = new android.view.View(this);
+            probe.setOnApplyWindowInsetsListener((v, i) -> {
+                insets[0]++;
+                v.setSystemUiVisibility(v.getWindowSystemUiVisibility());
+                try {
+                    Object c = android.view.View.class.getMethod("getWindowInsetsController").invoke(v);
+                    Class<?> k = Class.forName("android.view.WindowInsetsController");
+                    int now = (Integer) k.getMethod("getSystemBarsAppearance").invoke(c);
+                    k.getMethod("setSystemBarsAppearance", int.class, int.class).invoke(c, now, 8 /* APPEARANCE_LIGHT_STATUS_BARS */);
+                } catch (Exception e) {
+                    Log.i("DataTest", "system-ui-same FAILED: " + e);
+                }
+                return i;
+            });
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener counted = () -> layouts[0]++;
+            probe.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    probe.removeOnAttachStateChangeListener(this);
+                    probe.getViewTreeObserver().addOnGlobalLayoutListener(counted);
+                    probe.requestApplyInsets();
+                    android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+                        @Override public void doFrame(long at) {
+                            if (++frames[0] < 30) {
+                                android.view.Choreographer.getInstance().postFrameCallback(this);
+                                return;
+                            }
+                            probe.getViewTreeObserver().removeOnGlobalLayoutListener(counted);
+                            ((android.view.ViewGroup) probe.getParent()).removeView(probe);
+                            /* (A few from the app's other steps, the bars shown and hidden among them; the loop was one at every frame.) */
+                            boolean held = insets[0] >= 1 && insets[0] <= 10 && layouts[0] <= 15;
+                            Log.i("DataTest", "system-ui-same " + (held ? "held" : "FAILED") + " insets=" + insets[0] + " layouts=" + layouts[0] + " frames=" + frames[0]);
+                        }
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(probe, new android.view.ViewGroup.LayoutParams(4, 4));
+            return true;
+        });
+    }
 
     private void links() {
         final android.content.pm.PackageManager pm = getPackageManager();

@@ -289,6 +289,7 @@ public final class ViewRoot implements ViewParent {
            view gives the window manager its parameters in every onLayout, as a popup of Compose does (PopupLayout), was laid
            out again in every frame, which gave them again: frames without end and none of them drawn (Reddit). */
         if (mInLayout && same(mLp, lp)) return;
+        if (mWatchAsks) asked("its window's parameters given" + (same(mLp, lp) ? " as they were" : ""));
         boolean looks = lp.type != mLp.type || lp.flags != mLp.flags || lp.format != mLp.format || lp.alpha != mLp.alpha || lp.dimAmount != mLp.dimAmount;
         mLp.copyFrom(lp);
         mView.setLayoutParams(mLp);
@@ -464,7 +465,32 @@ public final class ViewRoot implements ViewParent {
     }
     /** Whether the frame being drawn draws only part of the screen (View.drawFromParent then skips what lies outside it). */
     public static boolean meglerDrawingPart() { return sDrawingPart; }
-    public void requestLayout() { mLayoutRequested = true; scheduleFrame(); }
+    /*
+     * (Not while the second pass is made, below: its requests, made again to reach this window, are that pass's own, as Android's
+     * ViewRootImpl.requestLayout leaves them while it handles layout requested during layout. Taken, they laid the window out
+     * once more at the next frame, and its global layout listeners were told again, after every second pass.)
+     */
+    public void requestLayout() {
+        if (mHandlingLayoutInLayoutRequest) return;
+        if (mWatchAsks) asked("a view's requestLayout, first asked by " + View.meglerRequestingLayout());
+        mLayoutRequested = true;
+        scheduleFrame();
+    }
+    /*
+     * A window laid out at each of its last LAID_RUN frames, which nothing on the screen may show (ReVanced Extended's watch page
+     * was laid out 57 times a second with nothing drawn): what asks for its next layout is said in the log, with the calls that
+     * asked, three times a run of the app at most.
+     */
+    private static final int LAID_RUN = 300;
+    private static int sRunsSaid;
+    private int mLaidRun;
+    private boolean mWatchAsks;
+    private void asked(String what) {
+        mWatchAsks = false;
+        sRunsSaid++;
+        android.util.Log.w("MeglerViews", "a window laid out at each of its last " + mLaidRun + " frames, " + windowName() + ": asked again by " + what,
+                           new Throwable("what asked"));
+    }
     /*
      * Views that asked for layout while this window was being laid out, as Android's ViewRootImpl keeps them
      * (requestLayoutDuringLayout, mLayoutRequesters): after the pass, those still asking, attached and not under a GONE view
@@ -514,10 +540,25 @@ public final class ViewRoot implements ViewParent {
             Choreographer.getMainThreadInstance().postCallback(Choreographer.CALLBACK_ANIMATION, () -> { for (View v : again) v.requestLayout(); }, null);
         }
     }
-    public void requestApplyInsets() { mInsetsDirty = true; mLayoutRequested = true; scheduleFrame(); }
+    public void requestApplyInsets() {
+        if (mWatchAsks) asked("its insets asked for (system UI flags " + Integer.toHexString(mSystemUi) + ")");
+        mInsetsDirty = true;
+        mLayoutRequested = true;
+        scheduleFrame();
+    }
     public WindowInsets insets() { return mWindowInsets; }
     public int systemUi() { return mSystemUi; }
-    public void systemUiChanged(int v) { mSystemUi = v; requestApplyInsets(); }
+    /*
+     * A view's setSystemUiVisibility. The flags the window has already, given again, change nothing, as on Android, where only
+     * a change reaches the window: here each call made the insets new and the window laid out again, and YouTube's watch page,
+     * whose full-screen controller gives its flags again as the window's insets come (ReVanced Extended, 0.1.0.734), was laid
+     * out at every frame for as long as it was open -- 57 layouts a second, none of them drawing anything, on a user's Lumia.
+     */
+    public void systemUiChanged(int v) {
+        if (v == mSystemUi) return;
+        mSystemUi = v;
+        requestApplyInsets();
+    }
     public void visibleDisplayFrame(Rect r) { r.set(sInsets[0], sInsets[1], screenW() - sInsets[2], screenH() - Math.max(sInsets[3], sImeBottom)); }
     public WindowInsetsController insetsController() {
         if (mInsetsController == null) mInsetsController = new WindowInsetsController() {
@@ -905,9 +946,12 @@ public final class ViewRoot implements ViewParent {
             }
         }
         if (!mLayoutRequested && !mView.isLayoutRequested()) {
+            mLaidRun = 0;
+            mWatchAsks = false;
             updatePan();
             return;
         }
+        if (++mLaidRun == LAID_RUN && sRunsSaid < 3) mWatchAsks = true;
         mLayoutRequested = false;
         mInLayout = true;
         try {
