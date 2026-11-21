@@ -678,6 +678,7 @@ static struct {
     int shell;                         /* 1: the shell composes the window (megler_gfx_host.gl_frame); -1: it is composed here */
     u8 *views, *out;                   /* the views' last picture and the window as composed: width x height, rows top first */
     bool have_views, shown_whole;
+    bool views_empty;                  /* the views' picture is stop_shell's empty one: their next picture is taken whole */
     layer layers[MAX_LAYERS];
     bool roots;
     mg_java_gl_stats stats, window;    /* in all, and as they stood at the start of the log's window */
@@ -760,8 +761,10 @@ static void stop_shell(void)
      * The views' picture is here only once they draw again, and an app that only draws with OpenGL does not redraw them
      * (GTA: Vice City on Mesa, whose second surface had no shared texture: every frame after was read back and none
      * shown, a black screen). Until they do, they are taken as nothing over the frames: compose_here's picture is empty.
+     * Their first picture after is taken whole, whatever part of it they say changed (views_empty).
      */
     C.have_views = true;
+    C.views_empty = true;
     C.shown_whole = false;
     for (i = 0; i < MAX_LAYERS; i++)
         if (C.layers[i].view) g_shell->gl_place(g_shell->user, i, 0, 0, 0, 0, 0);
@@ -1123,7 +1126,7 @@ void mg_java_gl_start(int width, int height, mg_java_show_fn show)
     free(C.views);
     free(C.out);
     C.views = C.out = NULL;
-    C.used = C.have_views = C.shown_whole = false;
+    C.used = C.have_views = C.shown_whole = C.views_empty = false;
     C.shell = 0;
     memset(&C.stats, 0, sizeof(C.stats));
     C.first_swap = C.window_started = 0;
@@ -1206,7 +1209,7 @@ bool mg_java_gl_views(const void *pixels, int width, int height, int stride, con
     if (width != C.width || height != C.height) window_resized(width, height);
     /* The views come here while the shell composes the window only when it could not show them: it is composed here from now on. */
     if (C.shell > 0) stop_shell();
-    if (C.have_views && part && part[2] > part[0] && part[3] > part[1]) {
+    if (C.have_views && !C.views_empty && part && part[2] > part[0] && part[3] > part[1]) {
         x0 = max_i(part[0], 0);
         y0 = max_i(part[1], 0);
         x1 = min_i(part[2], width);
@@ -1218,6 +1221,7 @@ bool mg_java_gl_views(const void *pixels, int width, int height, int stride, con
         memcpy(C.out + (size_t)r * line + (size_t)x0 * 4, from, (size_t)(x1 - x0) * 4);
     }
     C.have_views = true;
+    C.views_empty = false;
     sx0 = x0;
     sy0 = y0;
     sx1 = x1;
