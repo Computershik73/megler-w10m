@@ -4764,6 +4764,11 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: downloads ok status=200 bytes=5 body=hello cookie=true observed=true file=5", 0, 30) >= 0);
     /* The list of the step "list-row-click": its row, clickable itself, clicked by a tap. */
     CHECK(wait_line("I/DataTest: list-row-click rows=3 clicked=true", 0, 30) >= 0);
+    /* The fragments the steps "list-fragment" and "fragment-saved-state" added in the activity's onCreate have their views
+       once that onCreate has returned, as on Android, and not before: the lists of the ListFragments, and the saved state
+       given to onCreateView. */
+    CHECK(wait_line("I/DataTest: list-fragment-views ok", 0, 30) >= 0);
+    CHECK(wait_line("I/DataTest: fragment-saved-state-view ok", 0, 30) >= 0);
     /* The step "visibility-aggregated": an ImageView's picture and a view's background hidden with their parent made GONE and
        taken out of the window, shown with it again, as Android's onVisibilityAggregated tells them. */
     CHECK(wait_line("I/DataTest: visibility-aggregated attached true true, gone false false, visible true true, removed false false", 0, 30) >= 0);
