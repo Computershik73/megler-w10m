@@ -517,7 +517,17 @@ public final class ViewRoot implements ViewParent {
     public void requestApplyInsets() { mInsetsDirty = true; mLayoutRequested = true; scheduleFrame(); }
     public WindowInsets insets() { return mWindowInsets; }
     public int systemUi() { return mSystemUi; }
-    public void systemUiChanged(int v) { mSystemUi = v; requestApplyInsets(); }
+    /*
+     * A view's setSystemUiVisibility. The flags the window has already, given again, change nothing, as on Android, where only
+     * a change reaches the window: here each call made the insets new and the window laid out again, and YouTube's watch page,
+     * whose full-screen controller gives its flags again as the window's insets come (ReVanced Extended, 0.1.0.734), was laid
+     * out at every frame for as long as it was open -- 57 layouts a second, none of them drawing anything, on a user's Lumia.
+     */
+    public void systemUiChanged(int v) {
+        if (v == mSystemUi) return;
+        mSystemUi = v;
+        requestApplyInsets();
+    }
     public void visibleDisplayFrame(Rect r) { r.set(sInsets[0], sInsets[1], screenW() - sInsets[2], screenH() - Math.max(sInsets[3], sImeBottom)); }
     public WindowInsetsController insetsController() {
         if (mInsetsController == null) mInsetsController = new WindowInsetsController() {

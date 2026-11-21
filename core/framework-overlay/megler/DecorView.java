@@ -108,13 +108,23 @@ public final class DecorView extends FrameLayout {
     private WindowInsetsController mPending;
     public int meglerHiddenBars() { return mHiddenBars; }
     public int meglerAppearance() { return mAppearance; }
+    /* (Bars hidden or shown as they are already, and the appearance the window has, change nothing, as Android's
+       InsetsController leaves them: here each call made the window's insets new and laid it out again, and a controller that
+       says them again as the insets come laid the window out at every frame -- see ViewRoot.systemUiChanged.) */
     public void meglerHideBars(int types, boolean hide) {
         int bars = types & (WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
         if (bars == 0) return;
-        mHiddenBars = hide ? mHiddenBars | bars : mHiddenBars & ~bars;
+        int hidden = hide ? mHiddenBars | bars : mHiddenBars & ~bars;
+        if (hidden == mHiddenBars) return;
+        mHiddenBars = hidden;
         requestApplyInsets();
     }
-    public void meglerSetAppearance(int a, int mask) { mAppearance = (mAppearance & ~mask) | (a & mask); requestApplyInsets(); }
+    public void meglerSetAppearance(int a, int mask) {
+        int appearance = (mAppearance & ~mask) | (a & mask);
+        if (appearance == mAppearance) return;
+        mAppearance = appearance;
+        requestApplyInsets();
+    }
     public void setCloseOnTouchOutside(boolean c) { mCloseOnTouchOutside = c; }
     public boolean closeOnTouchOutside() { return mCloseOnTouchOutside; }
     /** The window background; its padding (a Material dialog's InsetDrawable: the card inset from the window's edges) keeps the

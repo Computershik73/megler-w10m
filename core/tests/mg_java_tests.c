@@ -4480,7 +4480,10 @@ static int run_data(void)
                                          "line-height",
                                          /* And the base context's class loader in Android's field, mClassLoader, which Chromium's
                                             BundleUtils sets by reflection (Chrome 101's start). */
-                                         "context-class-loader" };
+                                         "context-class-loader",
+                                         /* And the window's system UI flags and bars' appearance given again as they are, from a
+                                            view's insets listener: nothing changes (the line system-ui-same below). */
+                                         "system-ui-same" };
     int at = -1, want = 0, run = 0, line, i;
     char text[120];
     if (g_script_count) sscanf(g_script[0], "run:%d", &want);
@@ -4727,6 +4730,10 @@ static int run_data(void)
     CHECK(wait_line("I/DataTest: attach-pairs stack=[s+ c+] removed=[cx sx] again=[s+ c+] removed=[cx sx] sibling=[g+ a+ b+] "
                     "removes=[px qx rx ox] r-attached=false back=[o+ q+ r+] scrap=[] dropped=[wx] transition=[]true ended=[tx] "
                     "all=[2x 1x] moved=[mx m+] gone=[lx fx mx nx]", 0, 30) >= 0);
+    /* The step "system-ui-same": a view's insets listener gives the window its system UI flags and its bars' appearance again
+       as they are, as YouTube's full-screen controller does; over 30 frames the insets came a few times and the window was laid
+       out a few times, not at every frame (ReVanced Extended's watch page was laid out 57 times a second). */
+    CHECK(wait_line("I/DataTest: system-ui-same held", 0, 30) >= 0);
     /* The view animation of the step "animation-listener": its listener told through the view's handler, after the frames that
        started and ended it, not inside its parent's dispatchDraw (Animation.fireStart; Telegram's settings ended the app). */
     CHECK(wait_line("I/DataTest: animation-listener heard=start end", 0, 30) >= 0);

@@ -2472,6 +2472,7 @@ public class Main extends Activity {
         attachPairs();
         lineHeight();
         contextClassLoader();
+        systemUiSame();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -12188,6 +12189,56 @@ public class Main extends Activity {
             boolean back = base.getClassLoader() == app;
             detail = base.getClass().getName() + " before=" + before + " was=" + was + " set=" + set + " kept=" + kept + " loads=" + loads + " back=" + back;
             return before == null && was && set && kept && loads && back;
+        });
+    }
+
+    /*
+     * The window's system UI flags and its bars' appearance given again as they are, from a view's own insets listener, as
+     * YouTube's full-screen controller gives its flags again as the insets come: nothing changes, as on Android, so the
+     * insets come once and not at every frame (the window was laid out at every frame, ReVanced Extended's watch page). The
+     * line "system-ui-same" after 30 frames: how many times the insets came and the window was laid out.
+     */
+    private void systemUiSame() {
+        step("system-ui-same", () -> {
+            final int[] insets = { 0 }, layouts = { 0 }, frames = { 0 };
+            final android.view.View probe = new android.view.View(this);
+            probe.setOnApplyWindowInsetsListener((v, i) -> {
+                insets[0]++;
+                v.setSystemUiVisibility(v.getWindowSystemUiVisibility());
+                try {
+                    Object c = android.view.View.class.getMethod("getWindowInsetsController").invoke(v);
+                    Class<?> k = Class.forName("android.view.WindowInsetsController");
+                    int now = (Integer) k.getMethod("getSystemBarsAppearance").invoke(c);
+                    k.getMethod("setSystemBarsAppearance", int.class, int.class).invoke(c, now, 8 /* APPEARANCE_LIGHT_STATUS_BARS */);
+                } catch (Exception e) {
+                    Log.i("DataTest", "system-ui-same FAILED: " + e);
+                }
+                return i;
+            });
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener counted = () -> layouts[0]++;
+            probe.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    probe.removeOnAttachStateChangeListener(this);
+                    probe.getViewTreeObserver().addOnGlobalLayoutListener(counted);
+                    probe.requestApplyInsets();
+                    android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+                        @Override public void doFrame(long at) {
+                            if (++frames[0] < 30) {
+                                android.view.Choreographer.getInstance().postFrameCallback(this);
+                                return;
+                            }
+                            probe.getViewTreeObserver().removeOnGlobalLayoutListener(counted);
+                            ((android.view.ViewGroup) probe.getParent()).removeView(probe);
+                            /* (A few from the app's other steps, the bars shown and hidden among them; the loop was one at every frame.) */
+                            boolean held = insets[0] >= 1 && insets[0] <= 10 && layouts[0] <= 15;
+                            Log.i("DataTest", "system-ui-same " + (held ? "held" : "FAILED") + " insets=" + insets[0] + " layouts=" + layouts[0] + " frames=" + frames[0]);
+                        }
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(probe, new android.view.ViewGroup.LayoutParams(4, 4));
+            return true;
         });
     }
 
