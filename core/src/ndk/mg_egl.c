@@ -233,11 +233,23 @@ static int below_9_3(void)
 }
 static bool g_said_software;
 
-/* Whether the package's OpenGL ES is Mesa's (tools/build-appx.sh, MEGLER_GLES=mesa) rather than ANGLE. */
+/*
+ * Whether the package's OpenGL ES is Mesa's (tools/build-appx.sh, MEGLER_GLES=mesa) rather than ANGLE: told by the libEGL.dll
+ * loaded, whose exports Mesa's alone has MesaGLInteropEGLQueryDeviceInfo among (MESA_GLINTEROP). Not by loading
+ * libgallium_wgl.dll to see: in a package of ANGLE that failed, and the host said so as an error in every app's log.
+ * The flag egl-default-display says yes with any EGL.
+ */
 static int g_mesa = -1;
 bool mg_egl_is_mesa(void)
 {
-    if (g_mesa < 0) g_mesa = mg_flag("egl-default-display") || mg_dl_open("libgallium_wgl.dll") ? 1 : 0;
+    if (g_mesa < 0) {
+        bool mesa = mg_flag("egl-default-display");
+        if (!mesa && !g_provider) {
+            if (!g_angle_tried) (void)angle("eglGetDisplay");
+            mesa = g_lib_egl && mg_dl_sym(g_lib_egl, "MesaGLInteropEGLQueryDeviceInfo");
+        }
+        g_mesa = mesa ? 1 : 0;
+    }
     return g_mesa == 1;
 }
 
