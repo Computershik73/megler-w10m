@@ -4510,6 +4510,9 @@ static int run_data(void)
                                          "http-engine", "http-engine-request", "http-engine-upload", "http-engine-failures", "http-engine-connection",
                                          "http-engine-own-tls", "http-engine-stream", "http-engine-stream-flow", "http-engine-stream-cancel",
                                          "http-engine-hpack",
+                                         /* And Android 14's SDK extensions (7 of R, S, T and U), by which the Play Store's build for
+                                            Android 14 takes HttpEngine, built with the options its wrapper sets. */
+                                         "sdk-extensions",
                                          /* And RenderNodes and Pictures as display lists, as Compose uses them: nodes recorded once and drawn as their
                                             bitmaps were, three of a screen's size among them; the kids' properties changed and the parent not
                                             recorded again; nodes nested and moved; one discarded and recorded again; what a list keeps (a paint, a
