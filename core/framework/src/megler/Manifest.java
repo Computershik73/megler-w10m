@@ -47,11 +47,29 @@ public final class Manifest {
         if (n.indexOf('.') < 0) return packageName + "." + n;
         return n;
     }
+    /** The first of the app's split APKs among Native's APKs (mg_java.c FIRST_SPLIT_APK): the base is 0, framework-res 1. */
+    private static final int FIRST_SPLIT_APK = 2;
+
     public static synchronized void read() {
         if (sRead) return;
         sRead = true;
         byte[] d = Native.readApkFile(0, "AndroidManifest.xml");
         if (d == null) return;
+        parse(d, false);
+        /*
+         * And the components each split declares, as Android's package parser adds a feature split's to the app's (its
+         * manifest and application say nothing more of the app): Chrome 158 (isolatedSplits) has its browser,
+         * ChromeTabbedActivity and the launcher alias com.google.android.apps.chrome.Main, in its split "chrome". The
+         * split's code is in the app's class loader with the base's (mg_java.c, mg_dvm_add_apk).
+         */
+        String[] splits = Native.splitPaths();
+        for (int k = 0; splits != null && k < splits.length; k++) {
+            byte[] m = Native.readApkFile(FIRST_SPLIT_APK + k, "AndroidManifest.xml");
+            if (m != null) parse(m, true);
+        }
+    }
+
+    private static void parse(byte[] d, boolean split) {
         try {
             XmlBlock.Parser p = new XmlBlock(d, "AndroidManifest.xml").newParser();
             Component cur = null; Filter filter = null;
@@ -68,6 +86,12 @@ public final class Manifest {
                 }
                 if (t != XmlPullParser.START_TAG) continue;
                 String tag = p.getName();
+                if (split) {
+                    // A split's manifest: its components alone.
+                    if ("application".equals(tag)) { inApp = true; continue; }
+                    if ("manifest".equals(tag) || tag.startsWith("uses-")) continue;
+                    if ("meta-data".equals(tag) && cur == null) continue;
+                }
                 switch (tag) {
                 case "manifest":
                     packageName = p.getAttributeValue(null, "package");
