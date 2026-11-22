@@ -1,6 +1,6 @@
 # Mesa (freedreno over D3DKMT) for Windows 10 Mobile, ARM32
 
-Mesa's freedreno on Windows 10 Mobile is the work of Linh (thaihoangduylinh, https://github.com/thaihoangduylinh): the
+Mesa's freedreno on Windows 10 Mobile is the work of LV (thaihoangduylinh, https://github.com/thaihoangduylinh): the
 D3DKMT core and the patches in `src/` are theirs; Megler builds them, with its own patches `megler-0025` to
 `megler-0027` on top.
 

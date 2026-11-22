@@ -1065,7 +1065,7 @@ private:
                                     "ANGLE is what turns an app's OpenGL ES into Direct3D 11."));
             // Who helped make Megler, as README.md's "Thanks" names them.
             add(column, listSection("Thanks",
-                                    {listItem("Linh (thaihoangduylinh)",
+                                    {listItem("LV (thaihoangduylinh)",
                                               "Mesa's freedreno on the phone's Adreno through D3DKMT, and the fixes of pull request #34"),
                                      listItem("mayconus", "Video and streaming apps on a Lumia 950 XL"),
                                      listItem("zemonkamin (WinArchive)",

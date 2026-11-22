@@ -28,7 +28,7 @@ release notes say how to install it.
 - **A modern WebView.** Android's System WebView, Chromium 128, runs inside the app, and
   draws its pages on the graphics processor.
 - **Two ways to draw OpenGL ES.** ANGLE over Direct3D 11, on every phone; or, chosen per app
-  in Settings, Graphics, Mesa's freedreno on the phone's Adreno itself (Linh's work, below).
+  in Settings, Graphics, Mesa's freedreno on the phone's Adreno itself (LV's work, below).
   **Mesa is experimental and has been tested only on the Snapdragon 820** (Adreno 530, the
   HP Elite x3) so far; other processors will follow. On another phone, keep ANGLE for an app
   that draws wrongly or ends with Mesa.
@@ -243,7 +243,7 @@ another project (GPL-2.0-or-later) and is licensed here under the GPL-3.0, as
 
 ## Thanks
 
-- **Linh ([thaihoangduylinh](https://github.com/thaihoangduylinh))**: Mesa's freedreno on the
+- **LV ([thaihoangduylinh](https://github.com/thaihoangduylinh))**: Mesa's freedreno on the
   Adreno of Windows 10 Mobile through D3DKMT, without ANGLE. Megler's Mesa DLLs
   ([drivers/mesa-arm32](drivers/mesa-arm32)) are built from their D3DKMT core and their patches to
   Mesa. Their [pull request #34](https://github.com/Computershik73/megler-w10m/pull/34) also brought
