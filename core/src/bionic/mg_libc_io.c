@@ -1330,11 +1330,15 @@ static void exec_renamed(const char *a, const char *b)
     mg_lock_release(&g_exec_lock);
 }
 
-/* exec_bit of a file by its guest path (normalized), the host's asked for only where a bit may be. */
+/*
+ * exec_bit of a file by its guest path (normalized), the host's asked for only where a bit may be. A descriptor the core
+ * opened by a host path (mg_fd_open_host: a ParcelFileDescriptor's file, an APK's) has no guest path, and no bit.
+ */
 static bool exec_bit_of(const char *g)
 {
     char *h;
     bool yes;
+    if (!g) return false;
     if (!g_nexec && !strstr(g, "/lib/")) return false;
     h = host_of_normal(g);
     yes = h && exec_bit(h);
