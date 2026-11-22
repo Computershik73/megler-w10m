@@ -226,6 +226,11 @@ private:
                            "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
     }
 
+    /// What is said of Mesa when it is chosen: it has been tried on one phone's processor only (its row says so too).
+    static constexpr const char* mesaTested =
+        "Mesa has been tested only on the Snapdragon 820 (Adreno 530, the HP Elite x3) so far; other processors will follow. "
+        "On another phone an app may draw wrongly, or end: choose ANGLE for it then.";
+
     /// Graphics (shell/Graphics.h): ANGLE, or Mesa's freedreno, where Megler's package carries it (Windows 10 Mobile's). Mesa's
     /// DLLs are in an app's own package only while the app goes by it: a change has the package made again, which the
     /// Library marks (Update, Update All) and this says.
@@ -241,9 +246,9 @@ private:
             rows.push_back(choice("As in Megler", name(meglers), !set, [this] { putGraphics(std::nullopt); }));
         rows.push_back(choice("ANGLE (Direct3D 11)", "The default: OpenGL ES turned into Direct3D 11, on every phone", set && chosen != "mesa",
                               [this] { putGraphics(std::string("angle")); }));
-        rows.push_back(choice("Mesa freedreno (experimental, Adreno GPUs)",
-                              "OpenGL ES on the phone's Adreno itself, through Mesa's driver. Where it cannot start, the app draws with ANGLE "
-                              "and its log says why",
+        rows.push_back(choice("Mesa freedreno (experimental)",
+                              "Tested only on the Snapdragon 820 so far; other processors will follow. OpenGL ES on the phone's Adreno "
+                              "itself, through Mesa's driver. Where it cannot start, the app draws with ANGLE and its log says why",
                               set && chosen == "mesa", [this] { putGraphics(std::string("mesa")); }));
         std::string footer = "How an app's OpenGL ES is drawn: games, maps, the WebView. Mesa's driver is some 20 MB in an app's own package, "
                              "which has it only while the app draws with it: ";
@@ -276,14 +281,18 @@ private:
         const std::string after = forApp() ? appPackage::glesFor(scope_.package) : graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
         if (before == after) return;
         const bool mesa = after == "mesa";
+        // (Chosen: said again, under what it takes.)
+        const std::string tested = mesa ? std::string("\n\n") + mesaTested : std::string();
         if (scope_.own) {
             // The app's own package: Megler makes it again (it lists the packages, and finds the app's Graphics changed).
             if (mesa != graphics::hasMesaFiles(platform::installDirectory()))
                 shell_.alert("Its Package Is to Be Made Again",
                              mesa ? "This app's package was made without Mesa's driver. Open Megler: Update on the app's page makes the package "
-                                    "again with it. Until then the app draws with ANGLE."
+                                    "again with it. Until then the app draws with ANGLE." + tested
                                   : "This app's package carries Mesa's driver, some 20 MB it no longer needs: Update on the app's page in Megler "
                                     "makes it again without it.");
+            else if (mesa)
+                shell_.alert("Mesa Is Experimental", mesaTested);
             return;
         }
         separateApps::refresh(shell_);
@@ -293,16 +302,18 @@ private:
                 shell_.alert("Update the App",
                              mesa ? (scope_.label.empty() ? scope_.package : scope_.label) +
                                         "'s package was made without Mesa's driver: Update on its page makes it again with it (some 20 MB "
-                                        "more). Until then it draws with ANGLE."
+                                        "more). Until then it draws with ANGLE." + tested
                                   : (scope_.label.empty() ? scope_.package : scope_.label) +
                                         "'s package carries Mesa's driver, which it no longer uses: Update on its page makes it again "
                                         "without it, some 20 MB smaller.");
+            else if (mesa)
+                shell_.alert("Mesa Is Experimental", mesaTested);
         } else {
             shell_.alert("Update the Apps",
                          std::string("The apps that go by Megler's Graphics draw with ") + (mesa ? "Mesa's freedreno" : "ANGLE") +
                              " from their next start once their packages are made again " +
                              (mesa ? "with Mesa's driver, some 20 MB each" : "without Mesa's driver") +
-                             ": the Library marks them to update, and Update All makes them.");
+                             ": the Library marks them to update, and Update All makes them." + tested);
         }
     }
 
