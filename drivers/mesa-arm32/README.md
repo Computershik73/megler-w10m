@@ -4,7 +4,8 @@ Mesa's freedreno on Windows 10 Mobile is the work of Linh (thaihoangduylinh, htt
 D3DKMT core and the patches in `src/` are theirs; Megler builds them, with its own patches `megler-0025` to
 `megler-0027` on top.
 
-OpenGL ES and EGL for the phone's Adreno GPU (tested on the HP Elite x3, Adreno 530), beside ANGLE: Windows 10 Mobile's
+OpenGL ES and EGL for the phone's Adreno GPU, beside ANGLE. **Tested only on the Snapdragon 820 (the HP Elite x3's
+Adreno 530) so far; other processors will follow** -- Settings says so where Mesa is chosen. Windows 10 Mobile's
 package (`tools/build-appx.sh arm`, not `--rt`) carries both, and each app chooses at its start (Settings, **Graphics**;
 `docs/ARCHITECTURE.md`, "Mesa's freedreno, chosen per app"). `MEGLER_MESA` names another folder of these DLLs;
 `MEGLER_GLES=mesa` makes Mesa the choice where none is set, `MEGLER_GLES=angle` leaves Mesa out.
