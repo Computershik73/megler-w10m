@@ -463,9 +463,43 @@ static void test_scoped_throw(const char *fixtures)
     CHECK(e && mg_dvm_array_length(e) == 3 && mg_dvm_class_of(e)->component == theirs && mg_dvm_class_of(e)->scope == SCOPE);
 }
 
+/*
+ * Each thread its own JNIEnv, as ART's: a table native code puts in its thread's JNIEnv is that thread's alone. Chrome 158
+ * puts one in with its own FindClass, which then calls the FindClass of the table it replaced, kept for its thread; with
+ * one JNIEnv for the process, Google Play services' threads in Chrome's process had its table too and ended Chrome.
+ */
+typedef struct other_env {
+    void *env, *table;
+} other_env;
+static MG_HOSTCB void env_of_other_thread(void *arg)
+{
+    other_env *o = (other_env *)arg;
+    o->env = mg_jni_env();
+    o->table = *(void **)o->env;
+}
+static void test_env_per_thread(void)
+{
+    static void *replaced[240];
+    void *env = mg_jni_env(), *table = *(void **)env;
+    other_env o;
+    mg_thread *t;
+    say("each thread its own JNIEnv: a table put in one is that thread's alone");
+    CHECK(env == mg_jni_env() && table != NULL);
+    memcpy(replaced, table, sizeof(replaced));
+    *(void **)env = replaced;
+    o.env = o.table = NULL;
+    t = mg_thread_start(env_of_other_thread, &o, 256 * 1024, "jni-env");
+    CHECK(t != NULL);
+    if (t) mg_thread_join(t);
+    CHECK(o.env != NULL && o.env != env && o.table == table);
+    CHECK(*(void **)mg_jni_env() == (void *)replaced);
+    *(void **)env = table;
+}
+
 void test_jni(const char *guest_dir, const char *fixtures)
 {
     test_env();
+    test_env_per_thread();
     if (fixtures) test_scoped_throw(fixtures);
 #if MG_HOST_ARM32
     test_guarded_call();

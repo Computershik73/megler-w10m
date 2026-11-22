@@ -11,6 +11,8 @@
 // a system app's tiles of its main screen (TileUtils.updateTileData) and ended on the tile with no icon.
 // And an app whose activities view web links (VIEW, http or https) has PRIVATE_FLAG_HAS_DOMAIN_URLS, as Android's package
 // parser marks it: Android's own Settings offers an app's "Open supported links" only for such an app.
+// And an app whose manifest says android:isolatedSplits has PRIVATE_FLAG_ISOLATED_SPLIT_LOADING, and requestsIsolatedSplitLoading
+// says so (megler.Splits loads its feature splits so).
 // Everything else is the original's, unchanged.
 package android.content.pm;
 public class ApplicationInfo extends PackageItemInfo implements android.os.Parcelable {
@@ -90,11 +92,14 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
             a.appComponentFactory = megler.Manifest.appComponentFactory;
             /* an app with an activity that views web links, as Android's package parser marks it (Open by default) */
             if (megler.Resolver.hasDomainUrls(a.packageName)) a.privateFlags |= PRIVATE_FLAG_HAS_DOMAIN_URLS;
+            /* an app that loads its splits in isolation (android:isolatedSplits), as Android's package parser marks it: megler.Splits */
+            if (megler.Manifest.isolatedSplits) a.privateFlags |= PRIVATE_FLAG_ISOLATED_SPLIT_LOADING;
             a.uid = android.os.Process.myUid();
             sSelf = a;
         }
         return sSelf;
     }
+    public boolean requestsIsolatedSplitLoading() { return (privateFlags & PRIVATE_FLAG_ISOLATED_SPLIT_LOADING) != 0; }
     public boolean isProfileableByShell() { return false; }
     public boolean isResourceOverlay() { return false; }
     public boolean isVirtualPreload() { return false; }
@@ -281,7 +286,6 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
     public android.graphics.drawable.Drawable loadDefaultIcon(android.content.pm.PackageManager p0) { return null; }
     public java.lang.CharSequence loadDescription(android.content.pm.PackageManager p0) { return null; }
     public void maybeUpdateHiddenApiEnforcementPolicy(int p0) {}
-    public boolean requestsIsolatedSplitLoading() { return false; }
     public void setAppClassNamesByProcess(android.util.ArrayMap p0) {}
     public void setBaseCodePath(java.lang.String p0) { meglerFill = megler.Fill.put(meglerFill, "BaseCodePath", p0); }
     public void setBaseResourcePath(java.lang.String p0) { meglerFill = megler.Fill.put(meglerFill, "BaseResourcePath", p0); }

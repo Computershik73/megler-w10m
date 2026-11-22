@@ -18,6 +18,8 @@ public final class Manifest {
         public int enabledResource;
         public Bundle metaData;
         public final ArrayList<Filter> filters = new ArrayList<>();
+        /** The split whose manifest declares it (ComponentInfo.splitName), null for the base's. */
+        public String split;
     }
     /** An <intent-filter> as Android's IntentFilter has it (megler.IntentMatch matches one). */
     public static final class Filter {
@@ -38,7 +40,15 @@ public final class Manifest {
     public static Bundle appMetaData = new Bundle();
     public static final ArrayList<Component> activities = new ArrayList<>(), services = new ArrayList<>(), receivers = new ArrayList<>(), providers = new ArrayList<>();
     public static final ArrayList<String> permissions = new ArrayList<>(), libraries = new ArrayList<>();
+    /**
+     * The base's android:isolatedSplits: each feature split has a class loader of its own (megler.Splits). The feature splits
+     * (android:isFeatureSplit), by name, and the split each uses (<uses-split>; null for the base).
+     */
+    public static boolean isolatedSplits;
+    public static final java.util.HashMap<String, String> featureSplits = new java.util.HashMap<>();
     private static boolean sRead;
+    /* The name of the split whose manifest is being read (parse). */
+    private static String sSplit;
 
     private static final String NS = "http://schemas.android.com/apk/res/android";
     private static String full(String n) {
@@ -67,6 +77,7 @@ public final class Manifest {
             byte[] m = Native.readApkFile(FIRST_SPLIT_APK + k, "AndroidManifest.xml");
             if (m != null) parse(m, true);
         }
+        sSplit = null;
     }
 
     private static void parse(byte[] d, boolean split) {
@@ -87,14 +98,21 @@ public final class Manifest {
                 if (t != XmlPullParser.START_TAG) continue;
                 String tag = p.getName();
                 if (split) {
-                    // A split's manifest: its components alone.
+                    // A split's manifest: its components alone, and its name, whether it is a feature split and the split it uses.
+                    if ("manifest".equals(tag)) {
+                        sSplit = p.getAttributeValue(null, "split");
+                        if (sSplit != null && p.getAttributeBooleanValue(NS, "isFeatureSplit", false) && !featureSplits.containsKey(sSplit)) featureSplits.put(sSplit, null);
+                        continue;
+                    }
+                    if ("uses-split".equals(tag) && sSplit != null && featureSplits.containsKey(sSplit)) { featureSplits.put(sSplit, p.getAttributeValue(NS, "name")); continue; }
                     if ("application".equals(tag)) { inApp = true; continue; }
-                    if ("manifest".equals(tag) || tag.startsWith("uses-")) continue;
+                    if (tag.startsWith("uses-")) continue;
                     if ("meta-data".equals(tag) && cur == null) continue;
                 }
                 switch (tag) {
                 case "manifest":
                     packageName = p.getAttributeValue(null, "package");
+                    isolatedSplits = p.getAttributeBooleanValue(NS, "isolatedSplits", false);
                     versionCode = p.getAttributeIntValue(NS, "versionCode", 1);
                     versionName = p.getAttributeValue(NS, "versionName");
                     break;
@@ -134,6 +152,7 @@ public final class Manifest {
                     cur = new Component();
                     cur.kind = tag;
                     cur.name = full(p.getAttributeValue(NS, "name"));
+                    cur.split = split ? sSplit : null;
                     cur.taskAffinity = affinity(p.getAttributeValue(NS, "taskAffinity"), appTaskAffinity, packageName);
                     if ("activity-alias".equals(tag)) {
                         String target = full(p.getAttributeValue(NS, "targetActivity"));

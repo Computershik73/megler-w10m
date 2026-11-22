@@ -459,6 +459,13 @@ bool mg_mem_page_state(const void *p, bool *committed, int *prot)
     }
     return true;
 }
+int mg_mem_writable(const void *p)
+{
+    MEMORY_BASIC_INFORMATION info;
+    if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info)) return -1;
+    /* (A guard page, a stack's, is written once the system has grown the stack over it.) */
+    return info.State == MEM_COMMIT && (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+}
 #define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
 void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RELEASE); }
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }

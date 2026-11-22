@@ -3543,12 +3543,29 @@ are found in the base and then the splits, and listed from all
 (`app_apk_with` in `mg_java.c`); native code's `AAssetManager` already looked
 in every APK the linker has.
 
-Not done: the components a feature split declares in its own manifest are not
-known (the framework reads the base's manifest alone; bundletool merges an
-install-time feature's components into the base's, which is the usual case);
-isolated split loading and `<uses-split>` dependencies (one class loader has
-everything); `PackageInfo` of splits' revision codes (zeros); more than ten
-splits.
+The components a feature split declares in its own manifest are the app's
+too (`megler.Manifest`, `activities.json`), each with its split's name
+(`ComponentInfo.splitName`).
+
+**Isolated splits.** An app whose base manifest says `android:isolatedSplits`
+(Chrome 158: its browser is in the feature split "chrome") has its feature
+splits loaded as Android's `LoadedApk` loads them: the base's class loader has
+`base.apk` alone, and each feature split a `PathClassLoader` of its own over
+its APK (`megler.Splits`, made once), whose parent is the loader of the split it
+uses (`<uses-split>`) or the base's. The Java driver keeps such a split off the
+app's class path and tells the runtime its path (`mg_dvm_isolated_split`); the
+loader that opens it gets a class scope of its own, its parent's classes first
+(`child_scope_for` in `dvm/mg_dvm_art.c`), whose classes say that loader and
+whose native code is the app's to the linker (`mg_dvm_library_scope`).
+`Context.createContextForSplit` gives a context with the split's loader
+(`NameNotFoundException` for a split the app has not), and a component of the
+split is made by that loader on that context (activities, providers, services,
+receivers); `ApplicationInfo.requestsIsolatedSplitLoading` says so. The
+resources stay the app's one table of every split. The Java test app
+`isolated` checks it. Every other app has all its splits on one loader.
+
+Not done: `ApplicationInfo.splitDependencies`; `PackageInfo` of splits'
+revision codes (zeros); a split's own resources apart from the others'.
 
 ### Drawing: `megler.Gfx` and the shell
 

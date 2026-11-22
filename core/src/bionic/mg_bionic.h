@@ -259,6 +259,8 @@ int mg_signal_send(mg_gthread *t, int sig);            /* pthread_kill: 0 or an 
 int mg_signal_mask(int how, const gulong *set, gulong *old); /* pthread_sigmask: a sigset_t, a long */
 /* Runs the handlers of the signals waiting for the calling thread. Only where no lock of this layer is held. */
 MG_HOSTCB void mg_signals_check(void);
+/* Whether the app may write [p, p + n), as a system call finds out before it writes its answer there: false for EFAULT. */
+bool mg_mmap_writable(void *p, size_t n);
 /* A fault's signal for the app's own handler (an inline hook's trap, mg_mmap_app_trap): true if one ran and f says where to go on. */
 bool mg_signal_fault(int sig, mg_fault *f);
 static inline bool mg_signals_ready(const mg_gthread *t)

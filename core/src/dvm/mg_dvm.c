@@ -214,7 +214,8 @@ static void give_loader(mg_dvm_class *c, void *user)
     mg_jvalue v;
     v.j = 0;
     v.l = (mg_jobj *)user;
-    if (c->dex && c->dex->app && c->mirror) mg_dvm_set_field(c->mirror, "classLoader", v);
+    /* (A class of a scope of its own keeps its loader's: an isolated split's, a module's.) */
+    if (c->dex && c->dex->app && !c->scope && c->mirror) mg_dvm_set_field(c->mirror, "classLoader", v);
 }
 
 void mg_dvm_set_app_loader(mg_jobj *loader)
