@@ -191,7 +191,7 @@ final class Stream extends BidirectionalStream {
             networkFailed(e, false);
             return;
         }
-        final Info i = new Info(Collections.singletonList(url), s.status, "", entries(response), "h2", s.receivedBytes);
+        final Info i = new Info(Collections.singletonList(url), s.status, "", entries(response, true), "h2", s.receivedBytes);
         synchronized (lock) {
             if (done) return;
             info = i;
@@ -237,10 +237,15 @@ final class Stream extends BidirectionalStream {
         return out;
     }
 
-    /** The response's fields as headers: its pseudo-headers (:status) are not among them. */
-    private static List<Map.Entry<String, String>> entries(List<String[]> fields) {
+    /**
+     * The response's fields as headers. Its headers keep their pseudo-headers (:status), as Cronet's BidirectionalStream
+     * gives the HTTP/2 header block as it came: gRPC's Cronet transport (grpc-cronet, the Play Store's) takes its :status from
+     * there, and without one took each answer for a malformed one -- "UNKNOWN: HTTP status code 200", the stream cancelled at
+     * its first data (the Play Store 54's every page: "Try again"). Trailers have none.
+     */
+    private static List<Map.Entry<String, String>> entries(List<String[]> fields, boolean pseudo) {
         ArrayList<Map.Entry<String, String>> out = new ArrayList<>(fields.size());
-        for (String[] f : fields) if (!f[0].startsWith(":")) out.add(Info.entry(f[0], f[1]));
+        for (String[] f : fields) if (pseudo || !f[0].startsWith(":")) out.add(Info.entry(f[0], f[1]));
         return out;
     }
 
@@ -293,7 +298,7 @@ final class Stream extends BidirectionalStream {
         final boolean end = n < 0;
         List<String[]> trailers = end ? s.trailers() : null;
         if (trailers != null) {
-            final HeaderBlock block = new Info.Headers(entries(trailers));
+            final HeaderBlock block = new Info.Headers(entries(trailers, false));
             post(() -> {
                 synchronized (lock) {
                     if (done) return;
