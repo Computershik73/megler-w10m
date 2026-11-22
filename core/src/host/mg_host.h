@@ -78,6 +78,12 @@ MG_HOSTAPI size_t mg_mem_discard(void *p, size_t size, void (MG_HOSTCB *fn)(u8 *
 MG_HOSTAPI void mg_mem_set_before_system_write(void (MG_HOSTCB *fn)(void *p, size_t size));
 /* Whether the page at `p` is committed, and its access (MG_PROT_*, -1 for any other): false where the host cannot say (POSIX). */
 MG_HOSTAPI bool mg_mem_page_state(const void *p, bool *committed, int *prot);
+/*
+ * Whether the byte at `p` can be written now, as a system call that writes there finds out (the kernel's copy_to_user): 1,
+ * 0 where a write would fault, -1 where the host cannot say. Windows says the page's access; POSIX reads the byte through a
+ * pipe and writes it back the same way, which the system refuses with EFAULT, not a fault, where it may not.
+ */
+MG_HOSTAPI int mg_mem_writable(const void *p);
 MG_HOSTAPI void mg_mem_release(void *p, size_t size);
 /* After writing code and before running it. */
 MG_HOSTAPI void mg_icache_flush(void *p, size_t size);

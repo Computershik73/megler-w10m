@@ -180,6 +180,15 @@ bool mg_mem_page_state(const void *p, bool *committed, int *prot)
     (void)prot;
     return false;
 }
+int mg_mem_writable(const void *p)
+{
+    int fds[2], w;
+    if (pipe(fds) != 0) return -1;
+    w = write(fds[1], p, 1) != 1 ? 0 : read(fds[0], (void *)p, 1) == 1 ? 1 : 0;
+    close(fds[0]);
+    close(fds[1]);
+    return w;
+}
 #define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
 
 void mg_mem_release(void *p, size_t size) { munmap(p, size); }

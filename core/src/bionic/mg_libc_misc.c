@@ -1076,6 +1076,12 @@ typedef struct g_rlimit {
 
 static int g_getrlimit(int resource, g_rlimit *r)
 {
+    /* Into memory the app may not write: EFAULT, as the kernel says, not a fault (mg_mmap_writable: Chromium asks so whether
+       its protected memory is read-only). */
+    if (!r || !mg_mmap_writable(r, sizeof(*r))) {
+        mg_set_errno(GE_FAULT);
+        return -1;
+    }
     /* RLIMIT_STACK 3, RLIMIT_NOFILE 7; everything else unlimited */
     if (resource == 3) r->cur = r->max = 8u * 1024 * 1024;
     else if (resource == 7) r->cur = r->max = 1024;
@@ -1095,6 +1101,10 @@ typedef struct g_rlimit64 {
 static int g_getrlimit64(int resource, g_rlimit64 *r)
 {
     g_rlimit small;
+    if (!r || !mg_mmap_writable(r, sizeof(*r))) {
+        mg_set_errno(GE_FAULT);
+        return -1;
+    }
     g_getrlimit(resource, &small);
     r->cur = small.cur == (gulong)-1 ? ~(u64)0 : small.cur;
     r->max = small.max == (gulong)-1 ? ~(u64)0 : small.max;

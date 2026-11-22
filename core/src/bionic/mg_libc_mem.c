@@ -2352,6 +2352,26 @@ static bool fix_fault(mg_addr address, bool write, bool exec, mg_addr pc)
     return mg_mem_protect(page, MG_PAGE, MG_PROT_RW);
 }
 
+/*
+ * Whether the app may write [p, p + n), as the kernel finds out before it copies a system call's answer there
+ * (copy_to_user): where the app made a page read-only the call says EFAULT, where the app's own store would fault. A page
+ * this layer took the access from -- given back after madvise, flipped to executable, decommitted by it -- is repaired
+ * first, as the app's own write would have it (fix_fault) -- where the host can say a page's access: elsewhere (POSIX) this
+ * layer leaves the app's pages as the app asked. Chromium checks that its protected memory is read-only so, getrlimit into
+ * it to fail with EFAULT (base::AssertMemoryIsReadOnly): Megler wrote the limit there and Chrome 158 ended as it opened its
+ * first tab (0.1.0.756).
+ */
+bool mg_mmap_writable(void *p, size_t n)
+{
+    u8 *page, *end = (u8 *)p + (n ? n : 1);
+    bool committed;
+    int prot;
+    for (page = (u8 *)MG_ALIGN_DOWN((mg_addr)p, (mg_addr)MG_PAGE); page < end; page += MG_PAGE)
+        if (mg_mem_writable(page < (u8 *)p ? p : page) == 0 && !(mg_mem_page_state(page, &committed, &prot) && fix_fault((mg_addr)page, true, false, 0)))
+            return false;
+    return true;
+}
+
 void mg_mmap_given_back(u64 *given, u64 *again)
 {
     mg_lock_acquire(&g_region_lock);

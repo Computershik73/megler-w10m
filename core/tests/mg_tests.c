@@ -4039,6 +4039,36 @@ static void test_libc_odds(void)
         CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
     }
     /*
+     * And into a page the app made read-only, getrlimit and getrlimit64 fail with EFAULT and write nothing, as the kernel's
+     * copy_to_user refuses: Chromium asks so whether its protected memory is read-only (base::AssertMemoryIsReadOnly, Chrome
+     * 158's first tab), and the layer wrote there and faulted. Writable again, they answer.
+     */
+    {
+        typedef int (*rlimit_fn)(int, void *);
+        typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
+        typedef int (*mprotect_fn)(void *, size_t, int);
+        typedef int (*munmap_fn)(void *, size_t);
+        typedef int *(*errno_fn)(void);
+        rlimit_fn get = (rlimit_fn)mg_bionic_find("getrlimit"), get64 = (rlimit_fn)mg_bionic_find("getrlimit64");
+        mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
+        mprotect_fn mprotect_ = (mprotect_fn)mg_bionic_find("mprotect");
+        munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        u8 *page = mmap_ ? (u8 *)mmap_(NULL, 4096, 3, 0x22, -1, 0) : NULL;
+        CHECK(get && get64 && mprotect_ && munmap_ && errno_ && page && page != (u8 *)-1);
+        if (get && get64 && mprotect_ && munmap_ && errno_ && page && page != (u8 *)-1) {
+            memset(page, 0x5A, 4096);
+            CHECK(mprotect_(page, 4096, 1) == 0);
+            *errno_() = 0;
+            CHECK(get(6, page) == -1 && *errno_() == 14);
+            *errno_() = 0;
+            CHECK(get64(6, page + 64) == -1 && *errno_() == 14);
+            CHECK(page[0] == 0x5A && page[64] == 0x5A && page[4095] == 0x5A);
+            CHECK(mprotect_(page, 4096, 3) == 0 && get(7, page) == 0 && ((u32 *)page)[0] == 1024);
+            munmap_(page, 4096);
+        }
+    }
+    /*
      * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
      * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
      * process's executable through realpath is what readlink says it links to; lstat, by either of its names and as fstatat
