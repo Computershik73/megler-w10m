@@ -839,8 +839,10 @@ typedef struct real_bundle {
     bool runnable;
     const char *const *kept;
     int nkept;
-    const char *left_out;                         /* one of those left out */
+    const char *left_out;                         /* one of those left out; NULL: nothing is */
     const char *reason;                           /* a part of the reason, for one that is not runnable */
+    const char *activity;                         /* the activity it is started with (a launcher alias's target), where it matters */
+    const char *listed;                           /* an activity of a split among those other apps see (activities.json) */
 } real_bundle;
 
 static void test_real(const char *real_dir, const char *scratch, const real_bundle *b)
@@ -866,7 +868,7 @@ static void test_real(const char *real_dir, const char *scratch, const real_bund
     n = names_in(json ? json : "{}", "leftOut", names, 64);
     joined(names, n, text, sizeof(text));
     say("  left out: %s", text);
-    CHECK(has_name(names, n, b->left_out));
+    CHECK(b->left_out ? has_name(names, n, b->left_out) : n == 0);
     megler_free(json);
     report = megler_apk_report_splits(apk, splits);
     say("  report: %s", report ? report : "(none)");
@@ -881,7 +883,22 @@ static void test_real(const char *real_dir, const char *scratch, const real_bund
     }
     CHECK(report && strstr(report, b->runnable ? "\"runnable\":true" : "\"runnable\":false"));
     if (b->reason) CHECK(report && strstr(report, b->reason));
+    if (b->activity) {
+        snprintf(want, sizeof(want), "\"activity\":\"%s\"", b->activity);
+        CHECK(report && strstr(report, want) && strstr(report, "\"engine\":\"java\""));
+    }
     megler_free(report);
+    if (b->listed) {
+        char *out = mg_sprintf("%s/described", dir), *file = mg_sprintf("%s/described/activities.json", dir);
+        size_t size = 0;
+        char *acts = megler_apk_describe_activities(apk, splits, out) ? (char *)mg_file_read_all(file, &size) : NULL;
+        snprintf(want, sizeof(want), "\"name\":\"%s\"", b->listed);
+        say("  activities.json: %u bytes, %s %s", (unsigned)size, b->listed, acts && strstr(acts, want) ? "listed" : "NOT listed");
+        CHECK(acts && strstr(acts, want) && strstr(acts, "\"name\":\"com.google.android.apps.chrome.Main\""));
+        free(acts);
+        free(file);
+        free(out);
+    }
     {
         uint8_t *icon = NULL;
         size_t size = 0;
@@ -1008,6 +1025,7 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
     static const char *const mangadex_kept[] = { "config.en", "config.ru", "config.xxhdpi" };
     static const char *const magnit_kept[] = { "config.en", "config.xhdpi" };
     static const char *const zalo_kept[] = { "config.armeabi_v7a", "config.xxhdpi", "config.xxxhdpi", "mediapipe_faceeffect", "tensorflowLite" };
+    static const char *const chrome_kept[] = { "chrome", "config.ru", "on_demand" };
     static const real_bundle real[] = {
         { "BiP_v.4.2.42-HEAD(4450)(7.0-15.0)(arm7a,arm64-8a,x86,x86-64).apks", "com.turkcell.bip", "4.2.42-HEAD", "armeabi-v7a", true, bip_kept, 3, "config.arm64_v8a", NULL },
         { "MangaDex_1.0.0.0_APKPure.xapk", "org.mangadex.mangadex", "1.0.0.0", NULL, true, mangadex_kept, 3, "config.ja", NULL },
@@ -1016,6 +1034,11 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
         { "com.zing.zalo_26.10.02-261002903_APKMirror.apkm", "com.zing.zalo", "26.10.02", "armeabi-v7a", true, zalo_kept, 5, "config.arm64_v8a", NULL },
         { "\xd0\x9c\xd0\xb0\xd0\xb3\xd0\xbd\xd0\xb8\xd1\x82_8.107.1.apks", "ru.tander.magnit", "8.107.1", NULL, false, magnit_kept, 2, "config.arm64_v8a",
           "no 32-bit ARM code: the bundle it came in has native code for arm64-v8a only" },
+        /* Chrome 158 from Google Play (isolatedSplits): its base has three activities and none to start; the browser and its
+           launcher alias are in its feature split "chrome". It was refused as an app whose native code no Java starts. (Made of
+           what the HP Elite x3's Play Store installed: base.apk and its three splits, stored.) */
+        { "com.android.chrome_158.0.8127.42.apks", "com.android.chrome", "158.0.8127.42", "armeabi-v7a", true, chrome_kept, 3, NULL, NULL,
+          "org.chromium.chrome.browser.ChromeTabbedActivity", "org.chromium.chrome.browser.ChromeTabbedActivity" },
     };
     int i;
     g_checks = g_failed = 0;

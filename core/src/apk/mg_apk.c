@@ -1201,6 +1201,18 @@ bool mg_apk_read_app(const char *apk_path, const char *const *splits, int nsplit
             continue;
         }
         mg_strlcpy(info->splits[info->nsplits++], part->split, sizeof(info->splits[0]));
+        /*
+         * A feature split declares components of its own, which Android's package parser adds to the app's: Chrome 158
+         * (isolatedSplits) has three activities in its base and the browser, ChromeTabbedActivity with its launcher alias
+         * com.google.android.apps.chrome.Main, in its split "chrome". The base naming no activity to start, the split's is the
+         * app's (Chrome was refused as an app whose native code no Java starts).
+         */
+        if (!info->activity[0] && part->activity[0]) {
+            mg_strlcpy(info->activity, part->activity, sizeof(info->activity));
+            info->orientation = part->orientation;
+            if (!info->native_library[0]) mg_strlcpy(info->native_library, part->native_library, sizeof(info->native_library));
+            if (!info->func_name[0]) mg_strlcpy(info->func_name, part->func_name, sizeof(info->func_name));
+        }
         given[nz++] = k + 1;
     }
     free(part);
@@ -1899,6 +1911,7 @@ typedef struct acts_ctx {
     mg_jbuf out, act, filters;  /* the description; the activity or the service being read; its filters */
     mg_jbuf services;           /* the services another app may bind, which have a file of their own */
     bool in_application, in_activity, in_filter, began, listed, exported_given, exported, is_service;
+    bool split_pass;            /* reading a split's manifest: its components only, added to the base's */
     int nfilters, nservices;
     /* the filter being read */
     char actions[16][160], categories[16][160], schemes[8][32], hosts[8][160], types[8][96];
@@ -1964,7 +1977,10 @@ static void acts_start(void *user, const char *tag, const attr *attrs, int nattr
     int i;
     for (i = 0; i < nattrs; i++)
         if (attrs[i].id == ATTR_NAME || (!attrs[i].id && !strcmp(attrs[i].name, "name"))) name = &attrs[i];
-    if (!strcmp(tag, "manifest")) {
+    if (c->split_pass && (!strcmp(tag, "manifest") || !strcmp(tag, "application"))) {
+        /* A split's own manifest and application say nothing more of the app: its components go on the base's list. */
+        if (!strcmp(tag, "application") && c->listed) c->in_application = true;
+    } else if (!strcmp(tag, "manifest")) {
         for (i = 0; i < nattrs; i++)
             if (!attrs[i].id && !strcmp(attrs[i].name, "package")) mg_strlcpy(c->package, attrs[i].text, sizeof(c->package));
         mg_jraw(&c->out, "{");
@@ -2344,6 +2360,20 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
     w.end = acts_end;
     w.user = c;
     if (manifest && xml_walk(manifest, (u32)msize, &w) && c->began) {
+        /*
+         * And the components each split declares, as Android's package parser adds a feature split's to the app's: Chrome
+         * 158's browser activity and its launcher alias are in its split "chrome" (isolatedSplits).
+         */
+        for (k = 1; k < a->n && c->listed; k++) {
+            const mg_zip_entry *se = mg_zip_find(&a->zips[k], "AndroidManifest.xml");
+            size_t ssize = 0;
+            u8 *split = se ? mg_zip_read(&a->zips[k], se, 16u << 20, &ssize) : NULL;
+            c->split_pass = true;
+            c->in_application = c->in_activity = c->in_filter = false;
+            if (split) xml_walk(split, (u32)ssize, &w);
+            free(split);
+        }
+        c->split_pass = false;
         if (!c->listed) {
             mg_jkey(&c->out, "activities", false);
             mg_jraw(&c->out, "[");
