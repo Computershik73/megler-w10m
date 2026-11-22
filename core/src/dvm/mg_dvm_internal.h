@@ -566,6 +566,8 @@ int mg_dvm_dex_process_scope(mg_dvm_dex *d);
 bool mg_dvm_scope_child(int scope, int *parent, bool *own_first);
 /* The service scope a scope is under: itself for a service's, a child's parent's root, 0 for the app's. */
 int mg_dvm_scope_root(int scope);
+/* The linker's scope for a class scope's native code: its own, an isolated split's that of the scope it is under (mg_dvm_art.c). */
+int mg_dvm_library_scope(int scope);
 mg_jobj *mg_dvm_scope_loader(int scope);
 void mg_dvm_loader_roots(void (*fn)(mg_jobj *, void *), void *user);
 mg_dvm_class *mg_dvm_find_class_desc(const char *descriptor);

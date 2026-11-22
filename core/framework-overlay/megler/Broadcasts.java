@@ -48,6 +48,8 @@
 // And each receiver hears a broadcast with a PendingResult of its own, which says who sent it (Android 14's getSentFromUid
 // and getSentFromPackage) where the sender's options share its identity (BroadcastOptions.setShareIdentityEnabled):
 // Messenger's own receivers refuse a broadcast of its own that comes from no one (sharedSender).
+// And a receiver an isolated split declares is made by the split's class loader and given the split's context (megler.Splits).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -266,7 +268,8 @@ public final class Broadcasts {
                 android.util.Log.i("Megler", "receiver " + c.name + " belongs to process " + c.process + "; not dispatched in the main process");
                 continue;
             }
-            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx, null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
+            // (one of an isolated split's: made by the split's class loader and given the split's context, as handleReceiver does)
+            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(Splits.loaderOf(c), c.name, i), null, Splits.contextOf(ctx, c), null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
         // (A stable sort: the registered ones by their filters' priority, higher first, ahead of the manifest's.)
         java.util.Collections.sort(targets, (a, b) -> Integer.compare(b[1] != null ? ((IntentFilter) b[1]).getPriority() : Integer.MIN_VALUE,

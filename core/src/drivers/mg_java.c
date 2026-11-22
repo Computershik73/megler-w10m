@@ -88,6 +88,8 @@ static struct {
     char split_names[MAX_SPLITS][96];
     char *guest_splits[MAX_SPLITS];
     bool split_code[MAX_SPLITS];
+    /* The feature splits of an app with android:isolatedSplits, which are not on its class path: each has a loader of its own. */
+    bool split_isolated[MAX_SPLITS];
     /*
      * Google Play services' splits, for an app that hosts them (megler_run_config.gms_splits_dir): their paths as the app
      * sees them, beside GmsCore.apk (Native.gmsSplitPaths), which megler.MicroG adds to their resources.
@@ -2638,6 +2640,10 @@ static void mount_apk(void)
         J.guest_splits[i] = mg_sprintf("%s/split_%s.apk", guest_dir, J.split_names[i]);
         mg_fs_mount(J.guest_splits[i], J.config->split_apks[i]);
         if (J.split_code[i]) mg_dvm_dex_source_added(J.guest_splits[i]);
+        if (J.split_isolated[i]) {
+            mg_dvm_isolated_split(J.guest_splits[i], J.config->split_apks[i]);
+            mg_info("java: the app loads its splits in isolation (android:isolatedSplits): %s has a class loader of its own", J.split_names[i]);
+        }
     }
     if (J.config->apps_dir) mg_fs_other_apks(other_apk_find, NULL);
     free(dir);
@@ -2956,8 +2962,13 @@ static MG_HOSTCB void main_thread(void *arg)
             text = mg_dvm_string_utf8(value.l);
             if (text) mg_sysprop_set(build_props[prop_index].prop, text);
         }
-        /* A feature split's code joins the app's class path after the base's, as its class loader has it on Android. */
-        for (i = 0; i < J.nsplits; i++) J.split_code[i] = mg_dvm_add_apk(J.config->split_apks[i]) > 0;
+        /*
+         * A feature split's code joins the app's class path after the base's, as its class loader has it on Android -- but for
+         * an app with android:isolatedSplits, whose base loader has none of its feature splits: each of those is loaded by a
+         * class loader of its own, which the framework makes over it (megler.Splits), its classes a scope of their own
+         * (mg_dvm_isolated_split).
+         */
+        for (i = 0; i < J.nsplits; i++) J.split_code[i] = !J.split_isolated[i] && mg_dvm_add_apk(J.config->split_apks[i]) > 0;
         mount_apk();
         mount_host_fonts();
         place_libraries();
@@ -3128,7 +3139,10 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
         mg_warn("java: the app has %d splits, and the framework reads %d: %s and those after it are left out", J.nsplits, MAX_SPLITS, info->splits[MAX_SPLITS]);
         J.nsplits = MAX_SPLITS;
     }
-    for (i = 0; i < J.nsplits; i++) mg_strlcpy(J.split_names[i], info->splits[i], sizeof(J.split_names[0]));
+    for (i = 0; i < J.nsplits; i++) {
+        mg_strlcpy(J.split_names[i], info->splits[i], sizeof(J.split_names[0]));
+        J.split_isolated[i] = info->isolated_splits && info->split_feature[i];
+    }
     /* The battery the app starts with is not news to it; what it becomes afterwards is (battery_news). */
     J.battery_changes = mg_battery_changes();
     mg_battery_read(&J.battery);

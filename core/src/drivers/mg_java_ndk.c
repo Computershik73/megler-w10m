@@ -825,7 +825,7 @@ static void NA_loadNativeCode(mg_jcall *c)
     base = strrchr(path, '/');
     base = base ? base + 1 : path;
     /* The library is the app's, of the class loader's scope (as Runtime.nativeLoad loads it, dvm/mg_dvm_jvm.c). */
-    previous = mg_ld_set_scope(mg_dvm_loader_scope(c->args[9].l));
+    previous = mg_ld_set_scope(mg_dvm_library_scope(mg_dvm_loader_scope(c->args[9].l)));
     lib = dl_open(path, 2 /* RTLD_NOW */);
     if (!lib) {
         const char *why = dl_error ? dl_error() : NULL;

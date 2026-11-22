@@ -88,6 +88,10 @@
 // And Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER) is Megler's (megler.RingtonePicker), over the app,
 // its answer the caller's result: it threw ActivityNotFoundException, and WhatsApp ended at its "Notification tone".
 //
+// And an app that loads its splits in isolation (android:isolatedSplits, megler.Splits) has the base alone in its class loader,
+// as Android's LoadedApk makes it; an activity or a content provider its feature split declares is made by the split's class
+// loader and given the split's context, as ActivityThread makes them. Chrome 158's browser is in its split "chrome".
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -126,7 +130,8 @@ public final class AppRunner {
         try {
             StringBuilder path = new StringBuilder(Native.apkPath());
             String[] splits = Native.splitPaths();
-            if (splits != null) for (String sp : splits) path.append(java.io.File.pathSeparatorChar).append(sp);
+            // (none of the splits for an app that loads them in isolation: each feature split has a loader of its own, Splits)
+            if (splits != null && !Splits.isolated()) for (String sp : splits) path.append(java.io.File.pathSeparatorChar).append(sp);
             sLoader = (ClassLoader) Class.forName("dalvik.system.PathClassLoader").getConstructor(String.class, String.class, ClassLoader.class)
                     .newInstance(path.toString(), android.content.pm.ApplicationInfo.self().nativeLibraryDir, AppRunner.class.getClassLoader());
             Native.setAppClassLoader(sLoader);
@@ -313,15 +318,17 @@ public final class AppRunner {
         for (Manifest.Component p : ordered) {
             if (!p.enabled) continue;
             try {
-                ContentProvider cp = sFactory.instantiateProvider(classLoader(), p.name);
+                // (one of an isolated split's: made by the split's class loader, on the split's context, as installProvider makes it)
+                ContentProvider cp = sFactory.instantiateProvider(Splits.loaderOf(p), p.name);
                 ProviderInfo info = new ProviderInfo();
                 info.name = p.name; info.authority = p.authorities; info.packageName = Native.packageName(); info.exported = p.exported; info.metaData = p.metaData; info.grantUriPermissions = p.grantUriPermissions;
+                info.splitName = p.split;
                 info.applicationInfo = app.getApplicationInfo();
                 // As the manifest says them: android:readPermission and writePermission, else android:permission for both
                 // (Android's SearchIndexablesProvider refuses to start without READ_SEARCH_INDEXABLES there).
                 info.readPermission = p.readPermission != null ? p.readPermission : p.permission;
                 info.writePermission = p.writePermission != null ? p.writePermission : p.permission;
-                cp.attachInfo(app, info);
+                cp.attachInfo(Splits.contextOf(app, p), info);
                 ContentResolver.register(p.authorities, cp);
             } catch (Throwable t) {
                 android.util.Log.w("Megler", "content provider " + p.name + " did not start", t);
@@ -438,10 +445,12 @@ public final class AppRunner {
             a.meglerAttach(process.activityBase(), process.application(), Processes.forLoader(intent, process.classLoader()), info, caller, request);
             return a;
         }
+        // An activity of an isolated split's is made by the split's class loader and has the split's context as its base, as
+        // ActivityThread.performLaunchActivity makes it on ContextImpl.createActivityContext (megler.Splits).
         Activity a = screen ? (Activity) Class.forName(cls).newInstance()
-                : gms ? MicroG.newActivity(cls) : android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
+                : gms ? MicroG.newActivity(cls) : android.app.ActivityThread.meglerInstrumentation().newActivity(Splits.loaderOf(info), cls, intent);
         if (gms || screen) a.meglerOtherProcess();
-        Context base = gms ? MicroG.activityBase() : ContextImpl.forActivity();
+        Context base = gms ? MicroG.activityBase() : screen ? ContextImpl.forActivity() : ContextImpl.forActivity(info);
         a.meglerAttach(base, gms ? MicroG.activityApplication() : sApp, intent, info, caller, request);
         return a;
     }
@@ -558,9 +567,9 @@ public final class AppRunner {
         // (An <activity-alias> runs the activity it names, as launch does.)
         String cls = "activity-alias".equals(info.kind) && info.parentActivity != null ? info.parentActivity : info.name;
         android.util.Log.d("Megler", "child " + cls + " of " + parent.getClass().getName());
-        Activity a = android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
+        Activity a = android.app.ActivityThread.meglerInstrumentation().newActivity(Splits.loaderOf(info), cls, intent);
         a.meglerSetParent(parent);
-        a.meglerAttach(ContextImpl.forActivity(), sApp, intent, info, null, -1);
+        a.meglerAttach(ContextImpl.forActivity(info), sApp, intent, info, null, -1);
         return a;
     }
     /** The component an activity was started as: its class, or the alias it was reached through. */

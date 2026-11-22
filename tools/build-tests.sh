@@ -340,6 +340,12 @@ EOF
         echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
+      # An app with isolated splits (android:isolatedSplits), built as Chrome 158 is: its activity in a feature split, each
+      # feature split loaded by a class loader of its own (mg_java_tests.c: run_isolated).
+      if [ -f "$ROOT/build/guest/java/isolated.apks" ]; then
+        echo "the Java test app isolated (build/guest/java/isolated.apks), unpacked and run through megler_run: isolated splits"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/isolated.apks' $WB/isolated.apks && rm -rf $WB/java-data-isolated && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java isolated $WB/isolated.apks $WB/java-data-isolated $WB/android-root - 0 480x800@160 2>&1" || STATUS=1
+      fi
       # Play Feature Delivery: the app that asks the Play Store for a feature module (playclient) and the stand-in for the Play
       # Store (playstore), in turn over one data folder -- the client on a phone without the Play Store, then with one that
       # takes no request up; the Play Store taking the request up and adding the module's split; the client that lost the

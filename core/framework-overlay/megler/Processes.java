@@ -395,7 +395,9 @@ public final class Processes {
         }
         @Override public Context createAttributionContext(String tag) { return ours(super.createAttributionContext(tag)); }
         @Override public Context createContext(android.content.ContextParams params) { return ours(super.createContext(params)); }
-        @Override public Context createContextForSplit(String split) { return ours(super.createContextForSplit(split)); }
+        @Override public Context createContextForSplit(String split) throws android.content.pm.PackageManager.NameNotFoundException {
+            return ours(super.createContextForSplit(split));
+        }
     }
 
     /** An ActivityManager that has the process running with this pid named as the scope's. */

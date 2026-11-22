@@ -88,8 +88,14 @@ typedef struct mg_apk_info {
      */
     bool split_required;
     char required_split_types[160];
-    /* The splits the app was read with (mg_apk_read_app), by their names, in the order given. */
+    /*
+     * A base's android:isolatedSplits: each of its feature splits is loaded by a class loader of its own, whose parent is the
+     * loader of the split it uses (<uses-split>) or the base's, and the base's loader has none of them (Chrome 158).
+     */
+    bool isolated_splits;
+    /* The splits the app was read with (mg_apk_read_app), by their names, in the order given, and which are feature splits. */
     char splits[MG_APK_MAX_SPLITS][96];
+    bool split_feature[MG_APK_MAX_SPLITS];
     int nsplits;
     /* What the unpacking of the bundle the app came in left out (its record, core/src/apk/mg_bundle.h): the splits' names. */
     char left_out[32][96];

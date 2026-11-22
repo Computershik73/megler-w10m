@@ -48,6 +48,11 @@
  * found, and what Android would tell it of its splits. Checked besides: the picture only a split has, in the window; and
  * the .xapk's expansion file, which the app finds in its own Android/obb.
  *
+ * `isolated` is an app with isolated splits (core/tests/app/isolated, android:isolatedSplits), built as Chrome 158 is: an
+ * Application in its base and its activity in the feature split "browser", and a split "more" that uses that one. Given as a
+ * bundle and unpacked as `splits` is. Its activity says whether its class loader, its context and the split contexts are as
+ * Android gives them: each feature split its own loader under the base's (or the split it uses), the base's without them.
+ *
  * `playclient` and `playstore` are Play Feature Delivery (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store
  * for a feature module as Play Core does, and a stand-in for the Play Store whose split install service answers as the
  * Play Store's. They are two processes on a phone, with a folder in common; here they are run in turn over one data folder
@@ -3752,6 +3757,36 @@ static int run_splits(void)
     return g_failed;
 }
 
+/* ------------------------------------------------------- isolated splits */
+
+/*
+ * `isolated`: the steps its activity says (core/tests/app/isolated/split/browser/.../Browser.java), each "ok"; and what the
+ * core says of the splits it keeps off the app's class path and of the loader that opened one.
+ */
+static int run_isolated(void)
+{
+    static const char *const steps[] = { "base-loader", "split-loader", "base-class", "activity-context", "split-context", "uses-split",
+                                         "no-such-split", "package-info", "replace-loader" };
+    int at = -1, i;
+    char want[160];
+    expect_line("I/IsolatedTest: onCreate", &at, 120);
+    for (i = 0; i < (int)MG_COUNT(steps); i++) {
+        snprintf(want, sizeof(want), "I/IsolatedTest: %s ok", steps[i]);
+        expect_line(want, &at, 60);
+    }
+    snprintf(want, sizeof(want), "I/IsolatedTest: done ok=%d failed=0", (int)MG_COUNT(steps));
+    expect_line(want, &at, 30);
+    CHECK(find_line("java: the app loads its splits in isolation (android:isolatedSplits): browser has a class loader of its own", 0) >= 0);
+    CHECK(find_line("java: the app loads its splits in isolation (android:isolatedSplits): more has a class loader of its own", 0) >= 0);
+    CHECK(find_line("over /data/app/megler.test.isolated-1/split_browser.apk: an isolated split's, scope", 0) >= 0);
+    CHECK(find_line("over /data/app/megler.test.isolated-1/split_more.apk: an isolated split's, scope", 0) >= 0);
+    for (i = 0; i < g_nlines; i++)
+        if (strstr(g_lines[i], "/IsolatedTest: ") && strstr(g_lines[i], " FAILED")) say("  %s", g_lines[i]);
+    back_and_end("I/IsolatedTest: onDestroy", &at);
+    say_app_lines("/IsolatedTest: ");
+    return g_failed;
+}
+
 /* ------------------------------------------------- Play Feature Delivery */
 
 /*
@@ -6533,7 +6568,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
      * `splits` is given a bundle, unpacked first as the shell unpacks one; the app is its base and the folder of its splits.
      * So is `app` when what it is given is named as a bundle (.apks, .xapk, .apkm): a real app that comes in several APKs.
      */
-    if (!strcmp(which, "splits") || (g_any_app && strlen(apk) > 5 && (!strcmp(apk + strlen(apk) - 5, ".apks") || !strcmp(apk + strlen(apk) - 5, ".xapk") ||
+    if (!strcmp(which, "splits") || !strcmp(which, "isolated") || (g_any_app && strlen(apk) > 5 && (!strcmp(apk + strlen(apk) - 5, ".apks") || !strcmp(apk + strlen(apk) - 5, ".xapk") ||
                                        !strcmp(apk + strlen(apk) - 5, ".apkm")))) {
         char *base = NULL;
         if (!unpack_bundle(apk, &base)) {
@@ -6570,6 +6605,7 @@ int mg_tests_java_run(const char *which, const char *apk, const char *android_ro
         else if (!strcmp(which, "webview")) run_webview();
         else if (!strcmp(which, "camera")) run_camera();
         else if (!strcmp(which, "splits")) run_splits();
+        else if (!strcmp(which, "isolated")) run_isolated();
         else if (g_play_client) run_playclient();
         else if (g_play_store) run_playstore();
         else if (!strcmp(which, "screen")) run_screen();

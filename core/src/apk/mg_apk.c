@@ -327,6 +327,7 @@ static bool arsc_raw(const arsc *a, u32 id, u8 *type, u32 *data, char *text, siz
 #define ATTR_TARGET_SDK 0x01010270u
 #define ATTR_MAX_SDK 0x01010271u
 #define ATTR_PERMISSION 0x01010006u
+#define ATTR_ISOLATED_SPLITS 0x0101054bu
 #define ATTR_IS_FEATURE_SPLIT 0x0101055bu
 #define ATTR_IS_SPLIT_REQUIRED 0x01010591u
 #define ATTR_REQUIRED_SPLIT_TYPES 0x0101064eu
@@ -438,6 +439,7 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             if (!attrs[i].id && !strcmp(attrs[i].name, "split")) mg_strlcpy(info->split, attrs[i].text, sizeof(info->split));
             if (!attrs[i].id && !strcmp(attrs[i].name, "configForSplit")) mg_strlcpy(info->config_for_split, attrs[i].text, sizeof(info->config_for_split));
             if (attrs[i].id == ATTR_IS_FEATURE_SPLIT && attrs[i].type == 0x12) info->feature_split = attrs[i].data != 0;
+            if (attrs[i].id == ATTR_ISOLATED_SPLITS && attrs[i].type == 0x12) info->isolated_splits = attrs[i].data != 0;
             if (attrs[i].id == ATTR_IS_SPLIT_REQUIRED && attrs[i].type == 0x12 && attrs[i].data) info->split_required = true;
             if (attrs[i].id == ATTR_REQUIRED_SPLIT_TYPES && attrs[i].text[0]) {
                 mg_strlcpy(info->required_split_types, attrs[i].text, sizeof(info->required_split_types));
@@ -1200,6 +1202,7 @@ bool mg_apk_read_app(const char *apk_path, const char *const *splits, int nsplit
             free(zips[nz]);
             continue;
         }
+        info->split_feature[info->nsplits] = part->feature_split;
         mg_strlcpy(info->splits[info->nsplits++], part->split, sizeof(info->splits[0]));
         /*
          * A feature split declares components of its own, which Android's package parser adds to the app's: Chrome 158

@@ -5,6 +5,9 @@
 // interface on the binder the service manager gives (platformInterface): a null there was a NullPointerException at the
 // manager's first call, the binder's answer is a zero.
 // And in the class loader, kept in a field of Android's name (mClassLoader) that an app may set by reflection.
+// And in the context of a split (createContextForSplit), and an activity's of a split (forActivity), for an app that loads its
+// splits in isolation (android:isolatedSplits, megler.Splits): a context with the split's class loader, as ContextImpl's
+// createContextForSplit and createActivityContext give, where the original answered the context itself for every app.
 // Everything else is the original's.
 package megler;
 
@@ -46,6 +49,12 @@ public final class ContextImpl extends Context {
     }
     /** A base context of its own (an activity's: its own theme), sharing the app's resources. */
     public static ContextImpl forActivity() { app(); return new ContextImpl(sResources); }
+    /** The same for an activity of the manifest: of an isolated split, with the split's class loader (createActivityContext). */
+    public static ContextImpl forActivity(Manifest.Component info) {
+        ContextImpl c = forActivity();
+        if (Splits.of(info) != null && Splits.isolated()) c.mClassLoader = Splits.loaderOf(info);
+        return c;
+    }
     public static void setApplication(Context a) { sApplication = a; }
     /** The theme an activity or the app gets when the manifest names none: what the target SDK selects on Android. */
     public static int defaultTheme() {
@@ -107,6 +116,16 @@ public final class ContextImpl extends Context {
         return mDeviceProtected ? withLoader(new ContextImpl(mResources, false)) : this;
     }
     private ContextImpl withLoader(ContextImpl c) { c.mClassLoader = mClassLoader; return c; }
+    /* As Android's: this context itself for an app that does not load its splits in isolation ("All Splits are always
+       loaded"); else one with the split's class loader (megler.Splits), the resources being the app's, which has every split's.
+       NameNotFoundException for a split the app has not. */
+    @Override public Context createContextForSplit(String split) throws PackageManager.NameNotFoundException {
+        if (!Splits.isolated()) return this;
+        ClassLoader cl = Splits.classLoader(split);
+        ContextImpl c = new ContextImpl(mResources, mDeviceProtected);
+        c.mClassLoader = cl;
+        return c;
+    }
     @Override public File getDir(String name, int mode) { return dir("app_" + name); }
     @Override public File getExternalFilesDir(String type) {
         File f = new File(Native.externalDir(), "Android/data/" + getPackageName() + "/files" + (type == null ? "" : "/" + type));
