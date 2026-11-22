@@ -165,10 +165,13 @@
 # (docs/PLAY-FEATURE-DELIVERY.md): an app that asks the Play Store for a
 # feature module as Play Core does, and a stand-in for the Play Store, run in
 # turn over one data folder as a phone's two processes have a folder in common
-# (six runs; mg_java_tests.c, run_playclient). And `crossapp` with `plugin`,
+# (eight runs; mg_java_tests.c, run_playclient). And `crossapp` with `plugin`,
 # two apps that work together as Total Commander and its plug-ins do: the
 # first asks for an activity of the second with a whole Intent, the second is
-# started for it and reads it. Their pictures are written to
+# started for it and reads it. And `procs`, an app's activities, services and
+# receivers in two processes, twice: from its launcher, and started for another
+# app's request for its activity in the other process, which it then runs as
+# (megler.Processes). Their pictures are written to
 # build/java-pictures as BMP files. Each is then run
 # once more with its calls of the shell's drawing recorded
 # (build/gfx-records/<app>.rec), for the Windows build to draw again.
@@ -302,6 +305,14 @@ EOF
       else
         echo "(the Java test apps crossapp and plugin are not run: they were not built, see tools/build-test-app.sh)"
       fi
+      # An app's processes (`procs`), twice: from its launcher, in the package's own process, and started for another app's
+      # request for an activity of its other process, which the app then runs as (mg_java_tests.c: run_procs).
+      if [ -f "$ROOT/build/guest/java/procs.apk" ]; then
+        for how in launcher alias; do
+          echo "the Java test app procs (build/guest/java/procs.apk), through megler_run: started $([ "$how" = alias ] && echo "for another app's request, its intent reaching FarAlias" || echo "from its launcher")"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/procs.apk' $WB/procs.apk && rm -rf $WB/java-data-procs && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java procs $WB/procs.apk $WB/java-data-procs $WB/android-root - 0 480x800@160 $how 2>&1" || STATUS=1
+        done
+      fi
       # Optional real microG integration, including a conflicting client GMS class.
       # Fetch the pinned upstream APK with tools/microg-fetch.sh first.
       if [ -f "$ROOT/build/microg/GmsCore.apk" ] && [ -f "$ROOT/build/guest/java/microg.apk" ]; then
@@ -329,13 +340,20 @@ EOF
         echo "the Java test app splits (build/guest/java/splits.$bundle), unpacked and run through megler_run"
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/splits.$bundle' $WB/splits.$bundle && rm -rf $WB/java-data-splits && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java splits $WB/splits.$bundle $WB/java-data-splits $WB/android-root '$WROOT/build/java-pictures' 0 720x1280@320 2>&1" || STATUS=1
       done
+      # An app with isolated splits (android:isolatedSplits), built as Chrome 158 is: its activity in a feature split, each
+      # feature split loaded by a class loader of its own (mg_java_tests.c: run_isolated).
+      if [ -f "$ROOT/build/guest/java/isolated.apks" ]; then
+        echo "the Java test app isolated (build/guest/java/isolated.apks), unpacked and run through megler_run: isolated splits"
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/isolated.apks' $WB/isolated.apks && rm -rf $WB/java-data-isolated && qemu-arm -L /usr/arm-linux-gnueabihf $WB/mg_tests --java isolated $WB/isolated.apks $WB/java-data-isolated $WB/android-root - 0 480x800@160 2>&1" || STATUS=1
+      fi
       # Play Feature Delivery: the app that asks the Play Store for a feature module (playclient) and the stand-in for the Play
       # Store (playstore), in turn over one data folder -- the client on a phone without the Play Store, then with one that
-      # takes no request up; the Play Store taking the request up and adding the module's split; the client with the module,
+      # takes no request up; the Play Store taking the request up and adding the module's split; the client that lost the
+      # split again (`lost`: an update without it) asking anew; the Play Store adding it again; the client with the module,
       # asking for a second; the Play Store handing that one over as a file; the client taking it (run_playclient).
       if [ -f "$ROOT/build/guest/java/playclient.apk" ] && [ -f "$ROOT/build/guest/java/playstore.apk" ]; then
         MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" wsl.exe -- bash -c "cp -u '$WROOT/build/guest/java/playclient.apk' $WB/playclient.apk && cp -u '$WROOT/build/guest/java/playstore.apk' $WB/playstore.apk && rm -rf $WB/java-data-play" || STATUS=1
-        for run in playclient:no-store playclient playstore playclient playstore playclient; do
+        for run in playclient:no-store playclient playstore playclient:lost playstore playclient playstore playclient; do
           app=${run%%:*}
           script=; [ "$run" != "$app" ] && script=${run#*:}
           echo "the Java test app $app (build/guest/java/$app.apk), through megler_run: Play Feature Delivery, ${script:-on what the runs before it left}"
@@ -640,13 +658,14 @@ elif [ "$MODE" = win ]; then
   SHELL_SRC=("$(w "$ROOT/app/Megler/shell/Files.cpp")" "$(w "$ROOT/app/Megler/shell/Strings.cpp")" "$(w "$ROOT/app/Megler/shell/ShellLog.cpp")"
              "$(w "$ROOT/app/Megler/shell/Startup.cpp")" "$(w "$ROOT/app/Megler/shell/BundledApks.cpp")" "$(w "$ROOT/app/Megler/shell/Placement.cpp")"
              "$(w "$ROOT/app/Megler/shell/SharedApks.cpp")" "$(w "$ROOT/app/Megler/shell/Settings.cpp")" "$(w "$ROOT/app/Megler/player/PermissionRules.cpp")"
+             "$(w "$ROOT/app/Megler/shell/Graphics.cpp")"
              "$(w "$ROOT/app/Megler/player/PickerHost.cpp")" "$(w "$ROOT/core/tests/mg_shell_windows.cpp")")
   mkdir -p "$OUT/shellobj"
   rm -f "$OUT/shellobj/"*.obj
   INCLUDE="$INCLUDE;$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")" \
     "$VC/bin/Hostx64/x64/cl.exe" "${GFX_FLAGS[@]}" /Zc:__cplusplus /bigobj /DWINAPI_FAMILY=WINAPI_FAMILY_APP /O1 "$MP" "/Fo$(w "$OUT/shellobj")\\" "${SHELL_SRC[@]}" \
     | grep -v -E '^[A-Za-z0-9_]+\.cpp$' || true
-  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules PickerHost mg_shell_windows; do
+  for obj in Files Strings ShellLog Startup BundledApks Placement SharedApks Settings PermissionRules PickerHost Graphics mg_shell_windows; do
     [ -f "$OUT/shellobj/$obj.obj" ] || { echo "compile failed: $obj.cpp" >&2; exit 1; }
   done
   "$VC/bin/Hostx64/x64/link.exe" /nologo "/OUT:$(w "$OUT/mg_shell_tests.exe")" "$(w "$OUT/shellobj")\\*.obj" bcrypt.lib ole32.lib oleaut32.lib onecore.lib
@@ -714,6 +733,13 @@ PY
       rm -rf "$OUT/scratch-angle"
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" || STATUS=1
       "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle")" 9_3 || STATUS=1
+      # And an app set to Mesa's freedreno (Settings, Graphics) where Mesa cannot be had, a process each: its DLLs not in the
+      # package, this PC's graphics processor no Adreno, its DLLs not loaded -- ANGLE instead, why said in one line, and the
+      # scenes drawn on it as ever.
+      for mesa in mesa-missing mesa mesa-any-gpu; do
+        rm -rf "$OUT/scratch-angle-$mesa"
+        "$OUT/mg_tests.exe" --angle-windows "$(w "$ANGLE_X64")" "$(w "$OUT/scratch-angle-$mesa")" "$mesa" || STATUS=1
+      done
     fi
     # The shell's storage host: the storage's tests once more, with Windows.Storage's own objects handing the handles over
     # instead of the stand-in, on folders under a scratch folder of its own. And Windows' pictures of files there: of a PNG,

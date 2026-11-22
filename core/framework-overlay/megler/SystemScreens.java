@@ -7,7 +7,13 @@
 //  - the app's info (android.settings.APPLICATION_DETAILS_SETTINGS for the app's own package): its name, version and
 //    package, Clear storage -- the core clears its data when it next starts (megler_ask_clear_data), and the app ends now,
 //    as Android stops an app whose data it clears --, Clear cache -- the core clears what is in its cache folders when it
-//    next starts (megler_ask_clear_cache), the app going on meanwhile -- and Force stop.
+//    next starts (megler_ask_clear_cache), the app going on meanwhile -- Force stop, and Open by default.
+//  - the app's links (android.settings.APP_OPEN_BY_DEFAULT_SETTINGS for its own package, Android's "Open by default"): which
+//    web links it opens (megler.Defaults, links.<package>): those verified for it, every one its filters name, or none; its
+//    sites, each verified or not as last found (megler.AssetLinks); and Clear defaults, its "Always" answers gone. An app
+//    whose links are not verified sends the user there to allow them.
+//  - the default apps (android.settings.MANAGE_DEFAULT_APPS_SETTINGS): the browser web links open in -- Windows' own, or a
+//    browser app -- and every "Always" answer of "Open with", each to be forgotten (megler.Resolver, megler.Defaults).
 // They are made from their classes, not by the app's component factory: on Android they are the Settings app's.
 package megler;
 
@@ -36,7 +42,8 @@ import java.util.Arrays;
 public final class SystemScreens {
     private SystemScreens() {}
 
-    static final String ACCOUNTS = Accounts.class.getName(), APP_INFO = AppInfo.class.getName();
+    static final String ACCOUNTS = Accounts.class.getName(), APP_INFO = AppInfo.class.getName(), OPEN_BY_DEFAULT = OpenByDefault.class.getName(),
+                        DEFAULT_APPS = DefaultApps.class.getName();
 
     /** The screen of these that `i` asks for, by class, or null. */
     static String screenFor(Intent i) {
@@ -48,14 +55,23 @@ public final class SystemScreens {
             case "android.settings.ADD_ACCOUNT_SETTINGS":
                 return ACCOUNTS;
             case "android.settings.APPLICATION_DETAILS_SETTINGS":
-                android.net.Uri u = i.getData();
-                return u != null && "package".equals(u.getScheme()) && Native.packageName().equals(u.getSchemeSpecificPart()) ? APP_INFO : null;
+                return own(i) ? APP_INFO : null;
+            case "android.settings.APP_OPEN_BY_DEFAULT_SETTINGS":
+                return own(i) ? OPEN_BY_DEFAULT : null;
+            case "android.settings.MANAGE_DEFAULT_APPS_SETTINGS":
+                return DEFAULT_APPS;
             default:
                 return null;
         }
     }
 
-    static boolean isScreen(String cls) { return ACCOUNTS.equals(cls) || APP_INFO.equals(cls); }
+    /* An intent for the app's own package (package:<it>). */
+    private static boolean own(Intent i) {
+        android.net.Uri u = i.getData();
+        return u != null && "package".equals(u.getScheme()) && Native.packageName().equals(u.getSchemeSpecificPart());
+    }
+
+    static boolean isScreen(String cls) { return ACCOUNTS.equals(cls) || APP_INFO.equals(cls) || OPEN_BY_DEFAULT.equals(cls) || DEFAULT_APPS.equals(cls); }
 
     /** What the manifest would say of such an activity: the platform's theme, no more. */
     static Manifest.Component component(String cls) {
@@ -242,6 +258,8 @@ public final class SystemScreens {
                     .setNegativeButton("Cancel", null)
                     .show()), 8);
             add(this, column, button(this, "Clear cache", v -> clearCache()), 8);
+            add(this, column, button(this, "Open by default", v -> startActivity(new Intent("android.settings.APP_OPEN_BY_DEFAULT_SETTINGS",
+                    android.net.Uri.fromParts("package", getPackageName(), null)))), 8);
             add(this, column, text(this, "Clear storage deletes the app's private files and its Android/data folder; "
                     + "its Android/obb files stay, as on Android. Clear cache deletes what is in its cache folders when it next "
                     + "starts; its files, settings and accounts stay.", 13, false, 0.7f), 16);
@@ -261,6 +279,109 @@ public final class SystemScreens {
             }
             android.util.Log.i("Megler", "app info: clear storage asked; the app ends now");
             AppRunner.finishAll();
+        }
+    }
+
+    // ---- the app's links
+
+    public static final class OpenByDefault extends Activity {
+        private LinearLayout column;
+
+        @Override
+        protected void onCreate(Bundle state) {
+            super.onCreate(state);
+            column = page(this, "Open by default");
+            fill();
+        }
+
+        private void fill() {
+            column.removeAllViews();
+            String pkg = getPackageName(), mode = Defaults.get(Defaults.LINKS + pkg);
+            add(this, column, text(this, "Open supported links", 20, true, 1f), 0);
+            android.widget.RadioGroup group = new android.widget.RadioGroup(this);
+            String[][] choices = { { null, "Verified links", "Links of the sites that say this app is theirs" },
+                                   { "all", "All supported links", "Every link of the sites this app names, verified or not" },
+                                   { "off", "Don't open links", "Its links open in the browser" } };
+            for (String[] c : choices) {
+                android.widget.RadioButton b = new android.widget.RadioButton(this);
+                b.setText(c[1] + "\n" + c[2]);
+                b.setChecked(c[0] == null ? mode == null : c[0].equals(mode));
+                b.setOnClickListener(v -> {
+                    Defaults.set(Defaults.LINKS + pkg, c[0]);
+                    android.util.Log.i("Megler", "open by default: " + pkg + ": " + c[1]);
+                    fill();
+                });
+                group.addView(b);
+            }
+            add(this, column, group, 8);
+            java.util.LinkedHashMap<String, Boolean> domains = Resolver.domains(Resolver.ownFilters());
+            add(this, column, text(this, "Supported links", 20, true, 1f), 24);
+            if (domains.isEmpty()) add(this, column, text(this, "This app names no site's links.", 15, false, 0.7f), 8);
+            for (java.util.Map.Entry<String, Boolean> d : domains.entrySet()) {
+                Boolean verified = d.getValue() ? Resolver.verified(pkg, d.getKey()) : Boolean.FALSE;
+                add(this, column, text(this, d.getKey(), 16, false, 1f), 12);
+                add(this, column, text(this, !d.getValue() ? "Not verified: the app does not ask to be"
+                                           : verified == null ? "Not checked yet: it is when one of its links is opened"
+                                           : verified ? "Verified" : "Not verified: the site does not name this app", 13, false, 0.7f), 2);
+            }
+            int always = 0;
+            for (java.util.Map.Entry<String, String> e : Defaults.all().entrySet())
+                if (e.getKey().startsWith(Defaults.ALWAYS) && e.getValue().startsWith(pkg + "/")) always++;
+            add(this, column, text(this, "Defaults", 20, true, 1f), 24);
+            add(this, column, text(this, always == 0 ? "No defaults set." : "Opens " + always + " kind(s) of link or file by default (\"Always\").", 15, false, 0.7f), 8);
+            Button clear = button(this, "Clear defaults", v -> {
+                int n = Defaults.remove(Defaults.ALWAYS, pkg);
+                android.util.Log.i("Megler", "open by default: " + n + " \"Always\" answer(s) for " + pkg + " cleared");
+                fill();
+            });
+            clear.setEnabled(always > 0);
+            add(this, column, clear, 8);
+        }
+    }
+
+    // ---- the default apps
+
+    public static final class DefaultApps extends Activity {
+        private LinearLayout column;
+
+        @Override
+        protected void onCreate(Bundle state) {
+            super.onCreate(state);
+            column = page(this, "Default apps");
+            fill();
+        }
+
+        private void fill() {
+            column.removeAllViews();
+            add(this, column, text(this, "Browser app", 20, true, 1f), 0);
+            String chosen = Defaults.get(Defaults.BROWSER);
+            android.widget.RadioGroup group = new android.widget.RadioGroup(this);
+            for (Resolver.Target t : Resolver.browsers()) {
+                android.widget.RadioButton b = new android.widget.RadioButton(this);
+                b.setText(t.windows() ? "Windows' browser" : String.valueOf(t.label()));
+                b.setChecked(t.windows() ? chosen == null || chosen.isEmpty() || Defaults.WINDOWS.equals(chosen) : t.id().equals(chosen));
+                b.setOnClickListener(v -> {
+                    Defaults.set(Defaults.BROWSER, t.windows() ? null : t.id());
+                    android.util.Log.i("Megler", "default apps: the browser is " + t);
+                    fill();
+                });
+                group.addView(b);
+            }
+            add(this, column, group, 8);
+            add(this, column, text(this, "Opened with \"Always\"", 20, true, 1f), 24);
+            int n = 0;
+            for (java.util.Map.Entry<String, String> e : Defaults.all().entrySet()) {
+                if (!e.getKey().startsWith(Defaults.ALWAYS)) continue;
+                n++;
+                String key = e.getKey();
+                add(this, column, text(this, Resolver.kindInWords(key.substring(Defaults.ALWAYS.length())), 16, false, 1f), 12);
+                add(this, column, text(this, Resolver.labelOf(e.getValue()), 13, false, 0.7f), 2);
+                add(this, column, button(this, "Forget", v -> {
+                    Defaults.set(key, null);
+                    fill();
+                }), 4);
+            }
+            if (n == 0) add(this, column, text(this, "None: \"Open with\" asks each time several apps can open something.", 15, false, 0.7f), 8);
         }
     }
 }

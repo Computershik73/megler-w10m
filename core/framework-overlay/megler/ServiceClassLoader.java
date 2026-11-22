@@ -48,6 +48,8 @@ public final class ServiceClassLoader extends dalvik.system.PathClassLoader {
     }
     /** The APK it is over, by the name it was given. */
     String apk() { return apk; }
+    /** The number the runtime gave its class scope (1 to 15), 0 for none. */
+    int scope() { return scope; }
     /* Where findLibrary looks, for the path list to say the same. */
     private static String libraryPath(String apk, String libraries) {
         String stored = apk + "!/lib/" + Abis.PRIMARY;

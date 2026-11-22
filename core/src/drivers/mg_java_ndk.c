@@ -21,10 +21,15 @@
  * the framework's AssetManager: the app's own is the app's asset manager,
  * another package's a manager of that package's APKs (at the end).
  */
+#include <stdio.h>
+#include <string.h>
+
 #include "../bionic/mg_bionic.h"
 #include "../dvm/mg_dvm_internal.h"
+#include "../ld/mg_ld.h"
 #include "../ndk/mg_ndk.h"
 #include "../zip/mg_zip.h"
+#include "mg_driver.h"
 #include "mg_java.h"
 #include "mg_java_gfx.h"
 #include "mg_java_gl.h"
@@ -754,3 +759,369 @@ static const mg_sym k_java_ndk[] = {
 };
 
 const mg_sym *mg_java_ndk_table(void) { return k_java_ndk; }
+
+/* ------------------------------------------------------------ NativeActivity
+ *
+ * android.app.NativeActivity's natives (the framework's overlay), as Android 9's android_app_NativeActivity.cpp has them: an
+ * activity of the app's own on top of NativeActivity is run by the Java driver (apk/mg_apk.c), and this is what gives its
+ * native code an ANativeActivity whose clazz is that activity. Its JNI calls on clazz are then calls of the app's own Java:
+ * KOReader's LuaJIT launcher asks its MainActivity for extractAssets(), the screen's size, the device and eighty more, and
+ * under the NativeActivity driver, whose activity is a stand-in with a name, every answer was zero and it ended at its start
+ * (issue #23).
+ *
+ * loadNativeCode, on the main thread in the activity's onCreate: the library the class loader found for android.app.lib_name
+ * is opened as bionic's dlopen opens it (the one System.loadLibrary loaded already, as KOReader's constructor loads it; its
+ * JNI_OnLoad is not run for this, as Android's OpenNativeLibrary runs none), its entry (android.app.func_name) is called with
+ * the activity, and the activity's handle is the ANativeActivity. The callbacks are called on the main thread as the activity
+ * hears of each thing: start, resume, the window's surface (its window from ANativeWindow_fromSurface; made again when the
+ * surface is another, said resized when its size changes), its input queue (InputQueue's, below), focus, the content's
+ * rectangle, the configuration, low memory, pause, stop, destroy. What native code asks of the activity
+ * (ANativeActivity_finish and the rest, mg_java_native_activity_ask) is done by the activity on its main thread.
+ */
+#define MAX_NATIVE_ACTIVITIES 8
+
+typedef struct java_na {
+    mg_na_activity activity;           /* first: the ANativeActivity native code holds */
+    mg_na_callbacks callbacks;
+    mg_jobj *self;                     /* the activity, a root of the collector's; NULL in a free slot */
+    char *internal, *external, *obb;
+    mg_nwindow *window;                /* the window of the surface native code was told of, a reference of ours */
+    int window_w, window_h;
+} java_na;
+
+static java_na g_na[MAX_NATIVE_ACTIVITIES];
+static bool g_na_rooted;
+static mg_lock g_na_lock = MG_LOCK_INIT;
+static char g_na_error[400];
+
+#define NA_CALL0(na, slot) do { if ((na)->callbacks.slot) MG_GFN(void (*)(mg_na_activity *), (na)->callbacks.slot)(&(na)->activity); } while (0)
+#define NA_CALL1(na, slot, arg) \
+    do { if ((na)->callbacks.slot) MG_GFN(void (*)(mg_na_activity *, void *), (na)->callbacks.slot)(&(na)->activity, (void *)(arg)); } while (0)
+
+/* The activity a handle names: one of ours, in use. */
+static java_na *na_of(i64 handle)
+{
+    java_na *na = (java_na *)(intptr_t)handle;
+    if (na < &g_na[0] || na >= &g_na[MAX_NATIVE_ACTIVITIES] || !na->self) return NULL;
+    return na;
+}
+
+static void NA_loadNativeCode(mg_jcall *c)
+{
+    void *(*dl_open)(const char *, int) = (void *(*)(const char *, int))mg_bionic_find("dlopen");
+    void *(*dl_sym)(void *, const char *) = (void *(*)(void *, const char *))mg_bionic_find("dlsym");
+    const char *(*dl_error)(void) = (const char *(*)(void))mg_bionic_find("dlerror");
+    const char *path = mg_dvm_string_utf8(c->args[0].l), *func = mg_dvm_string_utf8(c->args[1].l), *base;
+    mg_jobj *saved = c->args[8].l;
+    java_na *na = NULL;
+    void *lib, *entry;
+    int previous, i;
+    c->ret.j = 0;
+    g_na_error[0] = 0;
+    if (!path || !func || !dl_open || !dl_sym) {
+        mg_strlcpy(g_na_error, "no library or entry named", sizeof(g_na_error));
+        return;
+    }
+    base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    /* The library is the app's, of the class loader's scope (as Runtime.nativeLoad loads it, dvm/mg_dvm_jvm.c). */
+    previous = mg_ld_set_scope(mg_dvm_library_scope(mg_dvm_loader_scope(c->args[9].l)));
+    lib = dl_open(path, 2 /* RTLD_NOW */);
+    if (!lib) {
+        const char *why = dl_error ? dl_error() : NULL;
+        mg_strlcpy(g_na_error, why ? why : "dlopen failed", sizeof(g_na_error));
+    }
+    entry = lib ? dl_sym(lib, func) : NULL;
+    mg_ld_set_scope(previous);
+    if (!lib) return;
+    if (!entry) {
+        snprintf(g_na_error, sizeof(g_na_error), "dlsym failed: undefined symbol \"%s\" in \"%s\"", func, base);
+        return;
+    }
+    mg_lock_acquire(&g_na_lock);
+    if (!g_na_rooted) {
+        for (i = 0; i < MAX_NATIVE_ACTIVITIES; i++) mg_dvm_add_root(&g_na[i].self);
+        g_na_rooted = true;
+    }
+    for (i = 0; i < MAX_NATIVE_ACTIVITIES && !na; i++)
+        if (!g_na[i].self) na = &g_na[i];
+    if (na) {
+        memset(na, 0, sizeof(*na));
+        na->self = c->self;
+    }
+    mg_lock_release(&g_na_lock);
+    if (!na) {
+        snprintf(g_na_error, sizeof(g_na_error), "more than %d NativeActivities at once", MAX_NATIVE_ACTIVITIES);
+        return;
+    }
+    na->internal = c->args[3].l ? mg_strdup(mg_dvm_string_utf8(c->args[3].l)) : NULL;
+    na->obb = c->args[4].l ? mg_strdup(mg_dvm_string_utf8(c->args[4].l)) : NULL;
+    na->external = c->args[5].l ? mg_strdup(mg_dvm_string_utf8(c->args[5].l)) : NULL;
+    na->activity.callbacks = &na->callbacks;
+    na->activity.vm = mg_jni_vm();
+    na->activity.env = mg_jni_env();
+    na->activity.clazz = c->self;
+    na->activity.internalDataPath = na->internal;
+    na->activity.externalDataPath = na->external;
+    na->activity.sdkVersion = c->args[6].i;
+    na->activity.assetManager = g_am_from_java(NULL, c->args[7].l);
+    na->activity.obbPath = na->obb;
+    mg_info("java: NativeActivity %s: %s, %s", mg_dvm_class_name(c->self), base, func);
+    if (saved && saved->kind == MG_J_PRIM_ARRAY && saved->u.arr.len)
+        MG_GFN(void (*)(mg_na_activity *, void *, size_t), entry)(&na->activity, saved->u.arr.data, (size_t)saved->u.arr.len);
+    else
+        MG_GFN(void (*)(mg_na_activity *, void *, size_t), entry)(&na->activity, NULL, 0);
+    c->ret.j = (i64)(intptr_t)na;
+}
+
+static void NA_getDlError(mg_jcall *c) { c->ret.l = mg_dvm_new_string(g_na_error); }
+
+static void na_window_gone(java_na *na)
+{
+    if (!na->window) return;
+    NA_CALL1(na, onNativeWindowDestroyed, na->window);
+    mg_nwindow_release(na->window);
+    na->window = NULL;
+}
+
+static void NA_unloadNativeCode(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    if (!na) return;
+    NA_CALL0(na, onDestroy);
+    if (na->window) mg_nwindow_release(na->window);
+    free(na->internal);
+    free(na->external);
+    free(na->obb);
+    mg_lock_acquire(&g_na_lock);
+    memset(na, 0, sizeof(*na));
+    mg_lock_release(&g_na_lock);
+}
+
+static void NA_onStart(mg_jcall *c) { java_na *na = na_of(c->args[0].j); if (na) NA_CALL0(na, onStart); }
+static void NA_onResume(mg_jcall *c) { java_na *na = na_of(c->args[0].j); if (na) NA_CALL0(na, onResume); }
+static void NA_onPause(mg_jcall *c) { java_na *na = na_of(c->args[0].j); if (na) NA_CALL0(na, onPause); }
+static void NA_onStop(mg_jcall *c) { java_na *na = na_of(c->args[0].j); if (na) NA_CALL0(na, onStop); }
+static void NA_onConfigurationChanged(mg_jcall *c) { java_na *na = na_of(c->args[0].j); if (na) NA_CALL0(na, onConfigurationChanged); }
+static void NA_onLowMemory(mg_jcall *c) { java_na *na = na_of(c->args[0].j); if (na) NA_CALL0(na, onLowMemory); }
+
+static void NA_onSaveInstanceState(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    void (*g_free)(void *) = (void (*)(void *))mg_bionic_find("free");
+    size_t len = 0;
+    void *state;
+    c->ret.l = NULL;
+    if (!na || !na->callbacks.onSaveInstanceState) return;
+    state = MG_GFN(void *(*)(mg_na_activity *, size_t *), na->callbacks.onSaveInstanceState)(&na->activity, &len);
+    if (!state) return;
+    if (len && len < (1u << 30)) {
+        c->ret.l = mg_dvm_new_array("[B", (i32)len);
+        if (c->ret.l) memcpy(c->ret.l->u.arr.data, state, len);
+    }
+    /* Native code made it with malloc: freed as Android frees it. */
+    if (g_free) g_free(state);
+}
+
+static void NA_onWindowFocusChanged(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    if (na && na->callbacks.onWindowFocusChanged)
+        MG_GFN(void (*)(mg_na_activity *, int), na->callbacks.onWindowFocusChanged)(&na->activity, c->args[1].z ? 1 : 0);
+}
+
+static void NA_onSurfaceCreated(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    mg_nwindow *w;
+    if (!na) return;
+    w = g_window_from_surface(NULL, c->args[1].l);
+    if (na->window) mg_nwindow_release(na->window);
+    na->window = w;
+    if (!w) return;
+    mg_nwindow_buffer_size(w, &na->window_w, &na->window_h);
+    NA_CALL1(na, onNativeWindowCreated, w);
+}
+
+/* The surface is another, or the same one at another size: native code's window made again, or said resized. */
+static void NA_onSurfaceChanged(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    mg_nwindow *w;
+    int width = 0, height = 0;
+    if (!na) return;
+    w = g_window_from_surface(NULL, c->args[1].l);
+    if (w != na->window) {
+        na_window_gone(na);
+        na->window = w;
+        if (w) {
+            mg_nwindow_buffer_size(w, &na->window_w, &na->window_h);
+            NA_CALL1(na, onNativeWindowCreated, w);
+        }
+        return;
+    }
+    if (w) mg_nwindow_release(w);
+    if (!na->window) return;
+    mg_nwindow_buffer_size(na->window, &width, &height);
+    if (width != na->window_w || height != na->window_h) {
+        na->window_w = width;
+        na->window_h = height;
+        NA_CALL1(na, onNativeWindowResized, na->window);
+    }
+}
+
+static void NA_onSurfaceRedrawNeeded(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    if (na && na->window) NA_CALL1(na, onNativeWindowRedrawNeeded, na->window);
+}
+
+static void NA_onSurfaceDestroyed(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    if (na) na_window_gone(na);
+}
+
+static void NA_onInputQueueCreated(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    if (na) NA_CALL1(na, onInputQueueCreated, (mg_input_queue *)(intptr_t)c->args[1].j);
+}
+
+static void NA_onInputQueueDestroyed(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    if (na) NA_CALL1(na, onInputQueueDestroyed, (mg_input_queue *)(intptr_t)c->args[1].j);
+}
+
+static void NA_onContentRectChanged(mg_jcall *c)
+{
+    java_na *na = na_of(c->args[0].j);
+    i32 rect[4];
+    if (!na || !na->callbacks.onContentRectChanged) return;
+    rect[0] = c->args[1].i;
+    rect[1] = c->args[2].i;
+    rect[2] = c->args[1].i + c->args[3].i;
+    rect[3] = c->args[2].i + c->args[4].i;
+    MG_GFN(void (*)(mg_na_activity *, const i32 *), na->callbacks.onContentRectChanged)(&na->activity, rect);
+}
+
+bool mg_java_native_activity_ask(mg_na_activity *a, int what, i32 arg1, i32 arg2)
+{
+    java_na *na = na_of((i64)(intptr_t)a);
+    mg_jvalue args[3];
+    if (!na) return false;
+    if (what == MG_NA_FINISH) mg_info("java: NativeActivity %s: native code asked it to finish", mg_dvm_class_name(na->self));
+    args[0].j = args[1].j = args[2].j = 0;
+    args[0].i = what;
+    args[1].i = arg1;
+    args[2].i = arg2;
+    if (!mg_dvm_call_virtual(na->self, "meglerFromNative", "(III)V", args, NULL)) mg_dvm_clear_pending();
+    return true;
+}
+
+/*
+ * android.view.InputQueue: the core's AInputQueue (ndk/mg_ndk.c) under a window's InputQueue, its events put in by the
+ * framework (meglerSend: the window's touches by pointer, its keys), a key native code finishes unhandled handed back to the
+ * queue's Java object, which gives it to the window's activity (meglerUnhandledKey). Each queue has a slot whose Java object
+ * is a root while the queue lives.
+ */
+#define MAX_INPUT_QUEUES 8
+
+typedef struct java_iq {
+    mg_input_queue *queue;
+    mg_jobj *owner;
+} java_iq;
+
+static java_iq g_iq[MAX_INPUT_QUEUES];
+static bool g_iq_rooted;
+
+static void iq_unhandled_key(void *ctx, int keycode, bool down)
+{
+    java_iq *s = (java_iq *)ctx;
+    mg_jvalue args[2];
+    mg_jobj *owner = s->owner;
+    if (!owner) return;
+    args[0].j = args[1].j = 0;
+    args[0].i = keycode;
+    args[1].z = down;
+    if (!mg_dvm_call_virtual(owner, "meglerUnhandledKey", "(IZ)V", args, NULL)) mg_dvm_clear_pending();
+}
+
+static void IQ_nativeInit(mg_jcall *c)
+{
+    java_iq *s = NULL;
+    int i;
+    c->ret.j = 0;
+    mg_lock_acquire(&g_na_lock);
+    if (!g_iq_rooted) {
+        for (i = 0; i < MAX_INPUT_QUEUES; i++) mg_dvm_add_root(&g_iq[i].owner);
+        g_iq_rooted = true;
+    }
+    for (i = 0; i < MAX_INPUT_QUEUES && !s; i++)
+        if (!g_iq[i].queue) s = &g_iq[i];
+    if (s) {
+        s->queue = mg_input_queue_create();
+        s->owner = c->args[0].l;
+    }
+    mg_lock_release(&g_na_lock);
+    if (!s) {
+        mg_warn("java: more than %d input queues at once: the window's input is not taken", MAX_INPUT_QUEUES);
+        return;
+    }
+    mg_input_queue_on_unhandled_key(s->queue, iq_unhandled_key, s);
+    c->ret.j = (i64)(intptr_t)s->queue;
+}
+
+static void IQ_nativeDispose(mg_jcall *c)
+{
+    mg_input_queue *q = (mg_input_queue *)(intptr_t)c->args[0].j;
+    int i;
+    if (!q) return;
+    mg_lock_acquire(&g_na_lock);
+    for (i = 0; i < MAX_INPUT_QUEUES; i++)
+        if (g_iq[i].queue == q) {
+            g_iq[i].queue = NULL;
+            g_iq[i].owner = NULL;
+        }
+    mg_lock_release(&g_na_lock);
+    mg_input_queue_destroy(q);
+}
+
+static void IQ_nativeTouch(mg_jcall *c)
+{
+    mg_input_queue_touch((mg_input_queue *)(intptr_t)c->args[0].j, c->args[1].i, c->args[2].i, c->args[3].f, c->args[4].f);
+}
+
+static void IQ_nativeKey(mg_jcall *c) { mg_input_queue_key((mg_input_queue *)(intptr_t)c->args[0].j, c->args[1].i, c->args[2].z); }
+
+#define NA(name, sig, fn) { "android/app/NativeActivity", name, sig, fn }
+
+static const mg_jhle k_natives[] = {
+    NA("loadNativeCode", "(Ljava/lang/String;Ljava/lang/String;Landroid/os/MessageQueue;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILandroid/content/res/AssetManager;[BLjava/lang/ClassLoader;Ljava/lang/String;)J",
+       NA_loadNativeCode),
+    NA("getDlError", "()Ljava/lang/String;", NA_getDlError),
+    NA("unloadNativeCode", "(J)V", NA_unloadNativeCode),
+    NA("onStartNative", "(J)V", NA_onStart),
+    NA("onResumeNative", "(J)V", NA_onResume),
+    NA("onSaveInstanceStateNative", "(J)[B", NA_onSaveInstanceState),
+    NA("onPauseNative", "(J)V", NA_onPause),
+    NA("onStopNative", "(J)V", NA_onStop),
+    NA("onConfigurationChangedNative", "(J)V", NA_onConfigurationChanged),
+    NA("onLowMemoryNative", "(J)V", NA_onLowMemory),
+    NA("onWindowFocusChangedNative", "(JZ)V", NA_onWindowFocusChanged),
+    NA("onSurfaceCreatedNative", "(JLandroid/view/Surface;)V", NA_onSurfaceCreated),
+    NA("onSurfaceChangedNative", "(JLandroid/view/Surface;III)V", NA_onSurfaceChanged),
+    NA("onSurfaceRedrawNeededNative", "(JLandroid/view/Surface;)V", NA_onSurfaceRedrawNeeded),
+    NA("onSurfaceDestroyedNative", "(J)V", NA_onSurfaceDestroyed),
+    NA("onInputQueueCreatedNative", "(JJ)V", NA_onInputQueueCreated),
+    NA("onInputQueueDestroyedNative", "(JJ)V", NA_onInputQueueDestroyed),
+    NA("onContentRectChangedNative", "(JIIII)V", NA_onContentRectChanged),
+    { "android/view/InputQueue", "nativeInit", "(Landroid/view/InputQueue;)J", IQ_nativeInit },
+    { "android/view/InputQueue", "nativeDispose", "(J)V", IQ_nativeDispose },
+    { "android/view/InputQueue", "nativeTouch", "(JIIFF)V", IQ_nativeTouch },
+    { "android/view/InputQueue", "nativeKey", "(JIZ)V", IQ_nativeKey },
+    { NULL, NULL, NULL, NULL },
+};
+
+const mg_jhle *mg_java_ndk_natives(void) { return k_natives; }

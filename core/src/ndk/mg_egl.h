@@ -73,6 +73,18 @@ void mg_egl_set_provider(void *(*resolve)(const char *name));
  * below 9_3 among them), apart from the app's own and anew at each call; which attempt made it, in `how`. False when none.
  */
 bool mg_egl_display_try(char *how, size_t size);
+/*
+ * Which OpenGL ES the process is to draw with (megler_run_config.gles): "mesa", Mesa's freedreno where it can be had -- its
+ * DLLs in the package, an Adreno, its display initialized -- else, and for anything else, ANGLE; the log says in one line why
+ * Mesa was not taken. Before the first use of EGL; a later choice that differs is said and ignored.
+ */
+void mg_egl_choose(const char *gles);
+/* Whether a graphics processor named so by Windows (DXGI's description) and of that PCI vendor id is an Adreno, which Mesa's freedreno drives. */
+bool mg_egl_gpu_is_adreno(const char *name, u32 vendor);
+/* Whether the process's OpenGL ES is Mesa's freedreno rather than ANGLE: a NativeActivity's frames are read back, not shared. */
+bool mg_egl_is_mesa(void);
+/* megler_gles: "mesa" or "angle", which the process draws with; NULL before EGL is first used. */
+const char *mg_egl_gles(void);
 
 /*
  * A pbuffer's DXGI keyed mutex, which ANGLE shares its pbuffers' textures with (NULL when it has none), and that mutex acquired

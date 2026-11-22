@@ -2644,6 +2644,20 @@ of the app's is hidden from it while the process runs. The data app's
 delete, a file another process wrote read again, a lock left behind, and the
 mark; `mg_storage_tests.c` checks when the mark is written.
 
+A key set whose key is in none of those stores stays unreadable for as long
+as the app whose store has the key does not run (it is gone, its data was
+cleared, or its package is of a Megler before 734, which copies nothing): every
+app failed at each use of the services' storage (issue #21, and a Lumia 650
+with 734 where none of five apps had the key). So when their code takes a key
+(`getKey`) that no store they read has, and their preferences keep a key set
+under that alias as mobstore keeps its (`shared_prefs/<alias>.xml`), that file
+is removed (`KeyStoreProvider.lost`, once a process, said in the log): that use
+fails still, Tink having read the key set before it asked for the key, and the
+next one makes the key and the key set again. The data app's
+`keystore-tink-hosted` step checks it beside Tink's own sequence over the
+services' store across two runs; `keystore-tink` runs that sequence over the
+app's own store.
+
 `android.util.Base64OutputStream` and `Base64InputStream` encode and decode
 as they go, with `Base64`'s flags as `Base64.encode` and `decode` take them
 (`MeglerBase64Coder`, in the overlay): lines of 76 and a line end, the last
@@ -2704,6 +2718,16 @@ uses `dalvik.system.BlockGuard`, which the SDK's `android.jar` lacks: a
 `.java.stubs` file names AOSP sources that are compiled for javac's class
 path only and are not put in the overlay. The data app says the checks in one
 line, "file-locks-across-scopes", after its "process-scope" step.
+
+**The list of security providers of each of an app's processes** is the
+overlay's as well (`sun/security/jca/Providers.java.members` and `.replace`;
+why and how in "Jobs", at `megler.Processes`): Android 9's `Providers` with its
+system-wide list answered by the process of the code that asks, which the same
+native as the file locks' says (`Providers.meglerScope`). The source compiles
+against javac's own `sun.security.jca.ProviderList` (JDK 8's, of the same
+members as Android 9's); what it uses that `android.jar` lacks,
+`VMRuntime.getTargetSdkVersion()` and `System.logE` (the warning for Bouncy
+Castle's deprecated algorithms), it reaches by reflection.
 
 **Java 9 and 10's collection factories** are added that way to Android 9's
 `List`, `Set` and `Map` (Android's `Map.java` says it took them out):
@@ -2957,7 +2981,7 @@ no native code or has it for 32-bit ARM.
   in between are left out; the whole of it, with the stack, is in the log.
 - **The APK's files**: `Native.readApkFile` and the asset calls read the
   app's APK (0), the platform's resources (1: `framework/framework-res.apk` of
-  the root, when it is there) and the app's split APKs (2 to 11:
+  the root, when it is there) and the app's split APKs (2 to 33:
   `megler_run_config.splits_dir` and `split_apks`; "Split APKs and bundles"
   below) through `zip/mg_zip.c`; a stored file can also be had as a
   descriptor and an offset. An asset is looked for in the base and then in
@@ -3481,7 +3505,7 @@ apart by their manifests (the base names no split; a split names itself),
 and the unwanted are left out by their file names, which keep bundletool's
 `config.<qualifier>` in all three layouts, so they are never unpacked. The
 splits are written as `split_<name>.apk`, Android's names for installed
-splits; at most ten, which is what the framework reads. An .xapk's expansion
+splits; at most 32, which is what the framework reads. An .xapk's expansion
 files are written into the app's own `Android/obb/<package>/` (or
 `Android/data`), where the app finds them when it first runs; anything that
 would go elsewhere is left out. The folder's `bundle.json` records what was
@@ -3502,7 +3526,7 @@ split added alone is refused as no app.
 one list in `run/mg_run.c`; a split of another app is dropped). The linker
 takes native libraries out of whichever APK has them, so `place_libraries`
 writes the split's into `nativeLibraryDir` as it does the base's. The Java
-driver opens the splits as APKs 2 to 11, mounts each file beside the base as
+driver opens the splits as APKs 2 to 33, mounts each file beside the base as
 `/data/app/<package>-1/split_<name>.apk` and answers those paths to
 `Native.splitPaths`; the framework makes `ApplicationInfo.splitNames` (sorted)
 and `splitSourceDirs` of them, and the app's `PathClassLoader` path. A
@@ -3519,12 +3543,29 @@ are found in the base and then the splits, and listed from all
 (`app_apk_with` in `mg_java.c`); native code's `AAssetManager` already looked
 in every APK the linker has.
 
-Not done: the components a feature split declares in its own manifest are not
-known (the framework reads the base's manifest alone; bundletool merges an
-install-time feature's components into the base's, which is the usual case);
-isolated split loading and `<uses-split>` dependencies (one class loader has
-everything); `PackageInfo` of splits' revision codes (zeros); more than ten
-splits.
+The components a feature split declares in its own manifest are the app's
+too (`megler.Manifest`, `activities.json`), each with its split's name
+(`ComponentInfo.splitName`).
+
+**Isolated splits.** An app whose base manifest says `android:isolatedSplits`
+(Chrome 158: its browser is in the feature split "chrome") has its feature
+splits loaded as Android's `LoadedApk` loads them: the base's class loader has
+`base.apk` alone, and each feature split a `PathClassLoader` of its own over
+its APK (`megler.Splits`, made once), whose parent is the loader of the split it
+uses (`<uses-split>`) or the base's. The Java driver keeps such a split off the
+app's class path and tells the runtime its path (`mg_dvm_isolated_split`); the
+loader that opens it gets a class scope of its own, its parent's classes first
+(`child_scope_for` in `dvm/mg_dvm_art.c`), whose classes say that loader and
+whose native code is the app's to the linker (`mg_dvm_library_scope`).
+`Context.createContextForSplit` gives a context with the split's loader
+(`NameNotFoundException` for a split the app has not), and a component of the
+split is made by that loader on that context (activities, providers, services,
+receivers); `ApplicationInfo.requestsIsolatedSplitLoading` says so. The
+resources stay the app's one table of every split. The Java test app
+`isolated` checks it. Every other app has all its splits on one loader.
+
+Not done: `ApplicationInfo.splitDependencies`; `PackageInfo` of splits'
+revision codes (zeros); a split's own resources apart from the others'.
 
 ### Drawing: `megler.Gfx` and the shell
 
@@ -3561,12 +3602,72 @@ where the framework's code, written for iOS, leaned on CoreGraphics without sayi
   0.1.0.684 the framework added the run's box to the path at each call,
   which no graphics processor draws as letters: the names on Transit's map
   were grey boxes (a Lumia 650).
+- **A shader nothing here can draw.** A `RuntimeShader` is an AGSL program,
+  which nothing here compiles or runs: it has no native shader, and a paint
+  with it drew as a paint without one, its own colour -- opaque black, as
+  most such paints are new. YouTube lights the buttons under a video (like,
+  share, save) with one, `drawPaint` clipped to each button by a view of its
+  "Neon" component, and they were black pills over their 5% black wash
+  (issue #24, 0.1.0.734). Such a paint, or one with a `ComposeShader` whose
+  first shader is one, now fills nothing: `Paint` marks its packet
+  (`PF_UNDRAWABLE`, `Shader.meglerUndrawable`) and the core draws no shape and
+  no text with it, directly or into a list; a bitmap drawn with it is drawn,
+  as the shader does not come into that on Android either. The log says it
+  once (`Paint: a android.graphics.RuntimeShader is not drawn here`).
+- **Two MULTIPLYs.** `PorterDuff.Mode.MULTIPLY` is S*D, its alpha Sa*Da
+  (megler.h's MODULATE, 13); `BlendMode.MULTIPLY` (and Compose's
+  `BlendMode.Multiply`) is S*(1-Da) + D*(1-Sa) + S*D, which keeps what is
+  under a translucent colour (megler.h's MULTIPLY, 18, Direct2D's Blend
+  effect's). Up to 0.1.0.734 the second was given the first's number: a 5%
+  black drawn with it over white left a 5% black, which an opaque window
+  shows black. The other blend modes Android 10 added (COLOR_DODGE to
+  LUMINOSITY) are still drawn as SRC_OVER.
+- **A paint's blur.** A `BlurMaskFilter` blurs what its paint fills, as
+  Skia's mask filter: by a standard deviation of 0.57735 * radius + 0.5 in
+  the drawing's coordinates, the shape in its own colours. The paint's packet
+  carries the radius and the style (`P_BLUR`, `P_BLURSTYLE`), and the core
+  draws each shape and run of text of such a paint sharp into a layer that
+  the shell blurs as it puts it onto the picture (`save_layer_blur`, the
+  RenderEffect's layer), as large as the shape and three deviations round it
+  (`shape_call` in `mg_java_gfx.c`): directly and into a list alike, the list
+  holding the layer and the sharp shape. `OUTER` and `SOLID` cut the blur
+  with the shape (`DST_OUT`, and for `SOLID` the shape added by `PLUS`) and
+  `INNER` puts it on the shape by a layer of `SRC_IN`, each in a layer of
+  its own. The filter kept nothing up to 0.1.0.739 and its shapes were drawn
+  sharp. The Google app (17.6.63) draws its Gemini glows with it: the Gemini
+  screen's glowing rings and borders (drawables of a `SweepGradient` blurred),
+  the waves of its voice search, AI Mode and Lens (one shape filled three
+  times, blurred by eight, four and one times a radius), Lottie's blur
+  effect. Data step `blur-mask-filter`. Bitmaps are drawn without the
+  filter, as before; `EmbossMaskFilter` and `ShaderMaskFilter` draw as no
+  filter. (Gemini's first screen on an HP Elite x3 had solid purple ovals
+  beside its first suggestions and a solid pill after its headline; the
+  filter did not change them. Both are the app's own colour
+  `assistant_gem_sys_color_primary_container_emphasis_1`, #4d34cf at night,
+  the pill's arrow its `on_primary_container_emphasis_1`: the pill is as the
+  app's tokens make it, and the ovals look like capsules drawn as ellipses,
+  under "Rounded rectangles" below.)
+- **Rounded rectangles' radii** are scaled as Android's Skia scales them
+  (`SkRRect::setRectXY`, `setRectRadii`): where the radii along a side add up
+  to more than its length, all of them are scaled down by the one factor that
+  makes the tightest side fit, so a tall, narrow rectangle with a radius larger
+  than its width is a capsule (`rrect_fit` in `mg_java_gfx.c`, for
+  `drawRoundRect`, a path's round rectangles -- `GradientDrawable`'s and
+  `RoundRectShape`'s radii, `PaintDrawable` -- and a node's outline). Each
+  radius was cut to half its own side, which makes an ellipse of it. The
+  ovals beside the Gemini screen's suggestions (63 x some 180 pixels, an
+  "arch" where its row cuts one) have elliptical ends of a vertical radius
+  near 90, as such a cut radius gives; that they are rounded rectangles, and
+  capsules on Android, is read from their shape and not seen: an oval drawn
+  as one looks the same, and no picture of that screen from an Android phone
+  was at hand. Data step `round-rect-radii`.
 - **The stand-in** (`core/tests/mg_gfx_standin.c`) is for tests and is not a
   renderer to look at: a pixel is in when its centre is, curves are straight
   pieces, strokes have no joins, a gradient is its first colour, text is a box
   for each letter with fixed metrics (advance 0.6 of the size, ascent 0.8,
-  descent 0.2), images are PNG only. It is deterministic on every machine,
-  which is what the tests want of it.
+  descent 0.2), images are PNG only, a layer is a save with an alpha but a
+  blurred layer is memory of its own, blurred in two passes at its restore.
+  It is deterministic on every machine, which is what the tests want of it.
 - **Display lists.** A `RenderNode`'s canvas and a `Picture`'s record what
   they are given instead of drawing it, as Android's do, and the list is
   drawn again on whatever canvas draws the node or the picture. The core
@@ -3995,6 +4096,60 @@ the keyboard, is now taken for that: the keyboard is shown again for the field
 that asked, and the log says so once ("player: the keyboard went as the app
 moved from one field to another, and comes back for the field that asked for
 it"). Not tried on a phone yet.
+
+**A field the app sets back, and the cursor it is told of (Gemini, 0.1.0.739).**
+On an HP Elite x3 the letters typed into the Google app's Gemini field came out
+in reverse, each before the ones typed. That field is a view, not Compose: the
+Google app's `RobinTextInputEditText` (17.6.63), a Material `TextInputEditText`
+whose `onSelectionChanged` keeps the cursor for its input controller, and whose
+controller applies its state to the field after every character: `setText` of
+the very text and `setSelection` (its `aucl.a`), and `setText` restarts the
+input. Two things here were not as on Android:
+
+- An edit told the span watchers nothing of the spans it moved
+  (`SpannableStringBuilder.replace`), so a TextView's `onSelectionChanged` did
+  not follow the cursor as text was typed: an app that keeps the cursor as
+  `onSelectionChanged` says (Gemini's field does) kept it where the field had
+  been touched. Now they are told, after the text watchers, as Android's
+  `sendToSpanWatchers` tells them. Data step `selection-follows-typing`: three
+  characters through an EditText's input connection are told as 1,1 2,2 3,3,
+  and a field set back after each with the cursor it was told gets "abc"
+  (it got "cba").
+- Each restart asked the shell for the keyboard afresh, and the shell began
+  its text anew (`startKeyboardText`): after every letter the phone's keyboard
+  was told that what it had typed was gone. A restart of the field the keyboard
+  is up for is now asked a turn of the message loop later (once the app has
+  put its cursor back), and once more as it is (`MEGLER_KEYBOARD_F_AGAIN`) when
+  the field's text and cursor are as the keyboard left them, the text compared
+  whole (`megler.InputMethods`). The demos test types "a", "b", "c" into a
+  field that is set back so a turn later: the text comes in order and the
+  keyboard is asked for it once more three times and never afresh.
+
+Which of the two reversed Gemini's text on the phone is not known: Gemini needs
+a signed-in account, which no test here has, and no Windows 10 Mobile keyboard
+can be tried at this PC. Neither was seen on a phone yet. The shell's flag
+`trace-keyboard` says, in numbers only, every change the keyboard makes and
+every asking of the app's.
+
+Neither was it: with both, 0.1.0.741 still typed "cba". The phone's
+`trace-calls` of `android.text.Selection`, `ArrowKeyMovementMethod` and the
+field's class showed the text set again some 0.6 s after each letter, a new
+text without a cursor that `ArrowKeyMovementMethod.initialize` put at 0, and no
+`setSelection` after it. The controller (`arlw.u`) sets the field's text back
+(`aucl.a`, `setText` and `setSelection`) only when the field is off screen
+(`getGlobalVisibleRect`) or its text is not the controller's, which on the
+phone it never was; but it sets the field's text appearance after every change
+(`aroe.d`), and `setTextAppearance` with a `textAllCaps="false"` (the app's
+`TextAppearance.Assistant_Gem...BodyL`; AppCompat's text helper calls
+`setAllCaps(false)` for its own `textAllCaps` as well) called `setAllCaps`,
+which set the text again whatever it was. Android's `setAllCaps` goes through
+`setTransformationMethod`, which sets the text again only for another
+transformation, and its `applyTextAppearance` turns all caps on, never off:
+now Megler's too. And a text set or set again tells `onSelectionChanged` where
+its cursor was put, as Android's `spanChange` tells of the selection's spans
+put on a text (Gemini's field keeps the cursor it is told). Data step
+`text-appearance-keeps-cursor`: "a", "b", "c" typed with the appearance set
+after each give "abc" with the cursor at 3 (they gave "cba").
 
 **The keyboard's coming and going is an inset animation** of
 `WindowInsets.Type.ime()`, run through the views' callbacks
@@ -4427,9 +4582,11 @@ controller, then the stream again); "rating".
 What a Java app asks of the phone beyond its window goes to the shell through
 `megler_system_host` (`megler.h`; `player/SystemHost.cpp`):
 
-- **Links and sharing.** A link that none of the app's activities takes opens
-  in Windows (`Launcher.LaunchUriAsync`). Shared text goes to Windows' share
-  sheet.
+- **Links and sharing.** A link, an address or a file of a type is resolved
+  as Android resolves it (next section): an activity of the app's own or of
+  another app's, the default browser, or "Open with". One that no app takes
+  opens in Windows (`Launcher.LaunchUriAsync`). Shared text goes to Windows'
+  share sheet.
 - **Installing.** An intent to install an APK goes to Megler's installer, as
   Android hands it to its package installer, before AppRunner looks for an
   activity of the app's own (`megler.Installs`). Such an intent is
@@ -4561,7 +4718,14 @@ What a Java app asks of the phone beyond its window goes to the shell through
   launcher activity and then it. Before, Total Commander's Wi-Fi plug-in,
   asked to send files (`WifiSendActivity`: an action, a type and the list of
   the files in the extras), opened with nothing to send, behind its main
-  screen.
+  screen. The request names the activity; the Intent names the component
+  it reached, an `<activity-alias>` of that activity where it went through
+  one, and that alias stays its component in the app asked, as Android's
+  resolution leaves it (`PhoneApps.asked`; the alias's `android:exported` is
+  the one looked at). Gemini's link reaches the Google app's
+  `MainAssistantDeeplink`, an alias of its `GatewayActivity`, which finds the
+  handler for the link by the name of the alias: named as the activity, it
+  found none and finished.
   - An intent that names the package and an action, with no class, goes to
     the first exported activity of that app whose filter takes it.
   - Megler's `Parcel` keeps objects beside its bytes and is of one process,
@@ -4753,6 +4917,153 @@ app hears `STATUS_FAILURE_ABORTED`. The other app's
 signatures are the fixture's certificate, given only when asked for, and its
 uid names it (`phone-apps-signatures`).
 
+### Links, addresses and default apps
+
+An implicit intent with data and no package or class (`ACTION_VIEW` of a
+link, `geo:`, `market:`, `mailto:`, a file of a type) is resolved by
+`megler.Resolver`, for `startActivity` and for `PackageManager`'s
+`queryIntentActivities` and `resolveActivity`:
+
+- Who can take it: the app's own activities and the other apps' as the shell
+  described them (`activities.json`, description form 4), whose filters
+  match it as `IntentFilter.match` does (`megler.IntentMatch`): the action,
+  the scheme, a scheme-specific part, else the host with its port and then
+  the path (literal, prefix, suffix, `pathPattern`'s simple glob, whose `.*`
+  takes the least it can, and the advanced glob), the MIME type, and every
+  category the intent names. `startActivity` asks with `MATCH_DEFAULT_ONLY`:
+  the filter must have `CATEGORY_DEFAULT`. (Only the scheme and the host were
+  looked at before 735, and the other apps never: an app's filter for a site
+  took every link of it.)
+- A web link (`isDomainVerificationIntent`) goes, as on Android 12 and later,
+  to the apps approved for its domain, and else to the default browser. An
+  app is approved when a filter of its with `android:autoVerify` names the
+  host and the site's `https://<host>/.well-known/assetlinks.json`, read
+  without redirects, names its package and the SHA-256 of one of its
+  certificates (`megler.AssetLinks`; kept in `links-verified.ini`, a yes a
+  week, a no a day; asked off the main thread, the start decided after), or
+  when the user allowed it every link of its sites (`links.<package>=all`).
+  An app's filter alone is no approval: Komi Store's for
+  `github.com/<owner>/<repo>` took its own sign-in page,
+  `github.com/login/device`, which never opened (issue #12).
+- The default browser is Windows' own unless the user chose a browser app
+  (`browser=<package>/<activity>`).
+- Several left: the one the user said "Always" to for that kind of intent
+  (`always.<action>|<scheme>|<type>[|<host>]`), else "Open with"
+  (`megler.Chooser`: a tap picks, Just Once, Always; Back opens nothing). One:
+  it. None: Windows, as before.
+- Another app's activity is started by the shell with the intent
+  (`PhoneApps.startWith`), the app's own by `AppRunner.startOwn`, Windows'
+  browser by `Native.openUrl`. The log says each with the link's scheme and
+  host only (`links: https://github.com -> Windows' browser: ...`).
+- Not resolved so: `ACTION_SEND` and `ACTION_SEND_MULTIPLE` (Windows' share),
+  `ACTION_CHOOSER` (what it holds is), Android's Settings screens, an intent
+  without action, and the launcher's.
+
+The choices live in `defaults.ini` of the apps folder (`<shared>\phone-apps`),
+which every package reads (`Native.appsFile`, `Native.writeAppsFile`):
+`megler.Defaults` in the apps, `library/DefaultApps.cpp` in the shell.
+Megler's Settings have Default Browser and Opened with "Always" (each
+forgotten with a tap); an app's own settings have Opening Links (Verified
+Links, All Supported Links, Don't Open Links), its sites, and Clear Defaults.
+An app reaches the same through Android's screens:
+`APP_OPEN_BY_DEFAULT_SETTINGS` for its package ("Open by default", also a
+button of App info) and `MANAGE_DEFAULT_APPS_SETTINGS` ("Default apps"),
+`megler.SystemScreens`.
+
+The test app `data` checks it (`intent-filter-data`, `link-...`): its
+activity `Main$Linked` has a filter like Komi Store's (`https`,
+`github.example`, `/.*/.*`), a scheme of its own with a path prefix, `geo:`,
+a port and one without `CATEGORY_DEFAULT`; its apps folder has a browser and
+a maps app whose site filter asks to be verified. Its sign-in page goes to
+Windows' browser, and to itself once allowed; a link goes to the browser
+chosen; `geo:` to the app said "Always" to, else "Open with" with both; the
+maps app's place, its site asked and silent, to Windows' browser.
+
+### Android's own Settings: an app of the platform's own
+
+The package brings Android's Settings app as Android 9 has it -- AOSP's, the APK of
+Google's emulator image unchanged (`tools/android9-unpack.sh settings`,
+`platform-apps/AndroidSettings.apk`, 45 MB) -- and Megler installs it once as an app of
+its own (`app/Megler/ui/AndroidSettings.cpp`; `megler.androidSettings` = "installed"
+after that, so a user who removes it is not given it again). Android 9's, not 14's:
+Megler's `framework-res.apk` and the platform's framework it falls back on are Android
+9's, so the private resources and hidden classes it was built against are there as it
+expects them.
+
+Its manifest's `sharedUserId` is `android.uid.system`, which makes it an app of the
+platform's own (`J.platform_app`, `megler.Native.platformApp()`):
+
+- **Android 9's framework after Megler's** (`add_platform_framework`:
+  `platform-framework*.dex`, `platform-telephony-common.dex`,
+  `platform-ims-common.dex`): a class Megler's has is Megler's, one it lacks is the
+  platform's. But an interface Megler's has only as a generated stand-in with no method
+  (`core/framework/gen-src`: `INotificationManager`, `IBackupManager`,
+  `IConnectivityManager`...) gives its place to the platform's
+  (`mg_dvm_fill_empty_interfaces`, 102 of them), or the platform's own Stub and Proxy
+  were called through the empty one.
+- **The system's services in its own process.** The service manager gives it a binder
+  for every name (`megler.PlatformInterfaces.binder`), whose local interface is made for
+  whatever interface the platform's code asks it for: a `java.lang.reflect.Proxy` whose
+  calls go to what answers for that interface here -- `IPackageManager` (Megler's
+  `PackageManager`, which knows the phone's apps), `IActivityManager` (the one user,
+  running), `INotificationManager` (allowed, one channel), `IBatteryStats` (a parcel of
+  Android 9's `BatteryStatsImpl` made now, its timers made and nothing counted),
+  `IProcessStats` (a parcel of Android 9's `ProcessStats` made now, nothing counted, as a
+  descriptor: Developer options' Memory reads it without looking for null) -- and
+  every other method answering as a service with nothing would: false, 0, null, an empty
+  list or array. `AppGlobals.getPackageManager()`, `ActivityThread.getPackageManager()`
+  and `ActivityManager.getService()` give those interfaces (declared to the framework's
+  compiler only, `core/framework/stubs`). `megler.ContextImpl` makes the platform's
+  managers Megler has none of (`NetworkPolicyManager`, `NetworkScoreManager`) on them.
+- **Android 9's hidden members.** A hidden method of Android 9's that Megler's class lacks
+  was a `NoSuchMethodError` where Settings called it.
+  `tools/compat/platform-members.py <apk> --write` finds each the APK names (as the
+  runtime looks a method up) and adds it, as Android 9 declares it, answering as a phone
+  without that thing would, between the markers `tools/list-stubs.py` knows, so the
+  runtime says its first call (`api: ... is a stub here`): 120 methods of 44 classes for
+  Settings 9. Those that matter are written by hand: the one user (`UserManager`,
+  `UserInfo.owner()`), the methods with a user (`...AsUser`: the methods without one),
+  `ApplicationInfo.isSystemApp` (the platform's app has `FLAG_SYSTEM`; Settings fills
+  in only a system app's tiles), `queryIntentActivities` listing every activity of the
+  app's own an intent reaches (its main screen is its own activities that take
+  `com.android.settings.action.SETTINGS`), `LogMaker`, `PersistableBundle`'s XML,
+  `NetworkStats`, `IntentFilter`'s hosts and paths, `Formatter.formatBytes`, Do Not
+  Disturb's policy, `UsbManager.getPorts` and `BluetoothAdapter.setScanMode` as
+  Android 9 declared them.
+- **What it changes is Megler's.** Its Default apps' browser
+  (`getDefaultBrowserPackageNameAsUser`, `setDefaultBrowserPackageNameAsUser`; Windows'
+  browser is `com.android.browser`), an app's Open by default
+  (`getIntentVerificationStatusAsUser`: ALWAYS all its links, NEVER none, anything
+  else those of its verified domains), its "Clear defaults"
+  (`clearPackagePreferredActivities`, the "Always" answers) are kept in `defaults.ini`
+  through `megler.Resolver`, where Megler's own resolution and its Settings read them
+  (see "Links, addresses and default apps").
+
+Checked under qemu-arm (`mg_tests --java app` on the APK, a tap a section): its main
+screen, each of its twelve sections, Apps & notifications, an app's App info, Default
+apps and its Browser app (choosing a browser writes `browser=` in the apps folder's
+`defaults.ini`). Many deeper screens are not tried yet; a section that ends the app is
+a hidden member answering what Settings does not expect, found the same way.
+
+What 737 to 748 showed on the HP Elite x3, and the walk after it (each section and back,
+Wi-Fi, Storage, System, About, Build number seven times, Developer options), was the
+framework's, not Settings': a fragment added in `onCreate` had its view at once, before
+`SettingsActivity` had found its switch bar (Wi-Fi ended; Android makes the view after
+`onCreate`); `Activity.setActionBar` did not make the toolbar the action bar (every screen
+titled "Settings", no back arrow; `megler.SimpleActionBar`'s toolbar mode); a colour of
+Android 9's asked for by its number came out as one of Android 12's system colours
+(the bars' titles white: `Toolbar` reads the theme's value); disabled activities were
+tiles (two About, Developer options before they were on, Tips & support); and services and
+hidden members answering null where Android answers something (`IProcessStats`,
+`IWebViewUpdateService`, `queryExternalStatsForUser`, `loadItemIcon`, the ringer mode,
+the Wi-Fi state's sticky broadcast, `ScanResult`'s and `WifiInfo`'s hidden fields).
+`mg_tests --java app` with `MG_GFX_RECORD` records what an app draws, for
+`--gfx-replay` to draw it again with the shell's Direct2D at the phone's density.
+
+One fix there was Megler's for every app: an array resource's items are read in their
+order whatever their keys. aapt2, as the platform's build runs it, keys each item of an
+array 0, and the items, kept by key, were one (`Resources.meglerBag`).
+
 ### Jobs, and an app's other processes
 
 `android.app.job` (overlaid): the app's jobs are run, once for the app whichever
@@ -4794,8 +5105,44 @@ in, and its download service (`:download_service`) asked for its own part of
 it and had the main process's; the services of such a process are made
 there now (`megler.Services`). Their binders reach the rest of the app
 through `transact`, as AIDL's `asInterface` takes another scope's object for
-a remote one. The process's receivers, providers and activities still run in
-the app's own scope.
+a remote one.
+
+The app's own scope is the process of the activity it is started for
+(`Processes.own`, named by `megler.AppRunner.run` before any of the app's code
+runs): its launcher activity's, or the one another app asked for
+(`Native.requestedActivity`), as Android starts the process an activity's
+manifest names for it; an `<activity-alias>` is its target's
+(`Manifest.processOf`). For most apps that is the package's own. The Google
+app (17.6) has its launcher's `GoogleAppActivity` in `:googleapp`, Gemini's
+link opens its `GatewayActivity` in `:search`, and only three services are in
+the package's own process; its Application builds the object graph (Hilt's
+component) of the process it is told it runs in, and told the package's
+own, `GoogleAppActivity` ended its start with "Missing entry point ... Cannot
+cast tdd to bkxw". Every
+place that names the process says the own scope's: `Application.getProcessName`,
+`ActivityThread.currentProcessName`, `Process.myProcessName`,
+`ActivityManager.getRunningAppProcesses` and `getMyMemoryState`
+(`Processes.current`: a scope's code is told its scope's), and the core's
+`/proc/self/cmdline` and the `Name` of `/proc/self/status`
+(`Native.setProcessName`, `mg_fs_set_process`); and hosted Google Play
+services' application, which takes the process its code is told for its main
+one (`megler.MicroG`). The package's own process is then a scope like any
+other, for its services and activities. An activity of another process than
+the own scope's is made in that process's scope, with its Application and on a
+base context of its own with that process's class loader, Application and
+`ActivityManager` (`AppRunner.make`, `Processes.Scope.activityBase`), its
+intent's objects made again by that scope's classes; the app's Instrumentation
+is not asked for it. The test app `procs` runs both ways (its launcher in the
+package's process; started for its activity in `:far`), each component saying
+the process it is told and the Application it has. Not done:
+the providers of every process are made in the own scope as the app starts (on
+Android a process installs its own, and another's starts that process when
+asked), and a receiver of the manifest in another process than the own
+scope's is not run (`megler.Broadcasts`); `/proc/self` says the own scope's
+process to a scope's code too, there being one native process, and
+`ActivityThread.currentApplication` is the own scope's Application. Google
+Play services' own package run as an app keeps its processes one, as in every
+app that hosts them.
 
 The scope is over the app's base APK, and its native libraries are the app's
 library folder's (`ApplicationInfo.nativeLibraryDir`, where the Java driver
@@ -4843,6 +5190,76 @@ An uncaught exception of a thread of such a process ends that thread alone,
 as one of Google Play services' does, and the log says whose it was
 ("process com.facebook.lite:fbns's thread ..."; `megler.Processes.threadsOf`):
 it said "Google Play services' thread" for every scope.
+
+Each such process has a list of security providers of its own, as on Android,
+where `java.security.Security`'s list is the process's: what `insertProviderAt`,
+`addProvider` and `removeProvider` change, and what `getProviders`,
+`getProvider` and every JCA lookup (`Cipher`, `MessageDigest`, `SSLContext`...
+`getInstance`, with a provider's name or without) read. The Google app's
+Application puts Google's SslGuard first in the list of every process it runs
+in and throws "Failed to install SslGuard with top priority." when
+`insertProviderAt` answers other than 1; with the one list of the virtual
+machine, its `:search` (Gemini's screens) ended so whenever `:googleapp`, its
+launcher's, was the app's own process and had put SslGuard there before
+(0.1.0.739, the Elite x3), and the same in `:interactor`. Libcore's
+`sun.security.jca.Providers` (the libcore overlay: `Providers.java.members`
+and `.replace`) answers its system-wide list (`getSystemProviderList`,
+`setSystemProviderList`, which `Security` and `GetInstance` go through) with
+the list of the process of the code that asks, where that is one of these
+scopes: the class scope the runtime names for the code, as for the locks of
+files (`meglerScope`, `code_scope` in `dvm/mg_dvm_art.c`: the innermost frame
+of an app's code or of a scope's, else the scope whose code started the
+thread -- so the platform's code calling on such a process's behalf, and a pool
+thread it started, count as its). A scope's list is made before its
+Application (`Processes.ownProviders`) as a fresh process's: the platform's
+providers as `megler.AppRunner.run` had put them in just before the app's code
+ran (`Processes.providersReady`: AndroidKeyStore, the network security
+configuration's). The app's own process, Google Play services and the other
+packages hosted here, and the platform's threads have the system-wide list as
+before, and an app with one process never has another list. The test app
+`procs` has the Application of each process put a provider of one name first
+(both at 1), each activity find its own process's by `getProviders`,
+`getProvider` and `MessageDigest.getInstance` with and without the provider's
+name, and the other process's removing its own leave the first's. Not done:
+what libcore keeps once for the virtual machine beside the list -- the
+security properties (`Security.setProperty`: SslGuard names its socket
+factories there), `SSLContext.setDefault`/`getDefault`, the defaults of
+`HttpsURLConnection` and `SSLSocketFactory.getDefault` -- stays one for all
+the processes, the last to set it winning; and Google Play services' code
+called from such a process (`ProviderInstaller`) changes the system-wide list,
+its code being its own scope's, as before.
+
+A process whose Application throws as it is made ends, as on Android, where
+`handleBindApplication` throws "Unable to create application" and the process
+crashes before the component it was started for is made, the app's other
+processes going on. The log says so as Android's does (`FATAL EXCEPTION`, the
+process's name, "Unable to create application ...") and in a line of
+Megler's, and from then on its components are not made (`Processes.of` throws
+`Processes.Ended`): an activity's start fails with a line in the log and the
+caller that asked for a result hears `RESULT_CANCELED`, a service is neither
+started nor bound, a job whose service it is is not run (and is forgotten,
+as a job that cannot start is), and the app goes on. Such a process's activities were
+made in its scope with the Application it had half made (or, where none was
+made, in the app's own scope with the own process's): the Google app's Gemini
+screen was made so in `:search`, whose Application had not put its SslGuard in,
+and its failure ended the whole app (0.1.0.739). The test app `procs` starts
+`Broken` in `:broken`, whose Application throws. Not
+done: Android's dialog that the app has stopped, a later start making the
+process again (here it stays ended until the app is started again), and the
+threads its Application started, which run on.
+
+A context made from one of such a process's -- `createConfigurationContext`,
+`createPackageContext` of the package itself, `createAttributionContext`,
+`createContext`, `createContextForSplit`, the storage contexts -- is that
+process's too (`Processes.ProcessContext.ours`): its Application, class loader
+and `ActivityManager` are the process's, where the base's made one of the app's
+own scope. The Google app's Gemini screen (`robin.main.MainActivity`, in
+`:search`) asks the Application of such a context for its object graph and
+had `:googleapp`'s, of another class scope: "Given component holder class
+VelvetMultiprocessRoot_Application does not implement interface fhmq or
+interface fhmr", which ended the app (0.1.0.739; under qemu still once
+`:search` had its SslGuard). The test app `procs` checks a configuration
+context and the package's own of each activity.
 
 ### Downloads
 
@@ -5612,7 +6029,7 @@ minutes: `mg_tests.exe --java webview ... root-x86_64 ...`).
 **Resources.** The WebView APK's `resources.arsc` is a shared library's:
 package id 0, its own references through that id. `AssetManager.
 addAssetPathAsSharedLibrary` (the overlay's) has the core open the APK as one
-more of the APKs it reads (`megler.Native.addApk`, numbers from 12 on), and
+more of the APKs it reads (`megler.Native.addApk`, numbers from 34 on), and
 `Resources` reads its table with the package given the next free id from
 0x02, as Android's `AssetManager2` gives a dynamic package; ids that name
 package 0 in that table are given 0x02 as they are read (`ResTable`).
@@ -5724,6 +6141,19 @@ in Japanese, as the issue has it).
   (`bionic/mg_libc_mem.c`), so a font of 20 MB costs the pages that are read.
   The log: `java: Android's font list (/system/etc/fonts.xml) has 14 of the
   host's 14 fonts after its own, for ...`.
+- And the first font of Chinese, Japanese and Korean each is there under
+  Android's own file names of its font for that language as well, for apps
+  that open them by path to draw with FreeType (issue #25: Shattered Pixel
+  Dungeon drew no Chinese): `NotoSansSC-Regular.otf` and
+  `NotoSansHans-Regular.otf` (zh-Hans), `NotoSansTC-Regular.otf` and
+  `NotoSansHant-Regular.otf` (zh-Hant), `NotoSansJP-Regular.otf`,
+  `NotoSansKR-Regular.otf`, and `DroidSansFallback.ttf` and
+  `DroidSansFallbackFull.ttf` (the first of the four); opened at their first
+  face, which in a collection of Windows' is its family's (Microsoft YaHei for
+  Microsoft YaHei UI). Not `NotoSansCJK-Regular.ttc`: apps open Android 7's
+  collection at the face of their language by its number (2 for Simplified
+  Chinese), which no file of Windows' has, and FreeType refuses a face that is
+  not there. Roboto and the root's other fonts are the root's own files.
 - A native-engine app has no `/system` of the root's and none of this.
 
 The WebView test app checks it (`writings` in its `Main.java`): two
@@ -6524,7 +6954,9 @@ native code is.
   conscrypt's `SSLEngine` (what Netty and gRPC use) has not been tried.
 - An app in several APKs runs as one ("Split APKs and bundles"), but the
   components declared only in a feature split's manifest are not known, every
-  split is on one class path, and an app is given ten splits at most. Not yet
+  split is on one class path, and an app is given 32 splits at most (ten until
+  0.1.0.734: TikTok Lite from Google Play has ten before its feature module is
+  added, issue #6). Not yet
   tried on a phone.
 - Bytecode cannot call a method of a class only C implements.
 - Thread interruption does not wake a waiting thread. A thread's state is not
@@ -8612,9 +9044,13 @@ generated signatures: `HttpEngine.Builder.build()` answered null.
 
 **Who takes it.** Cronet's own provider list (`CronetEngine.Builder`, which an
 app carrying Cronet's API makes) offers HttpEngine only where
-`SdkExtensions.getExtensionVersion(31)` is 7 or more; Megler says 0, so Cronet
-never picks it there, and an app's own Cronet, or Google Play services', is
-taken. The Google Play Store (53.7.23, `sxi.g` in the jadx of its classes3)
+`SdkExtensions.getExtensionVersion(31)` is 7 or more. Megler said 0 until
+0.1.0.748 (a generated stub, `SdkExtensions` in the overlay since), which no
+Android 14 says: Android 14 came with 7 of R, S, T and U, the level that
+brought `android.net.http` to Android 12 and 13. Cronet's list ranks an
+HttpEngine whose version is below the one it prefers (133) under the others,
+so an app's own Cronet, or Google Play services', is still taken where there
+is one. The Google Play Store (53.7.23, `sxi.g` in the jadx of its classes3)
 asks for HttpEngine itself on Android 14 when a server flag of its,
 `NetworkOptimizationsAutogen` / `enable_bypass_sdk_extensions_check_for_platform_cronet_on_u`,
 is on for the phone: "Device is eligible for platform Cronet and will attempt
@@ -8634,6 +9070,23 @@ the Cronet it carries ("source: Statically Linked") and all of that works.
 The Play Store has a fallback, OkHttp and gRPC's OkHttp transport, but only
 for an engine whose build throws (`aeus.e` catches it and uses none); a null
 it takes as an engine.
+
+The Play Store's build for Android 14 (54.3.08-34, "Android 14+" on
+APKMirror, the one Play gives a phone of SDK 34 when it updates itself)
+carries no Cronet: no `libcronet.*.so` of any ABI in its APK, and of Cronet's
+Java only `HttpEngineNativeProvider`. Its `ukb.a` takes HttpEngine where the S
+extension is 7 or more ("Device is eligible for platform Cronet") and builds
+Cronet's provider list otherwise, in which nothing is left
+(`PlayServicesCronetProvider`, `NativeCronetProvider` and `JavaCronetProvider`
+are names it tries, not classes it has), and `afdt.e` says what it says of any
+failure there, "Cronet native library failed to load; Possible ABI mismatch.",
+and falls back to OkHttp (a Spanish user's Elite x3 on 0.1.0.734, at every
+start). With Android 14's extension levels it takes HttpEngine, Megler's
+engine, and sets on its builder the options of stale DNS, QUIC (idle timeout,
+in-memory server configs, handshake user agent) and connection migration
+(path degradation): kept, as the others are. The earlier builds that carry
+Cronet take HttpEngine too now, as on any Android 14 (the data app's step
+"sdk-extensions").
 
 **Megler's engine** (`megler.http`, in the overlay; `HttpEngine.java` there
 hands the Builder's calls to `megler.http.EngineBuilder`, as Android hands them

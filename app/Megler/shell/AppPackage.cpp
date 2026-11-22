@@ -10,6 +10,7 @@
 #include "shell/DevicePortal.h"
 #endif
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/OwnUpdate.h"
 #include "shell/PackageVersions.h"
 #include "shell/PickedFile.h"
@@ -113,14 +114,15 @@ bool plainName(const std::string& name) {
 /// Megler's own files for an app's package: all of the install folder but what the package gets in its own form (the
 /// manifest, resources.pri, MeglerApp.ini, app\), what the packaging adds (block map, content types, signature,
 /// AppxMetadata), and what an app's package has no use for (Android's files, which are shared; the self-test's
-/// libraries; the demos; the codec samples of the auto runs; the template its resources.pri is made from).
+/// libraries; the demos; the codec samples of the auto runs; the template its resources.pri is made from; Mesa's freedreno,
+/// some 20 MB, and its licences, but `withMesa`, for an app that goes by it: shell/Graphics.h).
 void collect(const std::wstring& root, const std::wstring& rel, std::vector<std::pair<std::string, std::wstring>>& out,
-             std::vector<std::string>& skipped) {
+             std::vector<std::string>& skipped, bool withMesa) {
     const std::wstring dir = rel.empty() ? root : root + L"\\" + rel;
     for (const auto& name : files::list(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"AppxManifest.xml") || sameName(name, L"AppxBlockMap.xml") ||
                             sameName(name, L"[Content_Types].xml") || sameName(name, L"AppxSignature.p7x") || sameName(name, L"MeglerApp.ini") ||
-                            sameName(name, L"resources.pri")))
+                            sameName(name, L"resources.pri") || (!withMesa && graphics::isMesaFile(name))))
             continue;
         std::string zip = narrow(rel.empty() ? name : rel + L"\\" + name);
         for (char& c : zip)
@@ -136,9 +138,10 @@ void collect(const std::wstring& root, const std::wstring& rel, std::vector<std:
     for (const auto& name : files::listFolders(dir, L"*")) {
         if (rel.empty() && (sameName(name, L"android") || sameName(name, L"selftest") || sameName(name, L"demo") ||
                             sameName(name, L"codec") || sameName(name, L"app") || sameName(name, L"AppxMetadata") ||
-                            sameName(name, L"appx-template") || sameName(name, L"bitgapps")))
+                            sameName(name, L"appx-template") || sameName(name, L"bitgapps") ||
+                            (!withMesa && graphics::isMesaFolder(name))))
             continue;
-        collect(root, rel.empty() ? name : rel + L"\\" + name, out, skipped);
+        collect(root, rel.empty() ? name : rel + L"\\" + name, out, skipped, withMesa);
     }
 }
 
@@ -320,12 +323,24 @@ const SingleApp& single() {
             s.apkFolder = install + L"\\" + widen(apk);
         if (!shared.empty() && !root.empty()) s.androidRoot = shared + L"\\" + widen(root);
         s.megler = widen(iniValue(text, "megler"));
+        s.gles = iniValue(text, "gles");
         shellLog::write("app package: this is " + s.package + "'s own package; " +
                         (shared.empty() ? std::string("Windows gave it no shared folder, where its APK and Android's files are")
                                         : "Android's files in " + narrow(s.androidRoot) + ", its APK in " + narrow(s.apkFolder)));
         return s;
     }();
     return app;
+}
+
+bool mesaChoosable() {
+    static const bool choosable = isSingleApp() ? !single().gles.empty() : graphics::hasMesaFiles(platform::installDirectory());
+    return choosable;
+}
+
+std::string glesFor(const std::string& package) {
+    if (!mesaChoosable()) return "angle";
+    return graphics::resolve(package.empty() ? std::nullopt : settings::app(package, settings::gles), settings::megler(settings::gles),
+                             graphics::packageDefault(platform::installDirectory()), true);
 }
 
 const std::string& singleAppProblem() {
@@ -671,9 +686,17 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
     made.certificate = outDir + L"\\MeglerApps.cer";
     files::copy(signing + L"\\MeglerApps.cer", made.certificate);
 
+    // Mesa's freedreno, some 20 MB of DLLs (shell/Graphics.h), goes in only for an app that goes by it now, its own setting
+    // Graphics or Megler's: 58 apps' packages with it were 1.2 GB of a phone's. Changing it later makes the app's package to be
+    // made again (ui/SeparateApps.cpp), which is why what went in is written down beside its APKs once it is made.
+    const bool mesaHere = graphics::hasMesaFiles(install);
+    made.mesa = mesaHere && glesFor(r.package) == "mesa";
+    if (mesaHere)
+        shellLog::write("app package: " + r.package + (made.mesa ? " goes by Mesa's freedreno: its DLLs are in the package"
+                                                                 : " goes by ANGLE: Mesa's DLLs are left out of the package"));
     std::vector<std::pair<std::string, std::wstring>> parts;
     std::vector<std::string> skipped;
-    collect(install, L"", parts, skipped);
+    collect(install, L"", parts, skipped, made.mesa);
     for (const auto& s : skipped) shellLog::write("app package: left out, its name would need escaping: " + s);
 
     // The app's APK, its splits, its report and its icon in the shared folder, where the package's app reads them
@@ -716,8 +739,10 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         megler_appx_add_data(a, "resources.pri", pri.data(), pri.size());
         // (megler=: the Megler the app hands APKs to and starts others through, by its package family name -- a test identity's is
         // not the release's.)
+        // (gles=: whether Mesa's DLLs are in it, where Megler has them -- its own Settings offer Graphics then.)
         const std::string ini = "package=" + r.package + "\r\nlabel=" + label + "\r\napk=shared:" + narrow(made.apkFolder) + "\r\nroot=android\\" +
-                                androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n";
+                                androidRootName() + "\r\nmegler=" + narrow(std::wstring(Package::Current().Id().FamilyName())) + "\r\n" +
+                                (mesaHere ? std::string("gles=") + (made.mesa ? "mesa" : "angle") + "\r\n" : std::string());
         megler_appx_add_data(a, "MeglerApp.ini", ini.data(), ini.size());
         progress("Signing the package…");
         if (megler_appx_finish(a, key, err, sizeof(err))) break;
@@ -728,6 +753,11 @@ Made make(const ApkEntry& entry, const std::function<void(const std::string&)>& 
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     shellLog::write("app package: " + narrow(made.appx) + " made, " + formattedByteCount(files::size(made.appx)) + ", for " + r.package);
+    // Whether it has Mesa's DLLs, by its full name, for the Library to tell when the app's Graphics no longer match its package.
+    if (mesaHere && !graphics::record(shared, made.identity, made.fullName, made.mesa))
+        shellLog::write(format("app package: apks\\%s\\graphics.txt could not be written (error %lu): the Library takes the package for one "
+                               "without Mesa",
+                               made.identity.c_str(), GetLastError()));
     // The data handed over once: said only now, so that a make that failed hands it over again.
     if (handOver && (!files::makeDirectories(inShared) || !files::write(handedOver, "Megler " + version + " handed over " + r.package + "'s data in Megler\r\n")))
         shellLog::write("app package: " + narrow(handedOver) + " could not be written: the next package of the app hands its data over again");
@@ -2528,8 +2558,8 @@ void shareMeglersStorage() {
         shellLog::write("storage: Megler's storage was not all copied; tried again at the next start");
 }
 
-void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
-    [](std::wstring path, std::function<void(bool)> done) -> winrt::fire_and_forget {
+// (Coroutines of their own rather than lambdas called where they are made: VS 2017's MSVC refuses those, C2264.)
+static winrt::fire_and_forget openWithSystemAsync(std::wstring path, std::function<void(bool)> done) {
         bool ok = false;
         try {
             auto file = co_await StorageFile::GetFileFromPathAsync(path);
@@ -2539,8 +2569,9 @@ void openWithSystem(const std::wstring& path, std::function<void(bool)> done) {
         }
         shellLog::write("app package: " + narrow(path) + (ok ? " handed to Windows" : " not taken by Windows"));
         if (done) done(ok);
-    }(path, std::move(done));
 }
+
+void openWithSystem(const std::wstring& path, std::function<void(bool)> done) { openWithSystemAsync(path, std::move(done)); }
 
 std::wstring signingCertificate() { return platform::localStateDirectory() + L"\\signing\\MeglerApps.cer"; }
 
@@ -2548,8 +2579,7 @@ std::string trustCommand() {
     return "Import-Certificate -FilePath \"" + narrow(signingCertificate()) + "\" -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople";
 }
 
-void showSigningCertificate(std::function<void(bool)> done) {
-    [](std::function<void(bool)> done) -> winrt::fire_and_forget {
+static winrt::fire_and_forget showSigningCertificateAsync(std::function<void(bool)> done) {
         bool ok = false;
         const std::wstring certificate = signingCertificate();
         try {
@@ -2562,8 +2592,9 @@ void showSigningCertificate(std::function<void(bool)> done) {
         }
         shellLog::write("app package: the folder of " + narrow(certificate) + (ok ? " shown in File Explorer" : " not shown by Windows"));
         if (done) done(ok);
-    }(std::move(done));
 }
+
+void showSigningCertificate(std::function<void(bool)> done) { showSigningCertificateAsync(std::move(done)); }
 
 static std::atomic<bool> gSelfUpdating{false};
 static std::mutex gSelfUpdateMutex;

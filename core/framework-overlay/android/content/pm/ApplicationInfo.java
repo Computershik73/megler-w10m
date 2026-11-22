@@ -6,6 +6,13 @@
 // falls back to Build.SUPPORTED_ABIS; WhatsApp ended at its start when both said nothing usable (package 270).
 // And in the app's own meta-data passing through megler.GooglePackages.ownMetaData: Play Store's derived APK id is the newest
 // there is, so that it no longer downloads another variant of its own version at every start, which it could not install.
+// And an app of the platform's own (Android's Settings, which Megler's package carries) is a system app (FLAG_SYSTEM), and
+// isSystemApp, isPrivilegedApp, isInternal and hasRtlSupport read the flags, where they said false: Settings fills in only
+// a system app's tiles of its main screen (TileUtils.updateTileData) and ended on the tile with no icon.
+// And an app whose activities view web links (VIEW, http or https) has PRIVATE_FLAG_HAS_DOMAIN_URLS, as Android's package
+// parser marks it: Android's own Settings offers an app's "Open supported links" only for such an app.
+// And an app whose manifest says android:isolatedSplits has PRIVATE_FLAG_ISOLATED_SPLIT_LOADING, and requestsIsolatedSplitLoading
+// says so (megler.Splits loads its feature splits so).
 // Everything else is the original's, unchanged.
 package android.content.pm;
 public class ApplicationInfo extends PackageItemInfo implements android.os.Parcelable {
@@ -79,14 +86,20 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
             a.theme = megler.Manifest.appTheme; a.labelRes = megler.Manifest.appLabel; a.icon = megler.Manifest.appIcon;
             a.targetSdkVersion = megler.Manifest.targetSdk; a.minSdkVersion = megler.Manifest.minSdk;
             a.flags = FLAG_HAS_CODE | FLAG_INSTALLED | FLAG_ALLOW_BACKUP | FLAG_SUPPORTS_RTL | FLAG_HARDWARE_ACCELERATED | (megler.Manifest.debuggable ? FLAG_DEBUGGABLE : 0) | (megler.Manifest.largeHeap ? FLAG_LARGE_HEAP : 0)
-                | (megler.Manifest.extractNativeLibs ? FLAG_EXTRACT_NATIVE_LIBS : 0);   /* Qt looks for its plugins in nativeLibraryDir then */
+                | (megler.Manifest.extractNativeLibs ? FLAG_EXTRACT_NATIVE_LIBS : 0)   /* Qt looks for its plugins in nativeLibraryDir then */
+                | (megler.Native.platformApp() ? FLAG_SYSTEM : 0);   /* the platform's own app, Android's Settings, is a system app */
             a.metaData = megler.GooglePackages.ownMetaData(a.packageName, megler.Manifest.appMetaData);
             a.appComponentFactory = megler.Manifest.appComponentFactory;
+            /* an app with an activity that views web links, as Android's package parser marks it (Open by default) */
+            if (megler.Resolver.hasDomainUrls(a.packageName)) a.privateFlags |= PRIVATE_FLAG_HAS_DOMAIN_URLS;
+            /* an app that loads its splits in isolation (android:isolatedSplits), as Android's package parser marks it: megler.Splits */
+            if (megler.Manifest.isolatedSplits) a.privateFlags |= PRIVATE_FLAG_ISOLATED_SPLIT_LOADING;
             a.uid = android.os.Process.myUid();
             sSelf = a;
         }
         return sSelf;
     }
+    public boolean requestsIsolatedSplitLoading() { return (privateFlags & PRIVATE_FLAG_ISOLATED_SPLIT_LOADING) != 0; }
     public boolean isProfileableByShell() { return false; }
     public boolean isResourceOverlay() { return false; }
     public boolean isVirtualPreload() { return false; }
@@ -229,37 +242,50 @@ public class ApplicationInfo extends PackageItemInfo implements android.os.Parce
     public boolean hasFragileUserData() { return false; }
     public boolean hasRequestForegroundServiceExemption() { return false; }
     public boolean hasRequestedLegacyExternalStorage() { return false; }
-    public boolean hasRtlSupport() { return false; }
+    public boolean hasRtlSupport() {
+        return (flags & FLAG_SUPPORTS_RTL) != 0;
+    }
     public void initForUser(int p0) {}
     public boolean isAudioPlaybackCaptureAllowed() { return false; }
     public boolean isChangeEnabled(long p0) { return false; }
     public boolean isDefaultToDeviceProtectedStorage() { return false; }
-    public boolean isDirectBootAware() { return false; }
+    public boolean isDirectBootAware() {
+        return false;
+    }
     public boolean isEmbeddedDexUsed() { return false; }
     public boolean isEncryptionAware() { return false; }
-    public boolean isExternal() { return false; }
+    public boolean isExternal() {
+        return (flags & FLAG_EXTERNAL_STORAGE) != 0;
+    }
     public boolean isInstantApp() { return false; }
-    public boolean isInternal() { return false; }
+    public boolean isInternal() {
+        return (flags & FLAG_EXTERNAL_STORAGE) == 0;
+    }
     public boolean isNotLaunched() { return false; }
     public boolean isOdm() { return false; }
     public boolean isOem() { return false; }
     public boolean isOnBackInvokedCallbackEnabled() { return false; }
     public boolean isPartiallyDirectBootAware() { return false; }
-    public boolean isPrivilegedApp() { return false; }
+    public boolean isPrivilegedApp() {
+        return (flags & FLAG_SYSTEM) != 0 && megler.Native.platformApp() && megler.Native.packageName().equals(packageName);
+    }
     public boolean isProduct() { return false; }
     public boolean isProfileable() { return false; }
     public boolean isRequiredForSystemUser() { return false; }
-    public boolean isSignedWithPlatformKey() { return false; }
+    public boolean isSignedWithPlatformKey() {
+        return isPrivilegedApp();
+    }
     public boolean isStaticSharedLibrary() { return false; }
     public boolean isStopped() { return false; }
-    public boolean isSystemApp() { return false; }
+    public boolean isSystemApp() {
+        return (flags & FLAG_SYSTEM) != 0;
+    }
     public boolean isSystemExt() { return false; }
     public boolean isUpdatedSystemApp() { return false; }
     public boolean isVendor() { return false; }
     public android.graphics.drawable.Drawable loadDefaultIcon(android.content.pm.PackageManager p0) { return null; }
     public java.lang.CharSequence loadDescription(android.content.pm.PackageManager p0) { return null; }
     public void maybeUpdateHiddenApiEnforcementPolicy(int p0) {}
-    public boolean requestsIsolatedSplitLoading() { return false; }
     public void setAppClassNamesByProcess(android.util.ArrayMap p0) {}
     public void setBaseCodePath(java.lang.String p0) { meglerFill = megler.Fill.put(meglerFill, "BaseCodePath", p0); }
     public void setBaseResourcePath(java.lang.String p0) { meglerFill = megler.Fill.put(meglerFill, "BaseResourcePath", p0); }

@@ -39,6 +39,15 @@
 // group stayed "layout requested" from its making until its next layout, and a held view that asked for its layout
 // meanwhile (a child's requestLayout stops at a parent that has one asked) was not measured again.
 //
+// And a child is attached to the window once, as on Android: one this group adds while its own onAttachedToWindow runs is
+// attached after it, by dispatchAttachedToWindow's loop over the children, and not by addViewInner too (Android's
+// FLAG_PREVENT_DISPATCH_ATTACHED_TO_WINDOW); and the loops of attaching and detaching go over the children as they are when
+// they start, each child still this group's (see the overlay's View: a view attached already is not attached again). The
+// original attached such a child twice, its onAttachedToWindow heard twice with no detach between: react-native-screens'
+// ScreenStack commits its fragments in its onAttachedToWindow, which adds its screens to it then, and BBPlayer's tabs
+// (TabsContainer) ended the mount of its React Native screen with "ColorSchemeCoordinator's setup method must not be called
+// again without calling teardown() first" (issue #22).
+//
 // Everything else is the original's, unchanged.
 package android.view;
 
@@ -203,7 +212,8 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         child.mParent = this;
         meglerListInvalid();
         if (child.hasFocus()) requestChildFocus(child, child.findFocus());
-        if (mRoot != null) {
+        /* (Not while this group's own onAttachedToWindow runs: dispatchAttachedToWindow attaches the child after it.) */
+        if (mRoot != null && !mMeglerAttaching) {
             child.dispatchAttachedToWindow(mRoot, getVisibility());
             WindowInsets in = mRoot.insets();
             if (in != null) child.dispatchApplyWindowInsets(in);
@@ -222,7 +232,7 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
         child.mParent = this;
         meglerListInvalid();
         /* a child detached from its parent stays attached to the window; one that never was joins it now, so the tree stays consistent */
-        if (mRoot != null && !child.isAttachedToWindow()) child.dispatchAttachedToWindow(mRoot, getVisibility());
+        if (mRoot != null && !mMeglerAttaching && !child.isAttachedToWindow()) child.dispatchAttachedToWindow(mRoot, getVisibility());
         /* Android's (7 and later): this group and its visible children told whether they are shown -- a row RecyclerView puts
            back after a layout hears it is shown, whatever it missed while it was out (see the top of the file) */
         dispatchVisibilityAggregated(isAttachedToWindow() && getWindowVisibility() == VISIBLE && isShown());
@@ -312,9 +322,23 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     public void setStaticTransformationsEnabled(boolean e) {}
     protected boolean getChildStaticTransformation(View child, android.view.animation.Transformation t) { return false; }
 
+    /*
+     * Android's FLAG_PREVENT_DISPATCH_ATTACHED_TO_WINDOW: set while this group's own onAttachedToWindow (and its listeners)
+     * run. A child added then is attached by the loop that follows, once, and not by addViewInner as well (see the top of
+     * the file).
+     */
+    private boolean mMeglerAttaching;
     @Override void dispatchAttachedToWindow(megler.ViewRoot root, int visibility) {
-        super.dispatchAttachedToWindow(root, visibility);
-        for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchAttachedToWindow(root, visibility);
+        mMeglerAttaching = true;
+        try {
+            super.dispatchAttachedToWindow(root, visibility);
+        } finally {
+            mMeglerAttaching = false;
+        }
+        // (The children as they are now, those its onAttachedToWindow added among them; one a child's attaching took out of
+        // this group meanwhile is not this group's to attach.)
+        View[] children = java.util.Arrays.copyOf(mChildren, mChildrenCount);
+        for (View c : children) if (c.mParent == this) c.dispatchAttachedToWindow(root, visibility);
     }
     /* Android's: the visible children told too (those not visible know already they are not shown). */
     @Override boolean dispatchVisibilityAggregated(boolean isVisible) {
@@ -324,7 +348,10 @@ public abstract class ViewGroup extends View implements ViewParent, ViewManager 
     }
     @Override void dispatchDetachedFromWindow() {
         if (!isAttachedToWindow()) return;
-        for (int i = 0; i < mChildrenCount; i++) mChildren[i].dispatchDetachedFromWindow();
+        // (Each child once, as the group has them now: one whose onDetachedFromWindow takes a sibling out of the group left the
+        // child after that sibling attached, its index taken, when they were counted as they went.)
+        View[] children = java.util.Arrays.copyOf(mChildren, mChildrenCount);
+        for (View c : children) if (c.mParent == this) c.dispatchDetachedFromWindow();
         clearDisappearingChildren();
         super.dispatchDetachedFromWindow();
     }

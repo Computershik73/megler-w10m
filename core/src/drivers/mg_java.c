@@ -46,18 +46,23 @@
 
 #define MAX_EVENTS 256
 /*
- * APKs 12 on are those the framework adds (addApk): Google Play services' and its framework's for an app that hosts them, the
- * resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play Store with Google Play
- * services hosted took the four of 16 there were before the WebView's, and its sign-in page had no WebView. And Google Play
- * services' splits (mount_gms_splits) and the modules it loads (Cronet, the ads, the maps, Vision's): Play Store took 17 of
- * the 20 there were on a Lumia 650 (0.1.0.684) before Google Play services' splits were added too.
+ * The app's splits are APKs 2 to 33 (Native.splitPaths names them, and the framework's Resources looks in them). There were
+ * ten: TikTok Lite from Google Play is installed with ten, and the feature module Play Store adds to it (with the module's
+ * own splits for the processor, the language and the density) was left out, or the density's pictures of it (issue #6).
  */
-#define MAX_APKS 48
+#define FIRST_SPLIT_APK 2
+#define MAX_SPLITS 32
+/*
+ * APKs 34 on (FIRST_LIBRARY_APK) are those the framework adds (addApk): Google Play services' and its framework's for an app
+ * that hosts them, the resource archives each keeps for the language (locale-filtered-resources), and the WebView's. Play
+ * Store with Google Play services hosted took the four of 16 there were before the WebView's, and its sign-in page had no
+ * WebView. And Google Play services' splits (mount_gms_splits) and the modules it loads (Cronet, the ads, the maps,
+ * Vision's): Play Store took 17 of the 20 there were on a Lumia 650 (0.1.0.684) before Google Play services' splits were
+ * added too. Thirty-six places for them.
+ */
+#define MAX_APKS (FIRST_SPLIT_APK + MAX_SPLITS + 36)
 /* Google Play services' splits an app that hosts them reads (mount_gms_splits): a bundle from Play Store has a few. */
 #define MAX_GMS_SPLITS 12
-/* The app's splits are APKs 2 to 11: ten, which is all the framework reads (its Resources looks in 2 to 11). */
-#define FIRST_SPLIT_APK 2
-#define MAX_SPLITS 10
 
 /* The phases of an event as megler.AppRunner.deliver reads them. */
 enum { EV_DOWN = 0, EV_MOVE = 1, EV_UP = 2, EV_CANCEL = 3, EV_KEY = 4, EV_BACK = 5, EV_HOST_PAUSE = 6, EV_TEXT = 7, EV_INSETS = 8, EV_PHONE = 10, EV_SURFACE = 11,
@@ -83,6 +88,8 @@ static struct {
     char split_names[MAX_SPLITS][96];
     char *guest_splits[MAX_SPLITS];
     bool split_code[MAX_SPLITS];
+    /* The feature splits of an app with android:isolatedSplits, which are not on its class path: each has a loader of its own. */
+    bool split_isolated[MAX_SPLITS];
     /*
      * Google Play services' splits, for an app that hosts them (megler_run_config.gms_splits_dir): their paths as the app
      * sees them, beside GmsCore.apk (Native.gmsSplitPaths), which megler.MicroG adds to their resources.
@@ -91,9 +98,9 @@ static struct {
     char *gms_guest_splits[MAX_GMS_SPLITS];
     mg_thread *main;
     /*
-     * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 11 the app's splits, 12 on the shared
+     * The APKs by the framework's numbers: 0 the app's, 1 the platform's resources, 2 to 33 the app's splits, 34 on the shared
      * libraries the framework adds while the app runs (Native.addApk: Android's WebView). The framework looks for a split's
-     * files in 2 to 11 alone.
+     * files in the app's splits alone.
      */
     mg_zip apk[MAX_APKS];
     bool apk_open[MAX_APKS];
@@ -486,14 +493,14 @@ N(Native_readApkResourceTable)
     free(kept);
 }
 
-#define FIRST_LIBRARY_APK 12
+#define FIRST_LIBRARY_APK (FIRST_SPLIT_APK + MAX_SPLITS)
 
 static void open_apk(int index, const char *host_path);
 
 /*
  * addApk(String path): a shared library's APK, which the framework's AssetManager adds to the app's resources and files
  * (addAssetPathAsSharedLibrary; the WebView's, /system/app/webview/webview.apk). The path is the app's, as Android names it;
- * the APK is opened as one more of the numbered APKs above, from 12 on, and its number is the answer: the same number for a
+ * the APK is opened as one more of the numbered APKs above, from FIRST_LIBRARY_APK on, and its number is the answer: the same number for a
  * path already open, -1 when it cannot be opened or there is no room.
  */
 N(Native_addApk)
@@ -593,6 +600,16 @@ N(Native_nothing) { (void)c; }
 N(Native_dataDir) { c->ret.l = mg_dvm_new_string(mg_fs_internal_dir()); }
 N(Native_externalDir) { c->ret.l = mg_dvm_new_string(mg_fs_external_dir()); }
 N(Native_packageName) { c->ret.l = mg_dvm_new_string(J.package); }
+/* setProcessName(name): the Android process the app runs as, megler.Processes.own -- its first activity's -- which /proc/self's
+   cmdline and status then say (mg_fs_set_process). */
+N(Native_setProcessName)
+{
+    mg_fs_set_process(text_of(c->args[0].l));
+    mg_info("java: the app runs as the process %s", text_of(c->args[0].l));
+}
+/* Whether the app is one of the platform's own (its manifest's sharedUserId is android.uid.system: Android's Settings), which
+   counts on the platform's services being there (android.os.ServiceManager). */
+N(Native_platformApp) { c->ret.z = J.platform_app; }
 /* The package name the hosted Google Play services go by (megler_run_config.gms_package): a microG of another name, MicroG RE's. */
 static const char *gms_package(void) { return J.config->gms_package ? J.config->gms_package : "com.google.android.gms"; }
 N(Native_gmsPackage) { c->ret.l = mg_dvm_new_string(gms_package()); }
@@ -1334,6 +1351,62 @@ N(Native_appActivities)
     c->ret.l = apps_package_ok(package) ? apps_file(mg_sprintf("%s/%s/activities.json", J.config->apps_dir, package)) : NULL;
 }
 
+/*
+ * appsFile(name), writeAppsFile(name, bytes): a file of the apps folder every package of Megler's shares, for what Megler's
+ * apps go by together -- defaults.ini, the user's default apps and their answers to "Open with" (megler.Defaults, which
+ * Megler's Settings change too), and links-verified.ini, which app each domain's links were verified for
+ * (megler.AssetLinks). A name of lower-case letters, digits and '-' with ".ini" after it, nothing else. Written whole beside
+ * itself and then put in its place, so that an app reading it meanwhile has the one before or the new one; true when it is
+ * there. Null and false without an apps folder.
+ */
+static bool apps_name_ok(const char *name)
+{
+    const char *p;
+    size_t n = strlen(name);
+    if (!J.config->apps_dir || n < 5 || n > 64 || strcmp(name + n - 4, ".ini")) return false;
+    for (p = name; p < name + n - 4; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-')) return false;
+    return true;
+}
+/*
+ * askClearDataOf(package), askClearCacheOf(package): that app's data, or its cache, cleared when it next starts
+ * (megler_ask_clear_data, megler_ask_clear_cache), for an app of the platform's own: Android's own Settings clears another
+ * app's storage from its App info. A package name of letters, digits, '.' and '_'; false for any other or without an apps
+ * folder.
+ */
+N(Native_askClearDataOf)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.z = J.platform_app && apps_package_ok(package) && megler_ask_clear_data(package);
+}
+N(Native_askClearCacheOf)
+{
+    const char *package = text_of(c->args[0].l);
+    c->ret.z = J.platform_app && apps_package_ok(package) && megler_ask_clear_cache(package);
+}
+N(Native_appsFile)
+{
+    const char *name = text_of(c->args[0].l);
+    c->ret.l = apps_name_ok(name) ? apps_file(mg_sprintf("%s/%s", J.config->apps_dir, name)) : NULL;
+}
+N(Native_writeAppsFile)
+{
+    const char *name = text_of(c->args[0].l);
+    mg_jobj *a = c->args[1].l;
+    char *path, *tmp;
+    c->ret.z = false;
+    if (!apps_name_ok(name) || !a || a->kind != MG_J_PRIM_ARRAY || a->u.arr.etype != 'B') return;
+    path = mg_sprintf("%s/%s", J.config->apps_dir, name);
+    tmp = mg_sprintf("%s.%u.new", path, (unsigned)mg_time_monotonic_ns());
+    if (mg_file_write_all(tmp, a->u.arr.data, a->u.arr.len) && mg_path_rename(tmp, path, NULL)) c->ret.z = true;
+    else {
+        mg_path_remove(tmp, NULL);
+        mg_warn("java: %s could not be written in the apps folder", name);
+    }
+    free(tmp);
+    free(path);
+}
+
 /* appServices(package): that app's services another app may bind, the bytes of <package>/services.json in the same folder;
    null when it has none. */
 N(Native_appServices)
@@ -1358,7 +1431,7 @@ N(Native_appInstall)
     c->ret.l = apps_package_ok(name) ? apps_file(mg_sprintf("%s/installs/%s.txt", J.config->apps_dir, name)) : NULL;
 }
 
-static char *other_apk_find(const char *package, void *user);
+static char *other_apk_base(const char *package, bool say);
 
 /* A split's name as a part of a file's name: letters, digits, '_' and '.', and no "..". */
 static bool split_name_ok(const char *name)
@@ -1388,7 +1461,7 @@ static bool copy_file(const char *from, const char *to)
 
 /*
  * addSplit(package, path, add): a split APK for an app the phone has -- this one, or another whose APK the shell told of
- * (other_apk_find) -- put among that app's splits, as Android's installer does with a session that inherits the installed
+ * (other_apk_base) -- put among that app's splits, as Android's installer does with a session that inherits the installed
  * APKs (megler.Installs; Play Store adds an app's on-demand feature modules so: docs/PLAY-FEATURE-DELIVERY.md). The file,
  * by its path among this app's files, has to be a split of that package at the installed base's version. It is copied into
  * the folder the app's splits are read from at its start (megler_run_config.splits_dir, which the shell keeps beside the
@@ -1402,7 +1475,7 @@ N(Native_addSplit)
 {
     const char *package = text_of(c->args[0].l), *guest = text_of(c->args[1].l), *why = NULL;
     bool own = !strcmp(package, J.package), add = c->args[2].z != 0;
-    char *host = mg_fs_host_path(guest), *base = own ? mg_strdup(J.config->apk_path) : other_apk_find(package, NULL), *dir = NULL, *to = NULL, *tmp = NULL;
+    char *host = mg_fs_host_path(guest), *base = own ? mg_strdup(J.config->apk_path) : other_apk_base(package, true), *dir = NULL, *to = NULL, *tmp = NULL;
     mg_apk_info *part = (mg_apk_info *)mg_alloc(sizeof(*part)), *whole = (mg_apk_info *)mg_alloc(sizeof(*whole));
     bool split = false;
     c->ret.l = NULL;
@@ -1440,6 +1513,48 @@ N(Native_addSplit)
     free(part);
     free(base);
     free(host);
+}
+
+/*
+ * appSplits(package): the splits of another app the phone has, by their names, sorted -- the files split_<name>.apk in the
+ * folder beside its APK where the shell and the installer keep them (<base>.splits, addSplit) -- which megler.PhoneApps
+ * names in that app's PackageInfo and ApplicationInfo, at /data/app/<package>-1/split_<name>.apk (other_apk_find); none for
+ * an app in one APK, null when where its APK is, is not known here. Google Play reads them to know which of an app's
+ * feature modules it has, and updates it with those (TikTok Lite lost its module df_edit_filter at the first update, issue #6).
+ */
+N(Native_appSplits)
+{
+    const char *package = text_of(c->args[0].l);
+    char *base = apps_package_ok(package) && strcmp(package, J.package) ? other_apk_base(package, false) : NULL, *dir, **paths = NULL;
+    int n, i, k = 0;
+    mg_jobj *a;
+    c->ret.l = NULL;
+    if (!base) return;
+    dir = mg_sprintf("%s.splits", base);
+    n = mg_apk_list_splits(dir, &paths);
+    /* Each path made its split's name in place (split_<name>.apk), or freed when it is no such file; then the names kept. */
+    for (i = 0; i < n; i++) {
+        const char *slash = strrchr(paths[i], '/');
+        char *name = mg_strdup(slash ? slash + 1 : paths[i]);
+        size_t len = strlen(name);
+        free(paths[i]);
+        paths[i] = NULL;
+        if (!strncmp(name, "split_", 6) && len > 10 && !strcmp(name + len - 4, ".apk")) {
+            memmove(name, name + 6, len - 10);
+            name[len - 10] = 0;
+            if (split_name_ok(name)) {
+                paths[k++] = name;
+                continue;
+            }
+        }
+        free(name);
+    }
+    a = mg_dvm_new_array("[Ljava/lang/String;", k);
+    for (i = 0; a && i < k; i++) a->u.oarr.v[i] = mg_dvm_new_string(paths[i]);
+    mg_apk_free_list(paths, k);
+    c->ret.l = a;
+    free(dir);
+    free(base);
 }
 /*
  * setOrientation(requested): how the activity in front wants the screen held, Android's SCREEN_ORIENTATION_* (megler.AppRunner
@@ -1609,6 +1724,8 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "biometricCancel", NULL, Native_biometricCancel },
     { "megler/Native", "audioRoute", NULL, Native_audioRoute },
     { "megler/Native", "packageName", NULL, Native_packageName },
+    { "megler/Native", "setProcessName", NULL, Native_setProcessName },
+    { "megler/Native", "platformApp", NULL, Native_platformApp },
     { "megler/Native", "gmsPackage", NULL, Native_gmsPackage },
     { "megler/Native", "screenWidth", NULL, Native_screenWidth },
     { "megler/Native", "screenHeight", NULL, Native_screenHeight },
@@ -1633,9 +1750,14 @@ static const mg_jhle k_native[] = {
     { "megler/Native", "appIcon", NULL, Native_appIcon },
     { "megler/Native", "appActivities", NULL, Native_appActivities },
     { "megler/Native", "appServices", NULL, Native_appServices },
+    { "megler/Native", "askClearDataOf", NULL, Native_askClearDataOf },
+    { "megler/Native", "askClearCacheOf", NULL, Native_askClearCacheOf },
+    { "megler/Native", "appsFile", NULL, Native_appsFile },
+    { "megler/Native", "writeAppsFile", NULL, Native_writeAppsFile },
     { "megler/Native", "appResIcon", NULL, Native_appResIcon },
     { "megler/Native", "appInstall", NULL, Native_appInstall },
     { "megler/Native", "addSplit", NULL, Native_addSplit },
+    { "megler/Native", "appSplits", NULL, Native_appSplits },
     { "megler/Native", "mediaSessionMetadata", NULL, Native_mediaSessionMetadata },
     { "megler/Native", "setClipboard", NULL, Native_setClipboard },
     { "megler/Native", "getClipboard", NULL, Native_getClipboard },
@@ -2444,16 +2566,15 @@ static void mount_gms_splits(void)
 }
 
 /*
- * mg_fs_other_apks' `find`: where another app's APK is on the host, as the shell said when it described that app
- * (megler_run_config.apps_dir: the second line of <package>/source.txt, after the description's form). NULL when the app
- * is not described, or its APK is not a file this package can see.
+ * Where another app's APK is on the host, as the shell said when it described that app (megler_run_config.apps_dir: the
+ * second line of <package>/source.txt, after the description's form); with `say`, said in the log, for the APK is now
+ * where the app sees it. NULL when the app is not described, or its APK is not a file this package can see.
  */
-static char *other_apk_find(const char *package, void *user)
+static char *other_apk_base(const char *package, bool say)
 {
     char *path, *text, *line, *end, *apk = NULL;
     size_t size = 0;
     mg_stat st;
-    (void)user;
     if (!apps_package_ok(package)) return NULL;
     path = mg_sprintf("%s/%s/source.txt", J.config->apps_dir, package);
     text = (char *)mg_file_read_all(path, &size);
@@ -2466,8 +2587,30 @@ static char *other_apk_find(const char *package, void *user)
         if (mg_path_stat(line + 1, &st, NULL) && !st.is_dir) apk = mg_strdup(line + 1);
     }
     free(text);
-    if (apk) mg_info("java: the APK of %s is /data/app/%s-1/base.apk, to be read (a path asked for it)", package, package);
+    if (apk && say) mg_info("java: the APK of %s is /data/app/%s-1/base.apk, to be read (a path asked for it)", package, package);
     return apk;
+}
+
+/*
+ * mg_fs_other_apks' `find`: a file of another app's /data/app/<package>-1 on the host -- base.apk its APK (other_apk_base),
+ * split_<name>.apk one of its splits, in the folder beside the APK where the shell and the installer keep them (addSplit).
+ * NULL when it has none such.
+ */
+static char *other_apk_find(const char *package, const char *file, void *user)
+{
+    char *base, *path;
+    mg_stat st;
+    (void)user;
+    if (!strcmp(file, "base.apk")) return other_apk_base(package, true);
+    if (strncmp(file, "split_", 6) || !split_name_ok(file + 6) || (base = other_apk_base(package, false)) == NULL) return NULL;
+    path = mg_sprintf("%s.splits/%s", base, file);
+    free(base);
+    if (mg_path_stat(path, &st, NULL) && !st.is_dir) {
+        mg_info("java: a split of %s is /data/app/%s-1/%s, to be read (a path asked for it)", package, package, file);
+        return path;
+    }
+    free(path);
+    return NULL;
 }
 
 /*
@@ -2497,6 +2640,10 @@ static void mount_apk(void)
         J.guest_splits[i] = mg_sprintf("%s/split_%s.apk", guest_dir, J.split_names[i]);
         mg_fs_mount(J.guest_splits[i], J.config->split_apks[i]);
         if (J.split_code[i]) mg_dvm_dex_source_added(J.guest_splits[i]);
+        if (J.split_isolated[i]) {
+            mg_dvm_isolated_split(J.guest_splits[i], J.config->split_apks[i]);
+            mg_info("java: the app loads its splits in isolation (android:isolatedSplits): %s has a class loader of its own", J.split_names[i]);
+        }
     }
     if (J.config->apps_dir) mg_fs_other_apks(other_apk_find, NULL);
     free(dir);
@@ -2700,20 +2847,27 @@ static void add_shared_libraries(void)
  * An app of the platform's own -- its manifest's sharedUserId is android.uid.system, as Android's Settings' is -- uses the
  * platform's hidden classes as freely as its public ones: Settings 9 names 225 classes of Android 9's framework that
  * Megler's does not have (android.provider.SearchIndexablesProvider, android.util.KeyValueListParser,
- * com.android.internal.*), and ended at its start on the first of them. Such an app has Android 9's own framework on its
+ * com.android.internal.*), and ended at its start on the first of them; and of its telephony classes (telephony-common,
+ * ims-common: com.android.internal.telephony.PhoneStateIntentReceiver, which its airplane mode switch makes). Such an app has Android 9's own framework on its
  * class path after Megler's (framework/platform-framework*.dex, tools/dvm-android-root.sh): a class Megler's framework has
- * is Megler's, and one it lacks is the platform's own. Any other app has Megler's alone, as before.
+ * is Megler's, and one it lacks is the platform's own -- but for the interfaces Megler's has only as generated, empty
+ * stand-ins (core/framework/gen-src), whose places the platform's take (mg_dvm_fill_empty_interfaces). Any other app has
+ * Megler's alone, as before.
  */
 static void add_platform_framework(void)
 {
-    static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex" };
+    static const char *const parts[] = { "platform-framework.dex", "platform-framework-classes2.dex", "platform-framework-classes3.dex",
+                                         "platform-telephony-common.dex", "platform-ims-common.dex" };
     int i, added = 0;
     if (!J.platform_app) return;
+    /* (Its interfaces in place of Megler's generated ones that declare no method: mg_dvm_fill_empty_interfaces.) */
+    mg_dvm_fill_empty_interfaces(true);
     for (i = 0; i < (int)MG_COUNT(parts); i++) {
         char *path = mg_sprintf("%s/framework/%s", J.root, parts[i]);
         added += mg_dvm_add_dex_file(path) ? 1 : 0;
         free(path);
     }
+    mg_dvm_fill_empty_interfaces(false);
     if (added) mg_info("java: an app of the platform's own: Android 9's framework is on its class path after Megler's (%d files)", added);
     else mg_warn("java: an app of the platform's own, and Android 9's framework is not in the Android root (framework/platform-framework.dex)");
 }
@@ -2808,8 +2962,13 @@ static MG_HOSTCB void main_thread(void *arg)
             text = mg_dvm_string_utf8(value.l);
             if (text) mg_sysprop_set(build_props[prop_index].prop, text);
         }
-        /* A feature split's code joins the app's class path after the base's, as its class loader has it on Android. */
-        for (i = 0; i < J.nsplits; i++) J.split_code[i] = mg_dvm_add_apk(J.config->split_apks[i]) > 0;
+        /*
+         * A feature split's code joins the app's class path after the base's, as its class loader has it on Android -- but for
+         * an app with android:isolatedSplits, whose base loader has none of its feature splits: each of those is loaded by a
+         * class loader of its own, which the framework makes over it (megler.Splits), its classes a scope of their own
+         * (mg_dvm_isolated_split).
+         */
+        for (i = 0; i < J.nsplits; i++) J.split_code[i] = !J.split_isolated[i] && mg_dvm_add_apk(J.config->split_apks[i]) > 0;
         mount_apk();
         mount_host_fonts();
         place_libraries();
@@ -2840,6 +2999,7 @@ static MG_HOSTCB void main_thread(void *arg)
         /* What C keeps of the app's objects across calls: the collector keeps it too. */
         mg_dvm_add_root(&J.clipboard);
         mg_dvm_register(mg_java_gfx_natives());
+        mg_dvm_register(mg_java_ndk_natives());
         /* OpenGL ES and EGL from Java, and the window they are shown in: composed by the shell where it can. (At the surface's
            size as the app starts; the composing follows the views' picture when the surface changes, mg_java_gl_views.) */
         {
@@ -2979,7 +3139,10 @@ static bool java_start(const megler_run_config *config, const mg_apk_info *info)
         mg_warn("java: the app has %d splits, and the framework reads %d: %s and those after it are left out", J.nsplits, MAX_SPLITS, info->splits[MAX_SPLITS]);
         J.nsplits = MAX_SPLITS;
     }
-    for (i = 0; i < J.nsplits; i++) mg_strlcpy(J.split_names[i], info->splits[i], sizeof(J.split_names[0]));
+    for (i = 0; i < J.nsplits; i++) {
+        mg_strlcpy(J.split_names[i], info->splits[i], sizeof(J.split_names[0]));
+        J.split_isolated[i] = info->isolated_splits && info->split_feature[i];
+    }
     /* The battery the app starts with is not news to it; what it becomes afterwards is (battery_news). */
     J.battery_changes = mg_battery_changes();
     mg_battery_read(&J.battery);

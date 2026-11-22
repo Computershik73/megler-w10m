@@ -1,6 +1,8 @@
-// Settings: the size of the surface apps draw to, the language and region and
+// Settings: the size of the surface apps draw to, which OpenGL ES they draw with (Windows 10 Mobile), the language and region and
 // where apps are told the phone is, the phone's folders that are in Android's
-// storage, and what this build and this phone are.
+// storage, the default apps (the browser web links open in, the answers
+// "Always" of "Open with", and an app's own links), and what this build and
+// this phone are.
 //
 // Whose (shell/Settings.h): Megler's, on Megler's Settings tab, which every app
 // goes by unless it has its own; or one app's own, on its page in Megler (App
@@ -9,6 +11,7 @@
 // Megler" at the top of each choice.
 #include "pch.h"
 
+#include "library/DefaultApps.h"
 #include "library/Library.h"
 #include "player/PermissionHost.h"
 #include "player/PhoneState.h"
@@ -16,6 +19,7 @@
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/Platform.h"
 #include "shell/Settings.h"
 #include "shell/ShellLog.h"
@@ -222,6 +226,97 @@ private:
                            "The Google Play services a heavy app runs with. microG takes far less memory where an app needs little of Google's." + applies());
     }
 
+    /// What is said of Mesa when it is chosen: it has been tried on one phone's processor only (its row says so too).
+    static constexpr const char* mesaTested =
+        "Mesa has been tested only on the Snapdragon 820 (Adreno 530, the HP Elite x3) so far; other processors will follow. "
+        "On another phone an app may draw wrongly, or end: choose ANGLE for it then.";
+
+    /// Graphics (shell/Graphics.h): ANGLE, or Mesa's freedreno, where Megler's package carries it (Windows 10 Mobile's). Mesa's
+    /// DLLs are in an app's own package only while the app goes by it: a change has the package made again, which the
+    /// Library marks (Update, Update All) and this says.
+    UIElement graphicsSection() {
+        const std::string fallback = graphics::packageDefault(platform::installDirectory());
+        const auto mine = own(settings::gles);
+        const bool set = !forApp() || (mine && !mine->empty());
+        const std::string meglers = graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
+        const std::string chosen = forApp() ? (set ? graphics::resolve(mine, std::nullopt, fallback, true) : meglers) : meglers;
+        auto name = [](const std::string& gles) { return gles == "mesa" ? std::string("Mesa freedreno") : std::string("ANGLE (Direct3D 11)"); };
+        std::vector<UIElement> rows;
+        if (forApp())
+            rows.push_back(choice("As in Megler", name(meglers), !set, [this] { putGraphics(std::nullopt); }));
+        rows.push_back(choice("ANGLE (Direct3D 11)", "The default: OpenGL ES turned into Direct3D 11, on every phone", set && chosen != "mesa",
+                              [this] { putGraphics(std::string("angle")); }));
+        rows.push_back(choice("Mesa freedreno (experimental)",
+                              "Tested only on the Snapdragon 820 so far; other processors will follow. OpenGL ES on the phone's Adreno "
+                              "itself, through Mesa's driver. Where it cannot start, the app draws with ANGLE and its log says why",
+                              set && chosen == "mesa", [this] { putGraphics(std::string("mesa")); }));
+        std::string footer = "How an app's OpenGL ES is drawn: games, maps, the WebView. Mesa's driver is some 20 MB in an app's own package, "
+                             "which has it only while the app draws with it: ";
+        if (!forApp()) {
+            footer += "an app that goes by this has its package made again when it changes, by Update All in the Library. It applies "
+                      "to every app that has no setting of its own, at its next start after that.";
+        } else if (!scope_.own) {
+            footer += "a change has its package made again, by Update on its page (or Update All). It applies at the app's next start "
+                      "after that.";
+        } else {
+            // (This package's own: whether it was made with Mesa's DLLs.)
+            const bool here = graphics::hasMesaFiles(platform::installDirectory());
+            footer += std::string("this package was made ") + (here ? "with them" : "without them") + ".";
+            if (chosen == "mesa" && !here)
+                footer += " Until Megler's Library makes it again with them (Update on the app's page in Megler), the app draws with ANGLE.";
+            else if (chosen != "mesa" && here)
+                footer += " Megler's Library makes it again without them, some 20 MB smaller (Update on the app's page in Megler).";
+            else
+                footer += " It applies at the app's next start.";
+        }
+        return listSection("Graphics", rows, footer);
+    }
+
+    /// Graphics changed: kept, the Library told (in Megler: it lists the packages again, and marks those to update), and,
+    /// where this changes what a package must carry, said.
+    void putGraphics(const std::optional<std::string>& value) {
+        const std::string fallback = graphics::packageDefault(platform::installDirectory());
+        const std::string before = forApp() ? appPackage::glesFor(scope_.package) : graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
+        put(settings::gles, value);
+        const std::string after = forApp() ? appPackage::glesFor(scope_.package) : graphics::resolve(std::nullopt, settings::megler(settings::gles), fallback, true);
+        if (before == after) return;
+        const bool mesa = after == "mesa";
+        // (Chosen: said again, under what it takes.)
+        const std::string tested = mesa ? std::string("\n\n") + mesaTested : std::string();
+        if (scope_.own) {
+            // The app's own package: Megler makes it again (it lists the packages, and finds the app's Graphics changed).
+            if (mesa != graphics::hasMesaFiles(platform::installDirectory()))
+                shell_.alert("Its Package Is to Be Made Again",
+                             mesa ? "This app's package was made without Mesa's driver. Open Megler: Update on the app's page makes the package "
+                                    "again with it. Until then the app draws with ANGLE." + tested
+                                  : "This app's package carries Mesa's driver, some 20 MB it no longer needs: Update on the app's page in Megler "
+                                    "makes it again without it.");
+            else if (mesa)
+                shell_.alert("Mesa Is Experimental", mesaTested);
+            return;
+        }
+        separateApps::refresh(shell_);
+        if (forApp()) {
+            const std::optional<bool> has = separateApps::packageHasMesa(scope_.package);
+            if (has && *has != mesa)
+                shell_.alert("Update the App",
+                             mesa ? (scope_.label.empty() ? scope_.package : scope_.label) +
+                                        "'s package was made without Mesa's driver: Update on its page makes it again with it (some 20 MB "
+                                        "more). Until then it draws with ANGLE." + tested
+                                  : (scope_.label.empty() ? scope_.package : scope_.label) +
+                                        "'s package carries Mesa's driver, which it no longer uses: Update on its page makes it again "
+                                        "without it, some 20 MB smaller.");
+            else if (mesa)
+                shell_.alert("Mesa Is Experimental", mesaTested);
+        } else {
+            shell_.alert("Update the Apps",
+                         std::string("The apps that go by Megler's Graphics draw with ") + (mesa ? "Mesa's freedreno" : "ANGLE") +
+                             " from their next start once their packages are made again " +
+                             (mesa ? "with Mesa's driver, some 20 MB each" : "without Mesa's driver") +
+                             ": the Library marks them to update, and Update All makes them." + tested);
+        }
+    }
+
     /// What an app does while it is minimized, not closed (player/AudioHost.h): it runs on, its sound output kept, which is
     /// what an app goes by when nothing is chosen; or it rests, suspended by Windows once it has been unheard for ten seconds.
     UIElement backgroundSection() {
@@ -243,6 +338,67 @@ private:
                            "that is to run on keeps its sound output, silent. Music that plays goes on with either; a closed app runs on "
                            "with neither, and a game with an engine of its own is suspended with either." +
                                (scope_.own ? std::string(" It applies at once.") : applies()));
+    }
+
+    /// The browser web links open in (library/DefaultApps.h, megler.Resolver): Windows' own, or a browser app of the library.
+    /// A link goes to it unless an app is verified for its site, or allowed that site's links in its own settings.
+    UIElement browserSection() {
+        const auto values = defaultApps::read();
+        const auto it = values.find("browser");
+        const std::string chosen = it != values.end() ? it->second : std::string();
+        std::vector<UIElement> rows;
+        rows.push_back(choice("Windows' Browser", "The browser Windows opens web pages with", chosen.empty() || chosen == "windows",
+                              [] { defaultApps::set("browser", std::nullopt); }));
+        for (const defaultApps::Browser& b : defaultApps::browsers()) {
+            const std::string id = b.id;
+            rows.push_back(choice(b.label, id.substr(0, id.find('/')), chosen == id, [id] { defaultApps::set("browser", id); }));
+        }
+        return listSection("Default Browser", rows,
+                           "Where an app's web links open, unless an app is verified for the site or allowed its links in its own settings "
+                           "(App Settings, Opening Links). It applies at once.");
+    }
+
+    /// The answers "Always" of "Open with" (megler.Chooser), each forgotten with a tap, so that "Open with" asks again.
+    UIElement alwaysSection() {
+        std::vector<UIElement> rows;
+        for (const auto& [key, value] : defaultApps::read()) {
+            if (key.rfind("always.", 0) != 0) continue;
+            const std::string k = key;
+            rows.push_back(button(listItem(defaultApps::kindInWords(key.substr(7)), defaultApps::labelOf(value) + " · tap to forget"), [this, k] {
+                defaultApps::set(k, std::nullopt);
+                rebuild();
+            }));
+        }
+        if (rows.empty()) rows.push_back(listItem("None", "\"Open with\" asks each time several apps can open something"));
+        return listSection("Opened with \"Always\"", rows, "What \"Always\" in \"Open with\" was said to, for every app.");
+    }
+
+    /// Which web links the app opens (library/DefaultApps.h: links.<package>), as Android's "Open supported links": those its
+    /// sites verify it for, every one of its sites, or none; its sites; and its "Always" answers cleared.
+    UIElement linksSection() {
+        const auto values = defaultApps::read();
+        const std::string key = "links." + scope_.package;
+        const auto it = values.find(key);
+        const std::string mode = it != values.end() ? it->second : std::string();
+        std::vector<UIElement> rows;
+        rows.push_back(choice("Verified Links", "Links of the sites that say this app is theirs; the others open in the browser",
+                              mode != "all" && mode != "off", [key] { defaultApps::set(key, std::nullopt); }));
+        rows.push_back(choice("All Supported Links", "Every link of the sites the app names, verified or not", mode == "all",
+                              [key] { defaultApps::set(key, std::string("all")); }));
+        rows.push_back(choice("Don't Open Links", "Its links open in the browser", mode == "off", [key] { defaultApps::set(key, std::string("off")); }));
+        for (const auto& [host, verify] : defaultApps::linkDomains(scope_.package))
+            rows.push_back(listItem(host, verify ? "Asks to be verified by the site" : "Not verified: the app does not ask to be"));
+        int always = 0;
+        for (const auto& [k, value] : values)
+            if (k.rfind("always.", 0) == 0 && value.rfind(scope_.package + "/", 0) == 0) always++;
+        if (always > 0) {
+            const std::string package = scope_.package;
+            rows.push_back(button(listItem("Clear Defaults", format("Opens %d kind(s) of link or file without asking (\"Always\")", always)), [this, package] {
+                defaultApps::clearAlways(package);
+                rebuild();
+            }));
+        }
+        return listSection("Opening Links", rows, "Which web links the app opens itself. It applies at once.");
     }
 
     /// Megler's own updates from GitHub (ui/Ota.h): asked for at start or only when asked, and Check Now with where it stands.
@@ -352,6 +508,13 @@ private:
                                       },
                                       ButtonKind::plain, "Move the Apps Here"));
         }
+        // The library made whole again with what is installed: apps moved from another phone with Megler's shared folder (WP
+        // Migrate), or installed while Megler had another library, and the APKs put in Pictures\Megler\apks.
+        rows.push_back(button(listItem("Rescan the Library",
+                                       "Adds the apps of Megler's installed on this phone that the library lacks (moved from another phone, "
+                                       "or installed by Megler before it was installed again), and the APKs put in Pictures\\Megler\\apks",
+                                       glyphs::refresh),
+                              [this] { separateApps::rescanLibrary(shell_); }, ButtonKind::plain, "Rescan the Library"));
         // What is being moved or installed now (refresh keeps it).
         const std::string now = separateApps::working();
         storageNow_ = text(now, font::bodyMedium, weightNormal(), p.primary);
@@ -864,8 +1027,15 @@ private:
         if (forApp()) add(column, permissionsSection());
         if (scope_.own) add(column, storageSizesSection());
         add(column, renderSection());
+        // (Where Megler's package carries Mesa's freedreno: Windows 10 Mobile's.)
+        if (appPackage::mesaChoosable()) add(column, graphicsSection());
         add(column, servicesSection());
         add(column, backgroundSection());
+        if (!forApp() && !appPackage::isSingleApp()) {
+            add(column, browserSection());
+            add(column, alwaysSection());
+        }
+        if (forApp()) add(column, linksSection());
         if (!forApp()) add(column, gmsLocationSection());
         add(column, localeSection());
         add(column, locationSection());
@@ -879,17 +1049,29 @@ private:
 
             memory_ = labeledContent("Memory", platform::memorySummary());
             const auto& angle = platform::angle();
-            add(column, listSection("About",
-                                    {labeledContent("Megler", platform::packageVersion()),
-                                     labeledContent("Core", megler_version()),
-                                     labeledContent("Build", platform::architecture()),
-                                     labeledContent("Device", platform::deviceFamily()),
-                                     labeledContent("Windows", platform::osVersion()),
-                                     memory_,
-                                     labeledContent("Android Code", platform::canRunAndroidCode() ? "Can run" : "Cannot run"),
-                                     labeledContent("ANGLE", angle.present ? "In the package" : "Missing")},
+            std::vector<UIElement> about = {labeledContent("Megler", platform::packageVersion()),
+                                            labeledContent("Core", megler_version()),
+                                            labeledContent("Build", platform::architecture()),
+                                            labeledContent("Device", platform::deviceFamily()),
+                                            labeledContent("Windows", platform::osVersion()),
+                                            memory_,
+                                            labeledContent("Android Code", platform::canRunAndroidCode() ? "Can run" : "Cannot run"),
+                                            labeledContent("ANGLE", angle.present ? "In the package" : "Missing")};
+            // (Mesa's freedreno where it can be chosen: in Megler's package; in an app's own while the app goes by it.)
+            if (appPackage::mesaChoosable())
+                about.push_back(labeledContent("Mesa", graphics::hasMesaFiles(platform::installDirectory()) ? "In the package" : "Not in this package"));
+            add(column, listSection("About", about,
                                     "Android code needs the codeGeneration capability, which an interop-unlocked phone grants; "
                                     "ANGLE is what turns an app's OpenGL ES into Direct3D 11."));
+            // Who helped make Megler, as README.md's "Thanks" names them.
+            add(column, listSection("Thanks",
+                                    {listItem("Linh (thaihoangduylinh)",
+                                              "Mesa's freedreno on the phone's Adreno through D3DKMT, and the fixes of pull request #34"),
+                                     listItem("mayconus", "Video and streaming apps on a Lumia 950 XL"),
+                                     listItem("zemonkamin (WinArchive)",
+                                              "Installing apps the Store's way, past Windows's limit of 20 developer packages"),
+                                     listItem("Testers", "wukenadela, DimaSWE, JOHN-decm, Jevil7452, Xaker-USSR, dascaluvlad01-ux, "
+                                                         "msydh, sur-f0x, and everyone who sends logs")}));
             add(column, developerSection());
 
             auto paths = vstack(4);

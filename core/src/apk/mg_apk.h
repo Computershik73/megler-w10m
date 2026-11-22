@@ -15,8 +15,8 @@ typedef struct mg_apk_meta {
 /* android:screenOrientation of the launcher activity, reduced to what a shell can act on before the app runs. */
 enum { MG_APK_UNSPECIFIED = 0, MG_APK_LANDSCAPE, MG_APK_PORTRAIT };
 
-/* As many split APKs as an app is read with (the Java driver opens ten of them: drivers/mg_java.c). */
-#define MG_APK_MAX_SPLITS 16
+/* As many split APKs as an app is read with (the Java driver opens as many: drivers/mg_java.c, MAX_SPLITS). */
+#define MG_APK_MAX_SPLITS 32
 /* As many of the permissions a manifest asks for as are kept: Google Play services asks for some two hundred, an app for fifty. */
 #define MG_APK_MAX_PERMISSIONS 256
 
@@ -34,9 +34,9 @@ typedef struct mg_apk_info {
     char native_library[96];       /* android.app.lib_name of the launcher activity */
     char func_name[96];            /* android.app.func_name */
     /*
-     * For a launcher activity that names its library and is a Java class of the app's own (with bytecode to run): whether the
-     * library exports NativeActivity's entry, as read from the APK -- 1 yes, 0 no (the app is a Java one then), -1 not known
-     * (the start loads the library and asks it: core/src/run/mg_run.c); -2 when it was not looked for.
+     * For a launcher activity that names its library and is a Java class of the app's own (with bytecode to run, which the
+     * Java driver runs): whether the library exports NativeActivity's entry, as read from the APK -- 1 yes (the activity is a
+     * NativeActivity of its own), 0 no (it starts the library through JNI itself), -1 not known; -2 when it was not looked for.
      */
     int native_entry;
     mg_apk_meta meta[48];          /* <meta-data> of the application and the launcher activity */
@@ -88,8 +88,14 @@ typedef struct mg_apk_info {
      */
     bool split_required;
     char required_split_types[160];
-    /* The splits the app was read with (mg_apk_read_app), by their names, in the order given. */
+    /*
+     * A base's android:isolatedSplits: each of its feature splits is loaded by a class loader of its own, whose parent is the
+     * loader of the split it uses (<uses-split>) or the base's, and the base's loader has none of them (Chrome 158).
+     */
+    bool isolated_splits;
+    /* The splits the app was read with (mg_apk_read_app), by their names, in the order given, and which are feature splits. */
     char splits[MG_APK_MAX_SPLITS][96];
+    bool split_feature[MG_APK_MAX_SPLITS];
     int nsplits;
     /* What the unpacking of the bundle the app came in left out (its record, core/src/apk/mg_bundle.h): the splits' names. */
     char left_out[32][96];

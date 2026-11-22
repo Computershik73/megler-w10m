@@ -159,9 +159,46 @@ const char *mg_dvm_own_desc(const mg_dvm_dex *d, const char *desc, char *buf, si
     return buf;
 }
 
+/*
+ * Android 9's framework over Megler's generated stand-ins, for an app of the platform's own (mg_dvm_fill_empty_interfaces,
+ * which the Java driver turns on while it adds Android 9's framework for such an app). Megler's framework has many of the
+ * platform's interfaces as tools/compat/genstubs.py made them, with no method (core/framework/gen-src:
+ * android.app.INotificationManager, android.app.backup.IBackupManager, android.net.IConnectivityManager...), only so that its
+ * own signatures can name them. The first definition of a name is the one the runtime uses, so such an app's calls through
+ * the platform's interface -- INotificationManager.Stub.asInterface(...).getBlockedAppCount(), the platform's own Stub and
+ * Proxy -- were looked for on the empty one: NoSuchMethodError, and Android's Settings ended at its Apps screen. With this on,
+ * a definition of a later file takes the place of an earlier one that is an interface declaring no method, where the later
+ * one is an interface that declares some and the class has not been linked yet. Megler's own code only names those
+ * interfaces as types, which the platform's are as well.
+ */
+static bool g_fill_empty_interfaces;
+void mg_dvm_fill_empty_interfaces(bool on) { g_fill_empty_interfaces = on; }
+
+/* Whether definition `def` of `d` is an interface, and whether it declares a method of its own (a virtual one). */
+static bool interface_def(const mg_dvm_dex *d, u32 def, bool *has_methods)
+{
+    const u8 *c, *p;
+    u32 data;
+    *has_methods = false;
+    if (!d->b || def >= d->ncls) return false;
+    c = d->b + d->cls_off + 32 * def;
+    if (!(mg_dvm_rd32(c + 4) & DVM_ACC_INTERFACE)) return false;
+    data = mg_dvm_rd32(c + 24);
+    if (data) {
+        p = d->b + data;
+        (void)mg_dvm_uleb(&p);         /* static fields */
+        (void)mg_dvm_uleb(&p);         /* instance fields */
+        (void)mg_dvm_uleb(&p);         /* direct methods: <clinit> for the constants */
+        *has_methods = mg_dvm_uleb(&p) != 0;
+    }
+    return true;
+}
+
+static mg_dvm_class *loaded_scope(const char *name, int scope);
+
 void mg_dvm_classes_add_dex(mg_dvm_dex *d)
 {
-    u32 i, added = 0;
+    u32 i, added = 0, filled = 0;
     size_t pooled = 0, at = 0;
     mg_dvm_dex *twin = NULL;
     /* The pool given whole (mg_dvm_add_dex_lazy): read in it, one name after another. */
@@ -241,9 +278,23 @@ void mg_dvm_classes_add_dex(mg_dvm_dex *d)
             g_cdefs[g_ncdefs].next = g_cdef_buckets[h];
             g_cdef_buckets[h] = ++g_ncdefs;
             added++;
+        } else if (g_fill_empty_interfaces && existing->dex != d && n - 2 < 512) {
+            bool theirs = false, mine = false;
+            char plain[512];
+            memcpy(plain, name, n - 2);
+            plain[n - 2] = 0;
+            if (interface_def(existing->dex, existing->def, &theirs) && !theirs && interface_def(d, i, &mine) && mine &&
+                !loaded_scope(plain, d->scope)) {
+                cdef *w = (cdef *)existing;
+                w->dex = d;
+                w->def = i;
+                w->desc = desc;
+                filled++;
+            }
         }
     }
     d->cdef_end = g_ncdefs;
+    if (filled) mg_info("dvm: %s: %u of its interfaces take the place of Megler's empty ones of their names", d->name, (unsigned)filled);
     mg_dvm_unlock();
     mg_info("dvm: %s: %u classes (%u new), %u methods, %u strings%s", d->name, (unsigned)d->ncls, (unsigned)added, (unsigned)d->nmeth, (unsigned)d->nstr,
             given ? "" : copied ? "; the names another scope's copy of it has" : twin ? "; the names in another scope's view of it" : "");

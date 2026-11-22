@@ -148,6 +148,14 @@ public class Main extends Activity {
                 && Arrays.asList(top).contains("pack");
         });
 
+        // The twelfth split's asset: an app is run with all of its splits, not the first ten (TikTok Lite from Google Play has ten
+        // before Play Store adds its feature module and that module's own splits).
+        step("many-splits", () -> {
+            String text = read(getAssets().open("pack5/hello.txt"));
+            detail = text.trim() + ", " + ai.splitNames.length + " splits";
+            return "hello from the pack5 split\n".equals(text) && ai.splitNames.length == 12 && "pack5".equals(ai.splitNames[11]);
+        });
+
         // Code only the feature split has, through the app's own class loader.
         step("feature", () -> {
             Class<?> c = Class.forName("megler.test.splits.extra.Extra");

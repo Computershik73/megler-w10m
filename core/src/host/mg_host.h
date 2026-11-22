@@ -78,6 +78,12 @@ MG_HOSTAPI size_t mg_mem_discard(void *p, size_t size, void (MG_HOSTCB *fn)(u8 *
 MG_HOSTAPI void mg_mem_set_before_system_write(void (MG_HOSTCB *fn)(void *p, size_t size));
 /* Whether the page at `p` is committed, and its access (MG_PROT_*, -1 for any other): false where the host cannot say (POSIX). */
 MG_HOSTAPI bool mg_mem_page_state(const void *p, bool *committed, int *prot);
+/*
+ * Whether the byte at `p` can be written now, as a system call that writes there finds out (the kernel's copy_to_user): 1,
+ * 0 where a write would fault, -1 where the host cannot say. Windows says the page's access; POSIX reads the byte through a
+ * pipe and writes it back the same way, which the system refuses with EFAULT, not a fault, where it may not.
+ */
+MG_HOSTAPI int mg_mem_writable(const void *p);
 MG_HOSTAPI void mg_mem_release(void *p, size_t size);
 /* After writing code and before running it. */
 MG_HOSTAPI void mg_icache_flush(void *p, size_t size);
@@ -808,8 +814,37 @@ MG_HOSTAPI int mg_net_dns_servers(char (*out)[48], int max);
 /* A DLL of the app package / a shared object, by file name. NULL when it does not load. */
 MG_HOSTAPI void *mg_dl_open(const char *name);
 MG_HOSTAPI void *mg_dl_sym(void *lib, const char *name);
+/*
+ * A DLL by its whole path, wherever it is: a build of Mesa's freedreno put in an app's data folder for a diagnosis (the
+ * flag mesa-local, ndk/mg_egl.c), where mg_dl_open takes the package's files alone. NULL, said in the log, where it does
+ * not load.
+ */
+MG_HOSTAPI void *mg_dl_open_file(const char *path);
+/*
+ * The host process's environment variable `name` set to `value` (Windows: SetEnvironmentVariable), for a library of the
+ * host's own that the core loads after: a DLL's C runtime reads the process's environment as it starts. Mesa's diagnosis,
+ * asked for by the flag mesa-diag (ndk/mg_egl.c). Not the guest's environment (bionic's getenv).
+ */
+MG_HOSTAPI bool mg_host_setenv(const char *name, const char *value);
+/*
+ * The host's standard error, for the DLLs loaded between _begin and _end, made a pipe whose lines go into the log, each
+ * as "<prefix><line>" (at most 2000 of them a process; those after, counted). A DLL whose C runtime is linked into it
+ * takes the standard handles as it loads, and an app's process has none: what Mesa's freedreno says of its errors was
+ * lost (ndk/mg_egl.c, mesa_load). _end puts back the standard error that was; the pipe and its reader stay, for the
+ * DLLs that took it. False where it cannot be (no pipe or thread, or the handle not to be set): the DLLs then write
+ * where they always did.
+ */
+MG_HOSTAPI bool mg_host_stderr_to_log_begin(const char *prefix);
+MG_HOSTAPI void mg_host_stderr_to_log_end(void);
 /* Which of the host's own modules (the app, a DLL of the package or of the system) an address is in: its file name and where it is loaded. For a crash report. */
 MG_HOSTAPI bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base);
+/*
+ * The flag kmt-trace (ndk/mg_egl.c): every call of the graphics kernel's functions (D3DKMT) the process makes from now on,
+ * by any module -- Qualcomm's Direct3D driver, Mesa's core -- written with its private data and the command buffers it
+ * submits into the file `path` (host/mg_kmt_trace.c; tools/kmt-trace.py reads it). How many functions are traced, and in
+ * `why` what was done or why nothing was. Windows 10 Mobile's ARM32 alone; once a process.
+ */
+MG_HOSTAPI int mg_host_kmt_trace_start(const char *path, char *why, size_t size);
 /*
  * The linker's time stamp of the module an address is in (a PE file's TimeDateStamp), which its build's map says at its top
  * ("Timestamp is ..."): which build a report's module+offset addresses are of. False where there is none (an ELF, POSIX).
@@ -840,6 +875,12 @@ MG_HOSTAPI u32 mg_host_d3d11_removed_reason(void *device);
 MG_HOSTAPI bool mg_host_d3d11_options(void *device, bool *constant_buffer_offsets, bool *constant_buffer_partial_updates);
 /* How much graphics memory the process may use and does (megabytes), as the adapter of a Direct3D 11 device says; false where it cannot be asked. */
 MG_HOSTAPI bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb);
+/*
+ * What the graphics processor is: its name as Windows gives it (DXGI's description, "Qualcomm(R) Adreno(TM) 530 GPU") and its
+ * PCI vendor id, of the adapter a Direct3D 11 device of the hardware is made on (made for the question and let go). False
+ * where it cannot be asked (posix, no Direct3D).
+ */
+MG_HOSTAPI bool mg_host_gpu_adapter(char *name, size_t size, u32 *vendor);
 /*
  * A DXGI keyed mutex (an IDXGIKeyedMutex *: what ANGLE shares its pbuffers' textures with) acquired, waiting up to `ms`, or
  * released, with key 0. Its device is made safe for use from several threads first (from then on its Direct3D calls take a

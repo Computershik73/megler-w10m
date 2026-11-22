@@ -1,5 +1,13 @@
 // Overlay of core/framework/src/megler/ContextImpl.java (tools/build-framework.sh).
 // It differs in setTheme: the new style goes onto the theme already made, as on Android, not into a new theme.
+// And in a manager of the platform's own that Megler has no implementation of (NetworkPolicyManager), made for an app of the
+// platform's own (Android's Settings, which has Android 9's framework after Megler's) with its constructor's service
+// interface on the binder the service manager gives (platformInterface): a null there was a NullPointerException at the
+// manager's first call, the binder's answer is a zero.
+// And in the class loader, kept in a field of Android's name (mClassLoader) that an app may set by reflection.
+// And in the context of a split (createContextForSplit), and an activity's of a split (forActivity), for an app that loads its
+// splits in isolation (android:isolatedSplits, megler.Splits): a context with the split's class loader, as ContextImpl's
+// createContextForSplit and createActivityContext give, where the original answered the context itself for every app.
 // Everything else is the original's.
 package megler;
 
@@ -41,6 +49,12 @@ public final class ContextImpl extends Context {
     }
     /** A base context of its own (an activity's: its own theme), sharing the app's resources. */
     public static ContextImpl forActivity() { app(); return new ContextImpl(sResources); }
+    /** The same for an activity of the manifest: of an isolated split, with the split's class loader (createActivityContext). */
+    public static ContextImpl forActivity(Manifest.Component info) {
+        ContextImpl c = forActivity();
+        if (Splits.of(info) != null && Splits.isolated()) c.mClassLoader = Splits.loaderOf(info);
+        return c;
+    }
     public static void setApplication(Context a) { sApplication = a; }
     /** The theme an activity or the app gets when the manifest names none: what the target SDK selects on Android. */
     public static int defaultTheme() {
@@ -75,7 +89,12 @@ public final class ContextImpl extends Context {
         }
         return mTheme;
     }
-    @Override public ClassLoader getClassLoader() { return AppRunner.classLoader(); }
+    /* The class loader of this context, as Android's ContextImpl keeps it in mClassLoader: null is the app's own. Apps set it
+       by reflection: Chromium's BundleUtils.replaceClassLoader gives a split's context, and then the application's, the
+       loader it made for the split, and Chrome 101 ended at its start with "Error setting ClassLoader." (NoSuchFieldException:
+       mClassLoader) where the field was not there. A context made from this one keeps it, as on Android. */
+    private ClassLoader mClassLoader;
+    @Override public ClassLoader getClassLoader() { return mClassLoader != null ? mClassLoader : AppRunner.classLoader(); }
     @Override public String getPackageName() { return Native.packageName(); }
     @Override public ApplicationInfo getApplicationInfo() { return ApplicationInfo.self(); }
     @Override public String getPackageResourcePath() { return getApplicationInfo().sourceDir; }
@@ -91,10 +110,21 @@ public final class ContextImpl extends Context {
     @Override public boolean isDeviceProtectedStorage() { return mDeviceProtected; }
     @Override public boolean isCredentialProtectedStorage() { return !mDeviceProtected; }
     @Override public Context createDeviceProtectedStorageContext() {
-        return mDeviceProtected ? this : new ContextImpl(mResources, true);
+        return mDeviceProtected ? this : withLoader(new ContextImpl(mResources, true));
     }
     @Override public Context createCredentialProtectedStorageContext() {
-        return mDeviceProtected ? new ContextImpl(mResources, false) : this;
+        return mDeviceProtected ? withLoader(new ContextImpl(mResources, false)) : this;
+    }
+    private ContextImpl withLoader(ContextImpl c) { c.mClassLoader = mClassLoader; return c; }
+    /* As Android's: this context itself for an app that does not load its splits in isolation ("All Splits are always
+       loaded"); else one with the split's class loader (megler.Splits), the resources being the app's, which has every split's.
+       NameNotFoundException for a split the app has not. */
+    @Override public Context createContextForSplit(String split) throws PackageManager.NameNotFoundException {
+        if (!Splits.isolated()) return this;
+        ClassLoader cl = Splits.classLoader(split);
+        ContextImpl c = new ContextImpl(mResources, mDeviceProtected);
+        c.mClassLoader = cl;
+        return c;
     }
     @Override public File getDir(String name, int mode) { return dir("app_" + name); }
     @Override public File getExternalFilesDir(String type) {
@@ -133,7 +163,7 @@ public final class ContextImpl extends Context {
         Configuration base = new Configuration(getResources().getConfiguration());
         if (c != null) base.updateFrom(c);
         Resources r = new Resources(getAssets(), getResources().getDisplayMetrics(), base);
-        return new ContextImpl(r, mDeviceProtected);
+        return withLoader(new ContextImpl(r, mDeviceProtected));
     }
     private final java.util.ArrayList<ComponentCallbacks> mCallbacks = new java.util.ArrayList<>();
     @Override public void registerComponentCallbacks(ComponentCallbacks c) { mCallbacks.add(c); }
@@ -234,6 +264,10 @@ public final class ContextImpl extends Context {
             { "android.os.storage.StorageManager", STORAGE_SERVICE }, { "android.net.wifi.aware.WifiAwareManager", WIFI_AWARE_SERVICE },
             { "android.net.wifi.rtt.WifiRttManager", WIFI_RTT_RANGING_SERVICE }, { "android.app.UiModeManager", UI_MODE_SERVICE },
             { "android.app.StatsManager", "stats" },
+            // The platform's own managers, which only an app of the platform's own has (Android 9's framework after Megler's):
+            // Android's Settings asks for them.
+            { "android.net.NetworkPolicyManager", "netpolicy" },
+            { "android.net.NetworkScoreManager", "network_score" },
         };
         for (String[] e : m) { try { sNames.put(Class.forName(e[0]), e[1]); } catch (Throwable t) {} }
     }
@@ -253,6 +287,7 @@ public final class ContextImpl extends Context {
                 Class<?> t = pt[i];
                 Object v = null;                       /* if/else: a ?: chain of boxes would unbox them all */
                 if (Context.class.isAssignableFrom(t)) v = this;
+                else if (t.isInterface() && android.os.IInterface.class.isAssignableFrom(t)) v = platformInterface(t, name);
                 else if (t == boolean.class) v = Boolean.FALSE;
                 else if (t == int.class) v = Integer.valueOf(0);
                 else if (t == long.class) v = Long.valueOf(0);
@@ -265,5 +300,16 @@ public final class ContextImpl extends Context {
             try { k.setAccessible(true); return k.newInstance(av); } catch (Throwable t) {}
         }
         return null;
+    }
+    /** An interface of the platform's services (INetworkPolicyManager...) on the binder the service manager gives for `name`:
+     *  its Stub's asInterface, as Android's SystemServiceRegistry hands a manager its service. Only an app of the platform's own
+     *  gets a binder for a service Megler has no implementation of (android.os.ServiceManager); for any other, null. */
+    private static Object platformInterface(Class<?> iface, String name) {
+        try {
+            Class<?> stub = Class.forName(iface.getName() + "$Stub", false, iface.getClassLoader());
+            return stub.getMethod("asInterface", android.os.IBinder.class).invoke(null, android.os.ServiceManager.getService(name));
+        } catch (Throwable t) {
+            return null;
+        }
     }
 }

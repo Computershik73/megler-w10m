@@ -1,8 +1,8 @@
 // Overlay of core/framework/src/android/graphics/Canvas.java (tools/build-framework.sh).
 // It differs in saying, with the flag trace-readbacks, who made a canvas on a large bitmap or drew one
 // (Bitmap.meglerTraceRead): the core reads back what other canvases drew there first (bm_settle); and with the flag
-// trace-colors, who fills with a translucent colour or with opaque black (meglerTraceColor). Everything else is the
-// original's.
+// trace-colors, who fills with a translucent colour or with opaque black (meglerTraceColor); and in drawColor(long,
+// BlendMode), which draws, where the original's was a signature alone. Everything else is the original's.
 package android.graphics;
 
 /** Drawing into a Bitmap through megler.Gfx. The view system draws the window through one of these each frame. */
@@ -149,6 +149,8 @@ public class Canvas {
     public void drawColor(long c) { drawColor(Color.toArgb(c)); }
     public void drawColor(int c, PorterDuff.Mode m) { if (mNative != 0) { megler.Gfx.cvDrawColor(mNative, c, m.nativeInt); touched(); } }
     public void drawColor(int c, BlendMode m) { if (mNative != 0) { megler.Gfx.cvDrawColor(mNative, c, m.n); touched(); } }
+    /* (Generated as a signature that drew nothing, here and in BaseRecordingCanvas: a long colour of any space, by the int it is in sRGB.) */
+    public void drawColor(long c, BlendMode m) { drawColor(Color.toArgb(c), m); }
     public void drawRGB(int r, int g, int b) { drawColor(Color.rgb(r, g, b)); }
     public void drawARGB(int a, int r, int g, int b) { drawColor(Color.argb(a, r, g, b)); }
     public void drawPaint(Paint p) {
@@ -250,7 +252,6 @@ public class Canvas {
     public boolean clipRegion(android.graphics.Region p0, android.graphics.Region.Op p1) { return false; }
     public void clipShader(android.graphics.Shader p0) {}
     public void concat(android.graphics.Matrix44 p0) {}
-    public void drawColor(long p0, android.graphics.BlendMode p1) {}
     public void drawDoubleRoundRect(android.graphics.RectF p0, float[] p1, android.graphics.RectF p2, float[] p3, android.graphics.Paint p4) {}
     public void drawPatch(android.graphics.NinePatch p0, android.graphics.Rect p1, android.graphics.Paint p2) {}
     public void drawPatch(android.graphics.NinePatch p0, android.graphics.RectF p1, android.graphics.Paint p2) {}

@@ -1,0 +1,188 @@
+From bdff989939ee0ca5b3a5fb959c4493024f40a5e7 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:19 +0700
+Subject: [PATCH 03/15] freedreno/d3dkmt: fdtest level-2 harness + option to
+ link real fd_kmt lib
+
+---
+ meson.options                     |   7 ++
+ src/freedreno/drm/d3dkmt/fdtest.c | 118 ++++++++++++++++++++++++++++++
+ src/freedreno/drm/meson.build     |  22 ++++++
+ 3 files changed, 147 insertions(+)
+ create mode 100644 src/freedreno/drm/d3dkmt/fdtest.c
+
+diff --git a/meson.options b/meson.options
+index 7d3f004..d19591c 100644
+--- a/meson.options
++++ b/meson.options
+@@ -234,6 +234,13 @@ option(
+   description : 'Link stub fd_kmt_* (tra ve loi) khi chua co loi D3DKMT that.',
+ )
+ 
++option(
++  'freedreno-d3dkmt-lib',
++  type : 'string',
++  value : '',
++  description : 'Duong dan .lib cua loi fd_kmt that (dung khi freedreno-d3dkmt-stub=false).',
++)
++
+ option(
+   'amdgpu-virtio',
+   type : 'boolean',
+diff --git a/src/freedreno/drm/d3dkmt/fdtest.c b/src/freedreno/drm/d3dkmt/fdtest.c
+new file mode 100644
+index 0000000..3c61295
+--- /dev/null
++++ b/src/freedreno/drm/d3dkmt/fdtest.c
+@@ -0,0 +1,118 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * fdtest: kiem tra duong Mesa -> fd_kmt -> KMD Qualcomm (muc 2).
++ *
++ *   1. fd_kmt_open + fd_device_new_d3dkmt + fd_pipe_new  -> in GPU/chip id
++ *   2. fd_bo_new + fd_bo_map: ghi/doc lai mau tu CPU
++ *   3. submit IB PM4: CP_NOP + CP_MEM_WRITE(bo, 0xC0FFEE01) + CP_WAIT_FOR_IDLE
++ *   4. cho fence, doc bo: phai thay 0xC0FFEE01 -> GPU da chay PM4 cua Mesa
++ *
++ * Voi fd_kmt_stub.c, buoc 1 se bao -ENOSYS (dung nhu mong doi).
++ * Exit code: 0 = dat, 10+N = hong o buoc N.
++ */
++
++#include <inttypes.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "drm/freedreno_drmif.h"
++#include "drm/freedreno_ringbuffer.h"
++#include "fd_kmt.h"
++
++#define MAGIC 0xC0FFEE01u
++
++static int
++fail(int step, const char *what, int err)
++{
++   printf("fdtest: FAIL buoc %d: %s (%d)\n", step, what, err);
++   return 10 + step;
++}
++
++int
++main(void)
++{
++   setvbuf(stdout, NULL, _IONBF, 0);
++
++   /* 1. mo phien + device + pipe */
++   struct fd_kmt *kmt = NULL;
++   int ret = fd_kmt_open(&kmt);
++   if (ret || !kmt)
++      return fail(1, "fd_kmt_open", ret);
++
++   struct fd_device *dev = fd_device_new_d3dkmt(kmt);
++   if (!dev)
++      return fail(1, "fd_device_new_d3dkmt", 0);
++
++   struct fd_pipe *pipe = fd_pipe_new(dev, FD_PIPE_3D);
++   if (!pipe)
++      return fail(1, "fd_pipe_new", 0);
++
++   uint64_t gpu_id = 0, chip_id = 0, gmem = 0;
++   fd_pipe_get_param(pipe, FD_GPU_ID, &gpu_id);
++   fd_pipe_get_param(pipe, FD_CHIP_ID, &chip_id);
++   fd_pipe_get_param(pipe, FD_GMEM_SIZE, &gmem);
++   printf("fdtest: [1] GPU %" PRIu64 " chip 0x%" PRIx64 " gmem %" PRIu64
++          " KiB\n", gpu_id, chip_id, gmem / 1024);
++
++   /* 2. BO: ghi/doc tu CPU */
++   struct fd_bo *bo = fd_bo_new(dev, 4096, 0, "fdtest");
++   if (!bo)
++      return fail(2, "fd_bo_new", 0);
++   uint32_t *map = fd_bo_map(bo);
++   if (!map)
++      return fail(2, "fd_bo_map", 0);
++   for (unsigned i = 0; i < 1024; i++)
++      map[i] = 0x11110000u + i;
++   for (unsigned i = 0; i < 1024; i++)
++      if (map[i] != 0x11110000u + i)
++         return fail(2, "doc lai mau CPU sai", (int)i);
++   map[0] = 0;
++   printf("fdtest: [2] bo iova 0x%" PRIx64 " map %p OK\n",
++          fd_bo_get_iova(bo), (void *)map);
++
++   /* 3. submit PM4 */
++   struct fd_submit *submit = fd_submit_new(pipe);
++   if (!submit)
++      return fail(3, "fd_submit_new", 0);
++   struct fd_ringbuffer *ring = fd_submit_new_ringbuffer(
++      submit, 0x1000, FD_RINGBUFFER_PRIMARY | FD_RINGBUFFER_GROWABLE);
++   if (!ring)
++      return fail(3, "fd_submit_new_ringbuffer", 0);
++
++   fd_ringbuffer_attach_bo(ring, bo);
++
++   OUT_PKT7(ring, CP_NOP, 0);
++   OUT_PKT7(ring, CP_MEM_WRITE, 3);
++   OUT_RELOC(ring, bo, 0, 0, 0); /* addr lo/hi (a5xx+: 64b) */
++   OUT_RING(ring, MAGIC);
++   OUT_PKT7(ring, CP_WAIT_FOR_IDLE, 0);
++
++   struct fd_fence *fence = fd_submit_flush(submit, -1, false);
++   if (!fence)
++      return fail(3, "fd_submit_flush", 0);
++   printf("fdtest: [3] submit fence %u\n", fence->kfence);
++
++   /* 4. cho GPU */
++   ret = fd_fence_wait(fence);
++   if (ret)
++      return fail(4, "fd_fence_wait", ret);
++   fd_bo_cpu_prep(bo, pipe, FD_BO_PREP_READ);
++
++   uint32_t got = map[0];
++   printf("fdtest: [4] bo[0] = 0x%08x (mong 0x%08x)\n", got, MAGIC);
++   if (got != MAGIC)
++      return fail(4, "GPU khong ghi dung gia tri", (int)got);
++
++   fd_fence_del(fence);
++   fd_ringbuffer_del(ring);
++   fd_submit_del(submit);
++   fd_bo_del(bo);
++   fd_pipe_del(pipe);
++   fd_device_del(dev);
++
++   printf("fdtest: PASS - GPU da chay PM4 cua Mesa\n");
++   return 0;
++}
+diff --git a/src/freedreno/drm/meson.build b/src/freedreno/drm/meson.build
+index 6a12047..d78b9e9 100644
+--- a/src/freedreno/drm/meson.build
++++ b/src/freedreno/drm/meson.build
+@@ -98,3 +98,25 @@ libfreedreno_drm = static_library(
+   build_by_default : false,
+ )
+ 
++
++# Windows: tool kiem tra muc 2 (Mesa -> fd_kmt -> KMD). Xem d3dkmt/fdtest.c.
++if with_freedreno_d3dkmt
++  fd_kmt_link_args = []
++  if not get_option('freedreno-d3dkmt-stub')
++    _fd_kmt_lib = get_option('freedreno-d3dkmt-lib')
++    if _fd_kmt_lib == ''
++      error('freedreno-d3dkmt-stub=false can -Dfreedreno-d3dkmt-lib=<duong dan fd_kmt.lib>')
++    endif
++    fd_kmt_link_args += [_fd_kmt_lib, 'gdi32.lib']
++  endif
++  fdtest = executable(
++    'fdtest',
++    [files('d3dkmt/fdtest.c'), freedreno_xml_header_files],
++    include_directories : libfreedreno_drm_includes + [include_directories('d3dkmt')],
++    c_args : [no_override_init_args, libfreedreno_drm_flags],
++    link_with : [libfreedreno_drm, libfreedreno_common],
++    link_args : fd_kmt_link_args,
++    dependencies : [idep_mesautil],
++    build_by_default : false,
++  )
++endif
+-- 
+2.35.1.windows.2
+

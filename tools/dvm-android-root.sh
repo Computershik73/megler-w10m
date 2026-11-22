@@ -23,7 +23,7 @@
 #                           tools/build-shared-libraries.sh): an app that asks
 #                           for it, or targets Android 10 or before, has it on
 #                           its class path (drivers/mg_java.c)
-#   framework/platform-framework.dex, -classes2.dex, -classes3.dex
+#   framework/platform-framework.dex, -classes2.dex, -classes3.dex, platform-telephony-common.dex, platform-ims-common.dex
 #                           Android 9's own framework, the platform's original
 #                           bytecode: an app of the platform's own (its
 #                           manifest's sharedUserId android.uid.system, as
@@ -124,7 +124,7 @@ for name in core-oj core-libart conscrypt okhttp bouncycastle apache-xml; do put
 # Android's legacy Apache HTTP client, for the apps that get it on their class path (drivers/mg_java.c, add_shared_libraries).
 put "$A9/boot/org.apache.http.legacy.dex" "$OUT/framework"
 # Android 9's own framework, for the platform's own apps (drivers/mg_java.c, add_platform_framework).
-for name in framework framework-classes2 framework-classes3; do
+for name in framework framework-classes2 framework-classes3 telephony-common ims-common; do
   if [ -f "$A9/boot/$name.dex" ]; then cp -u "$A9/boot/$name.dex" "$OUT/framework/platform-$name.dex"; else echo "  (not there: build/android9/boot/$name.dex)"; fi
 done
 bash "$ROOT/tools/build-libcore-overlay.sh"

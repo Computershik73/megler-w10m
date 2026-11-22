@@ -1,0 +1,199 @@
+From b91d3880c16323a096b0d0bc614b5d2b97780c19 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:22 +0700
+Subject: [PATCH 10/15] wgl/egl: windowless pbuffers for STW_COREWINDOW;
+ asserts to stderr
+
+---
+ src/egl/drivers/wgl/egl_wgl.c                 |  5 +-
+ src/gallium/frontends/wgl/stw_ext_pbuffer.c   | 19 ++++--
+ src/gallium/frontends/wgl/stw_gdishim.c       | 58 +++++++++++++++++++
+ src/gallium/frontends/wgl/stw_gdishim.h       | 10 ++++
+ .../targets/wgl/gallium_wgl_corewindow.def.in |  2 +
+ src/gallium/targets/wgl/wgl.c                 |  5 ++
+ 6 files changed, 92 insertions(+), 7 deletions(-)
+
+diff --git a/src/egl/drivers/wgl/egl_wgl.c b/src/egl/drivers/wgl/egl_wgl.c
+index 53e3c24..812c817 100644
+--- a/src/egl/drivers/wgl/egl_wgl.c
++++ b/src/egl/drivers/wgl/egl_wgl.c
+@@ -501,7 +501,10 @@ wgl_destroy_surface(_EGLDisplay *disp, _EGLSurface *surf)
+       return EGL_TRUE;
+ 
+    if (wgl_surf->fb->owner == STW_FRAMEBUFFER_PBUFFER) {
+-#ifndef STW_COREWINDOW
++#ifdef STW_COREWINDOW
++      struct stw_context *ctx = stw_current_context();
++      stw_pbuffer_destroy_corewindow(wgl_surf->fb, ctx ? ctx->st : NULL);
++#else
+       DestroyWindow(wgl_surf->fb->hWnd);
+ #endif
+    } else {
+diff --git a/src/gallium/frontends/wgl/stw_ext_pbuffer.c b/src/gallium/frontends/wgl/stw_ext_pbuffer.c
+index c5ba1d5..788352b 100644
+--- a/src/gallium/frontends/wgl/stw_ext_pbuffer.c
++++ b/src/gallium/frontends/wgl/stw_ext_pbuffer.c
+@@ -73,11 +73,18 @@ struct stw_framebuffer *
+ stw_pbuffer_create(const struct stw_pixelformat_info *pfi, int iWidth, int iHeight, struct pipe_frontend_screen *fscreen)
+ {
+ #ifdef STW_COREWINDOW
+-   /* Khong co user32 (cua so an) tren Windows 10 Mobile: chua ho tro pbuffer.
+-    * Ung dung dung FBO thay the.
++   /* Windows 10 Mobile: khong co user32 (cua so an). "HWND" cua pbuffer la mot
++    * cua so gia (stw_shim_pbuffer_window) mang kich thuoc; GetClientRect shim
++    * doc no, winsys khong tao swapchain -> stw tu cap texture offscreen.
+     */
+-   (void)pfi; (void)iWidth; (void)iHeight; (void)fscreen;
+-   return NULL;
++   HWND hWnd = stw_shim_pbuffer_window_create(iWidth, iHeight);
++   if (!hWnd)
++      return NULL;
++   struct stw_framebuffer *fb =
++      stw_framebuffer_create(NULL, hWnd, pfi, STW_FRAMEBUFFER_PBUFFER, fscreen);
++   if (!fb)
++      stw_shim_pbuffer_window_destroy(hWnd);
++   return fb;
+ #else
+    static bool first = true;
+ 
+@@ -333,8 +340,8 @@ wglDestroyPbufferARB(HPBUFFERARB hPbuffer)
+ 
+    /* This will destroy all our data */
+ #ifdef STW_COREWINDOW
+-   (void)fb;
+-   return false;
++   stw_pbuffer_destroy_corewindow(fb, NULL);
++   return true;
+ #else
+    return DestroyWindow(fb->hWnd);
+ #endif
+diff --git a/src/gallium/frontends/wgl/stw_gdishim.c b/src/gallium/frontends/wgl/stw_gdishim.c
+index cfb1afd..2f57f1b 100644
+--- a/src/gallium/frontends/wgl/stw_gdishim.c
++++ b/src/gallium/frontends/wgl/stw_gdishim.c
+@@ -32,10 +32,68 @@
+ #include "stw_winsys.h"
+ 
+ #if defined(STW_COREWINDOW) && !defined(_GAMING_XBOX)
++/* Cua so gia cho pbuffer (khong co user32). */
++#define STW_SHIM_PBUFFER_MAGIC 0x50425546u /* 'PBUF' */
++struct stw_shim_pbuffer_window {
++   uint32_t magic;
++   int width, height;
++};
++
++HWND
++stw_shim_pbuffer_window_create(int width, int height)
++{
++   struct stw_shim_pbuffer_window *w = calloc(1, sizeof(*w));
++   if (!w)
++      return NULL;
++   w->magic = STW_SHIM_PBUFFER_MAGIC;
++   w->width = width;
++   w->height = height;
++   return (HWND)w;
++}
++
++bool
++stw_shim_is_pbuffer_window(HWND hwnd)
++{
++   const struct stw_shim_pbuffer_window *w = (const void *)hwnd;
++   return w && w->magic == STW_SHIM_PBUFFER_MAGIC;
++}
++
++void
++stw_shim_pbuffer_window_destroy(HWND hwnd)
++{
++   struct stw_shim_pbuffer_window *w = (void *)hwnd;
++   if (stw_shim_is_pbuffer_window(hwnd)) {
++      w->magic = 0;
++      free(w);
++   }
++}
++
++/* Huy pbuffer (thay DestroyWindow): giai phong framebuffer roi cua so gia. */
++void
++stw_pbuffer_destroy_corewindow(struct stw_framebuffer *fb, struct st_context *st)
++{
++   HWND hwnd = fb->hWnd;
++   /* Giong duong WM_DESTROY: huy framebuffer khong phai EGL window phai giu
++    * stw_dev->fb_mutex (assert trong stw_framebuffer_destroy_locked).
++    */
++   stw_lock_framebuffers(stw_dev);
++   stw_framebuffer_lock(fb);
++   stw_framebuffer_release_locked(fb, st);
++   stw_unlock_framebuffers(stw_dev);
++   stw_shim_pbuffer_window_destroy(hwnd);
++}
++
+ BOOL
+ stw_shim_GetClientRect(HWND hwnd, LPRECT rect)
+ {
+    unsigned w = 0, h = 0;
++   if (stw_shim_is_pbuffer_window(hwnd)) {
++      const struct stw_shim_pbuffer_window *pw = (const void *)hwnd;
++      rect->left = rect->top = 0;
++      rect->right = pw->width;
++      rect->bottom = pw->height;
++      return TRUE;
++   }
+    if (!hwnd || !stw_dev || !stw_dev->stw_winsys->get_window_size ||
+        !stw_dev->stw_winsys->get_window_size(hwnd, &w, &h))
+       return FALSE;
+diff --git a/src/gallium/frontends/wgl/stw_gdishim.h b/src/gallium/frontends/wgl/stw_gdishim.h
+index a65f717..aeb62d5 100644
+--- a/src/gallium/frontends/wgl/stw_gdishim.h
++++ b/src/gallium/frontends/wgl/stw_gdishim.h
+@@ -49,6 +49,16 @@ int stw_shim_DescribePixelFormat(HDC hdc, int iPixelFormat, UINT nBytes,
+                                  LPPIXELFORMATDESCRIPTOR ppfd);
+ /* Kich thuoc lay qua stw_winsys::get_window_size (winsys biet CoreWindow). */
+ BOOL stw_shim_GetClientRect(HWND hwnd, LPRECT rect);
++
++/* pbuffer khong can cua so: "HWND" la cua so gia mang kich thuoc. */
++#include <stdbool.h>
++struct stw_framebuffer;
++struct st_context;
++HWND stw_shim_pbuffer_window_create(int width, int height);
++bool stw_shim_is_pbuffer_window(HWND hwnd);
++void stw_shim_pbuffer_window_destroy(HWND hwnd);
++void stw_pbuffer_destroy_corewindow(struct stw_framebuffer *fb,
++                                    struct st_context *st);
+ #endif /* STW_COREWINDOW */
+ 
+ #ifdef _GAMING_XBOX
+diff --git a/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in b/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+index 722b381..ba4510b 100644
+--- a/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
++++ b/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+@@ -57,3 +57,5 @@ _mesa_glapi_get_dispatch
+ 	stw_shim_GetPixelFormat
+ 	stw_shim_SetPixelFormat
+ 	stw_shim_DescribePixelFormat
++	stw_pbuffer_destroy_corewindow
++	stw_shim_is_pbuffer_window
+diff --git a/src/gallium/targets/wgl/wgl.c b/src/gallium/targets/wgl/wgl.c
+index 83c35f9..76153d9 100644
+--- a/src/gallium/targets/wgl/wgl.c
++++ b/src/gallium/targets/wgl/wgl.c
+@@ -190,6 +190,8 @@ wgl_screen_create(HDC hDC)
+ {
+ #ifdef STW_COREWINDOW
+    _set_invalid_parameter_handler(wgl_invalid_parameter);
++   /* assert() in ra stderr thay vi message box (khong thay duoc tren W10M). */
++   _set_error_mode(_OUT_TO_STDERR);
+    signal(SIGABRT, wgl_on_abort);
+    AddVectoredExceptionHandler(1, wgl_veh);
+ #endif
+@@ -324,6 +326,9 @@ wgl_create_framebuffer(struct pipe_screen *screen,
+                        int iPixelFormat)
+ {
+ #if defined(GALLIUM_FREEDRENO) && defined(STW_COREWINDOW)
++   /* pbuffer (cua so gia): khong co swapchain, stw dung texture offscreen. */
++   if (stw_shim_is_pbuffer_window(hWnd))
++      return NULL;
+    if (use_freedreno)
+       return fd_wgl_create_framebuffer(screen, hWnd, iPixelFormat);
+ #endif
+-- 
+2.35.1.windows.2
+

@@ -111,6 +111,8 @@ static int g_alias_scopes[MAX_ALIASES];
  */
 static int g_child_parent[MAX_SCOPES];         /* its parent's scope: 0 the app's, -1 the boot class path's alone */
 static bool g_child[MAX_SCOPES], g_child_own_first[MAX_SCOPES];
+/* Which child scopes are an isolated split's (mg_dvm_isolated_split): their native libraries are their parent's, the app's. */
+static bool g_child_split[MAX_SCOPES];
 bool mg_dvm_scope_child(int scope, int *parent, bool *own_first)
 {
     if (scope < SERVICE_SCOPES || scope >= MAX_SCOPES || !g_child[scope]) return false;
@@ -122,6 +124,18 @@ int mg_dvm_scope_root(int scope)
 {
     int depth;
     for (depth = 0; depth < MAX_SCOPES && scope >= SERVICE_SCOPES && scope < MAX_SCOPES && g_child[scope]; depth++) scope = g_child_parent[scope];
+    return scope > 0 ? scope : 0;
+}
+/*
+ * The linker's scope for the native code of a class scope (mg_ld_set_scope): its own, but for an isolated split's, which has
+ * no libraries of its own -- the linker has the split's with the app's (run/mg_run.c) -- that of the scope it is under. A
+ * native method of Chrome's split "chrome" is in libchrome.so, which its base loaded.
+ */
+int mg_dvm_library_scope(int scope)
+{
+    int depth;
+    for (depth = 0; depth < MAX_SCOPES && scope >= SERVICE_SCOPES && scope < MAX_SCOPES && g_child[scope] && g_child_split[scope]; depth++)
+        scope = g_child_parent[scope];
     return scope > 0 ? scope : 0;
 }
 int mg_dvm_loader_scope(mg_jobj *loader) {
@@ -236,9 +250,10 @@ static bool looks_in_own_files_first(mg_jobj *loader)
 /*
  * The child scope a loader's files go in (above): its own once made, `*made` when made now (and to be let go if the file
  * has no DEX in it after all: a split of native libraries alone); 0 when they go on the app's path. None before the app's
- * own loader is: the first PathClassLoader is that one, whose files are the app's.
+ * own loader is: the first PathClassLoader is that one, whose files are the app's. A loader over an isolated split (`split`)
+ * has one too when its parent is the app's own loader, asking its parent first as Android's PathClassLoader does.
  */
-static int child_scope_for(mg_jobj *loader, bool *made)
+static int child_scope_for(mg_jobj *loader, bool split, bool *made)
 {
     mg_dvm_field *pf = loader_parent_field();
     mg_dvm_class *k;
@@ -251,6 +266,7 @@ static int child_scope_for(mg_jobj *loader, bool *made)
     parent = reached_scope(mg_dvm_slots(loader)[pf->slot].l, 0);
     if (parent > 0 || parent == -1) own_first = looks_in_own_files_first(loader);
     else if (delegate_last) { own_first = true; parent = 0; }
+    else if (split && parent == 0) own_first = looks_in_own_files_first(loader);
     else return 0;
     mg_dvm_lock();
     for (i = SERVICE_SCOPES; i < MAX_SCOPES && slot < 0; i++)
@@ -258,6 +274,7 @@ static int child_scope_for(mg_jobj *loader, bool *made)
     if (slot > 0) {
         g_child_parent[slot] = parent;
         g_child_own_first[slot] = own_first;
+        g_child_split[slot] = split;
         g_child[slot] = true;
         g_service_loaders[slot] = loader;
     }
@@ -272,7 +289,7 @@ static int child_scope_for(mg_jobj *loader, bool *made)
 static void child_scope_release(int slot)
 {
     mg_dvm_lock();
-    g_child[slot] = false;
+    g_child[slot] = g_child_split[slot] = false;
     g_service_loaders[slot] = NULL;
     mg_dvm_unlock();
 }
@@ -1008,9 +1025,10 @@ N(VMStack_getClosestUserClassLoader)
  * app's processes (megler.Processes), 0 for the app's own. It is that of the innermost frame of an app's code or a service's
  * (the code of a loader a service made is the service's: mg_dvm_dex_process_scope); with none on the stack, the thread's
  * owner. The table of file locks asks (core/libcore-overlay/sun/nio/ch/FileLockTable.java): a file's lock is held against
- * the other processes, which here are in this one.
+ * the other processes, which here are in this one. And the list of security providers (sun.security.jca.Providers,
+ * core/libcore-overlay/sun/security/jca/Providers.java.members): each of the app's processes has its own.
  */
-N(SharedFileLockTable_scope)
+N(code_scope)
 {
     mg_dvm_thread *self = mg_dvm_self();
     mg_dvm_frame *f;
@@ -1281,6 +1299,46 @@ void mg_dvm_dex_source_added(const char *guest_path)
 }
 
 /*
+ * An app's isolated feature splits (android:isolatedSplits), by the path the app knows each under and the host's file. Android
+ * loads such a split with a class loader of its own (LoadedApk.getSplitClassLoader), its parent the loader of the split it
+ * uses or the base's, and the base's loader has none of the split's classes. Chrome 158's browser is in its split "chrome":
+ * its activities check that their class's loader is the application context's, which Chrome sets to the split's; on the
+ * one class path every class of the split was the base loader's, and Chrome ended at its start with "ClassLoader mismatch
+ * detected." Such a split is not put on the path (mg_java.c); a loader that opens it gets a child scope (child_scope_for).
+ */
+#define MAX_ISOLATED 32
+static char *g_isolated_guest[MAX_ISOLATED], *g_isolated_host[MAX_ISOLATED];
+static volatile i32 g_nisolated;
+void mg_dvm_isolated_split(const char *guest_path, const char *host_path)
+{
+    i32 slot = mg_atomic_add(&g_nisolated, 1) - 1;
+    if (slot >= MAX_ISOLATED) {
+        mg_atomic_add(&g_nisolated, -1);
+        return;
+    }
+    g_isolated_host[slot] = mg_strdup(host_path);
+    g_isolated_guest[slot] = mg_strdup(guest_path);
+}
+/* Two host paths of one file, as Windows compares them: whatever the case, either slash. */
+static bool same_host_path(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++) {
+        char x = *a == '\\' ? '/' : *a >= 'A' && *a <= 'Z' ? (char)(*a + 32) : *a;
+        char y = *b == '\\' ? '/' : *b >= 'A' && *b <= 'Z' ? (char)(*b + 32) : *b;
+        if (x != y) return false;
+    }
+    return !*a && !*b;
+}
+/* Whether a file a loader opens is an isolated split: by the app's path for it, or by the host's file (a link to it). */
+static bool isolated_split(const char *source, const char *host)
+{
+    i32 i, n = g_nisolated;
+    for (i = 0; i < n && i < MAX_ISOLATED; i++)
+        if ((g_isolated_guest[i] && !strcmp(g_isolated_guest[i], source)) || (host && g_isolated_host[i] && same_host_path(g_isolated_host[i], host))) return true;
+    return false;
+}
+
+/*
  * A service scope's files besides its APK. The code of a scope sees the platform's classes and its own scope's, never the
  * app's path (mg_dvm_class.c, definition), so a file that code opens joins its scope, once: one opened for the scope's own
  * loader (BaseDexClassLoader.addDexPath, a DexFile made for it), and, in a scope that is another of the app's own processes
@@ -1429,10 +1487,14 @@ N(DexFile_openDexFileNative)
         }
         there = true;
     }
-    /* A loader of a module's, or a DelegateLastClassLoader: a scope of its own (above). */
+    /* A loader of a module's, a DelegateLastClassLoader, or an isolated split's: a scope of its own (above). */
     if (!there && c->args[3].l && c->args[3].l != g_dvm.app_loader) {
-        bool made;
-        int child = child_scope_for(c->args[3].l, &made);
+        bool made, split;
+        int child;
+        host = mg_fs_host_path(source);
+        split = isolated_split(source, host);
+        free(host);
+        child = child_scope_for(c->args[3].l, split, &made);
         if (child > 0) {
             host = mg_fs_host_path(source);
             n = strlen(source);
@@ -1445,8 +1507,8 @@ N(DexFile_openDexFileNative)
             } else if (host && (there = mg_dvm_add_apk_scope(host, child) > 0)) {
                 /* its native libraries are its APK's (Google Play services' Cronet module: lib/armeabi-v7a/libcronet.<version>.so,
                    stored, which it loads by the path "<apk>!/lib/armeabi-v7a/..."); before, the one of Play Store's own Cronet
-                   was taken, and the module stopped on its version */
-                mg_ld_add_service_apk(host, child);
+                   was taken, and the module stopped on its version. An isolated split's are the app's already. */
+                if (!split) mg_ld_add_service_apk(host, child);
             }
             free(host);
             if (!there) {
@@ -1458,8 +1520,8 @@ N(DexFile_openDexFileNative)
                 int parent;
                 bool own_first;
                 mg_dvm_scope_child(child, &parent, &own_first);
-                mg_info("dvm: a %s over %s: scope %d of its own, its %s first, then scope %d", mg_dvm_class_of(c->args[3].l)->name, source,
-                        child, own_first ? "own files" : "parent's", parent);
+                mg_info("dvm: a %s over %s: %sscope %d of its own, its %s first, then scope %d", mg_dvm_class_of(c->args[3].l)->name, source,
+                        split ? "an isolated split's, " : "", child, own_first ? "own files" : "parent's", parent);
             }
         }
     }
@@ -2084,7 +2146,8 @@ static const mg_jhle k_art[] = {
     { "java/lang/Package", "getSystemPackage0", NULL, Class_null },
     { "java/lang/Package", "getSystemPackages0", NULL, Package_getSystemPackages0 },
     { "dalvik/system/VMStack", "getClosestUserClassLoader", NULL, VMStack_getClosestUserClassLoader },
-    { "sun/nio/ch/SharedFileLockTable", "scope", NULL, SharedFileLockTable_scope },
+    { "sun/nio/ch/SharedFileLockTable", "scope", NULL, code_scope },
+    { "sun/security/jca/Providers", "meglerScope", NULL, code_scope },
     { "dalvik/system/VMStack", "fillStackTraceElements", NULL, nothing },
     { "dalvik/system/VMStack", "getAnnotatedThreadStackTrace", NULL, Class_null },
 

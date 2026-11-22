@@ -151,7 +151,9 @@ void mg_gfx_windows_lose_device(void) { megler::app::GfxHost::shared().loseDevic
 /// ANGLE's, a texture of it shared by handle for a GL surface, its rows
 /// bottom first as OpenGL's are. The frame shows where the views leave a
 /// hole, the right way up, under what the views have there; a new frame is
-/// shown without the views being shown again; a layer taken away leaves the
+/// shown without the views being shown again, and so is one of the surface
+/// made again at another size (another texture, another handle) and the
+/// first surface's after it; a layer taken away leaves the
 /// views alone; a layer over the views is over them, its premultiplied alpha
 /// kept where it is translucent; nothing is read back. Twice: the texture shared plainly, and
 /// shared with a keyed mutex, as gecko-w10m's ANGLE shares every pbuffer --
@@ -279,6 +281,86 @@ int mg_gfx_windows_check_gl(const megler_gfx_host* h, void (*line)(const char* t
             // Handed over, the mutex is there to be taken back at once: the shell gave it back after its copy.
             check(mutex->AcquireSync(0, 0) == S_OK, "the shell kept the surface's keyed mutex");
             mutex->ReleaseSync(0);
+        }
+        // The surface made again at another size, as a GLSurfaceView's is when its view grows (another pbuffer, another
+        // handle; a libGDX game's surface grew after its first frames, issue #26): its frames, magenta, are shown in the
+        // layer's place, scaled to it; and then the first surface's again, as they come.
+        {
+            const int sw = 16, sh = 12;
+            std::vector<uint32_t> magenta(size_t(sw) * sh, 0xFFFF00FFu);
+            D3D11_TEXTURE2D_DESC sd = td;
+            sd.Width = UINT(sw);
+            sd.Height = UINT(sh);
+            ID3D11Texture2D* other = nullptr;
+            IDXGIResource* otherResource = nullptr;
+            IDXGIKeyedMutex* otherMutex = nullptr;
+            HANDLE otherHandle = nullptr;
+            const bool made = SUCCEEDED(angle->CreateTexture2D(&sd, nullptr, &other)) &&
+                              SUCCEEDED(other->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&otherResource))) &&
+                              SUCCEEDED(otherResource->GetSharedHandle(&otherHandle)) &&
+                              (!keyed || SUCCEEDED(other->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(&otherMutex))));
+            check(made, "no second shared texture of another size");
+            if (made) {
+                // (As draw() does: the picture finished on "ANGLE's" device before it is handed over.)
+                if (otherMutex) otherMutex->AcquireSync(0, INFINITE);
+                angleContext->UpdateSubresource(other, 0, nullptr, magenta.data(), UINT(sw * 4), 0);
+                D3D11_QUERY_DESC qd = {D3D11_QUERY_EVENT, 0};
+                ID3D11Query* done = nullptr;
+                if (SUCCEEDED(angle->CreateQuery(&qd, &done))) {
+                    angleContext->End(done);
+                    angleContext->Flush();
+                    while (angleContext->GetData(done, nullptr, 0, 0) == S_FALSE) SwitchToThread();
+                    done->Release();
+                }
+                if (otherMutex) otherMutex->ReleaseSync(0);
+                check(h->gl_frame(h->user, 0, otherHandle, sw, sh) && readWindow(shown) && shown.size() == memory.size() &&
+                          (shown[10 * w + 20] & 0x00FFFFFFu) == 0x00FF00FFu && (shown[30 * w + 20] & 0x00FFFFFFu) == 0x00FF00FFu &&
+                          (shown[2 * w + 2] | 0xFF000000u) == 0xFFFFFFFFu,
+                      "a frame of a surface made again at another size is not shown in the layer's place");
+                draw();
+                check(h->gl_frame(h->user, 0, handle, fw, fh) && readWindow(shown) && shown.size() == memory.size() &&
+                          (shown[10 * w + 20] & 0x00FFFFFFu) == 0x0000FF00u,
+                      "the first surface's frame is not shown again after one of another size");
+            }
+            if (otherMutex) otherMutex->Release();
+            if (otherResource) otherResource->Release();
+            if (other) other->Release();
+        }
+        // Frames of one surface from three textures in turn, shared plainly, as the core's ring hands Mesa's (mg_java_gl.c,
+        // ring_frame): each shown as it comes; and the copy out of a texture that came again before (in turn), not waited for
+        // as it was made, is waited for at the next frame -- the core gives the GL thread the texture it came out of to draw
+        // into as gl_frame returns. Not with a keyed mutex, which no ring has.
+        if (!keyed) {
+            const uint32_t colours[2] = {0xFFFF0000u, 0xFF0000FFu};
+            ID3D11Texture2D* turn[2] = {};
+            HANDLE turnHandle[2] = {};
+            bool made = true;
+            for (int i = 0; i < 2 && made; i++) {
+                IDXGIResource* r = nullptr;
+                std::vector<uint32_t> fill(size_t(fw) * fh, colours[i]);
+                D3D11_SUBRESOURCE_DATA data = {fill.data(), UINT(fw * 4), 0};
+                made = SUCCEEDED(angle->CreateTexture2D(&td, &data, &turn[i])) && SUCCEEDED(turn[i]->QueryInterface(__uuidof(IDXGIResource), reinterpret_cast<void**>(&r))) &&
+                       SUCCEEDED(r->GetSharedHandle(&turnHandle[i]));
+                if (r) r->Release();
+            }
+            check(made, "no textures for frames in turn");
+            if (made) {
+                angleContext->Flush();
+                // The surface's own texture (green now), then the two others: each new to the layer, its copy waited for as made.
+                const HANDLE order[5] = {turnHandle[0], turnHandle[1], handle, turnHandle[0], turnHandle[1]};
+                const uint32_t seen[5] = {0x00FF0000u, 0x000000FFu, 0x0000FF00u, 0x00FF0000u, 0x000000FFu};
+                const uint64_t waitedBefore = gfx.counts().glTurnWaited;
+                bool all = true;
+                for (int i = 0; i < 5; i++)
+                    all = all && h->gl_frame(h->user, 0, order[i], fw, fh) && readWindow(shown) && shown.size() == memory.size() &&
+                          (shown[10 * w + 20] & 0x00FFFFFFu) == seen[i];
+                check(all, "frames from three textures in turn are not each shown as they come (red, blue, green, red, blue)");
+                // Waited for at the frames after the first two that came again: the copies out of the surface's own texture and
+                // the red one, each a frame after it was made.
+                check(gfx.counts().glTurnWaited == waitedBefore + 2, "the copies out of textures in turn were not waited for at the next frame");
+            }
+            for (ID3D11Texture2D* t : turn)
+                if (t) t->Release();
         }
         // The layer taken away: the views alone there again, at the next showing.
         h->gl_place(h->user, 0, 0, 0, 0, 0, 0);
@@ -547,8 +629,9 @@ int mg_gfx_windows_check_present(const megler_gfx_host* h, void (*line)(const ch
 /// the graphics processor shows its pictures: the window has the video's picture where the view drew it, scaled up, the
 /// views over it there and their own picture elsewhere; a new picture is shown composed with the views as they were last
 /// shown, nothing of them drawn (showVideoFrame says 2); drawn at half its alpha it is among the views again, and no longer
-/// under them (1). The pictures are textures of the device as a decoder's are, top row first. Lines to `line`; checks
-/// that failed.
+/// under them (1). Moved by a drawing of the views not shown yet, a new picture is composed where the views as last shown
+/// have its hole, and the drawing shown has it where it moved to; drawn on another canvas too, it stays under the window's
+/// views. The pictures are textures of the device as a decoder's are, top row first. Lines to `line`; checks that failed.
 int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char* text, void* user), int* checks) {
     megler::app::GfxHost& gfx = megler::app::GfxHost::shared();
     int failed = 0;
@@ -646,6 +729,31 @@ int mg_gfx_windows_check_video(const megler_gfx_host* h, void (*line)(const char
         h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 128);
         h->present(h->user, cv, 0, 0, w, hgt);
         check(gfx.showVideoFrame(id, green, 16, 16) == 1, "a video its view draws among the views was still taken as under them");
+        // Its view moved (a pager swiped: the views drawn again with the video 4 pixels higher), and a picture comes before that
+        // drawing is shown: composed where the views as last shown have its hole, not at the new place, where they have none
+        // yet, leaving the old hole empty. Shown, the drawing puts it where it moved to.
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 8, 48, 40, 255);
+        check(h->present(h->user, cv, 0, 0, w, hgt) && gfx.showVideoFrame(id, green, 16, 16) == 2, "a video drawn again by its view was not under the views");
+        h->draw_color(h->user, cv, 0xFFFFFFFFu, MEGLER_GFX_BLEND_SRC);
+        h->draw_texture(h->user, cv, id, 16, 4, 48, 36, 255);
+        check(gfx.showVideoFrame(id, blue, 16, 16) == 2 && readWindow(shown) && shown[37 * w + 40] == 0xFFC0C000u && shown[6 * w + 40] == 0xFFFFFFFFu,
+              "a picture that came while the views were drawn with the video moved is not where they were last shown with it (yellow at 40,37, white at 40,6)");
+        check(h->present(h->user, cv, 0, 0, w, hgt) && readWindow(shown) && shown[37 * w + 40] == 0xFFFFFFFFu && shown[6 * w + 40] == 0xFF0000C0u &&
+                  shown[34 * w + 40] == 0xFFC0C000u,
+              "the views shown with the video moved do not have it where it moved to (blue at 40,6, yellow at 40,34, white at 40,37)");
+        // Drawn on another canvas too (a bitmap an app draws the view into, as TextureView.getBitmap draws its frame): it is
+        // still under the window's views, and its next picture is shown composed there.
+        std::vector<uint32_t> bitmap(16 * 16, 0);
+        void* snapshot = h->canvas_new(h->user, bitmap.data(), 16, 16, 16 * 4);
+        if (snapshot) {
+            h->draw_texture(h->user, snapshot, id, 0, 0, 16, 16, 255);
+            h->flush(h->user, snapshot);
+            check(bitmap[2 * 16 + 8] == 0xFF0000C0u, "the video's picture was not drawn on another canvas (blue at 8,2)");
+            check(gfx.showVideoFrame(id, green, 16, 16) == 2 && readWindow(shown) && shown[6 * w + 40] == 0xFF00C000u,
+                  "a video drawn on another canvas too was taken from under the window's views");
+            h->canvas_free(h->user, snapshot);
+        }
         h->texture_frame(h->user, id, nullptr, 0, 0);
         h->canvas_free(h->user, cv);
     }

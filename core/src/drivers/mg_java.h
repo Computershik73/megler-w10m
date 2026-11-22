@@ -59,6 +59,8 @@ void mg_java_set_theme(uint32_t accent_argb, bool night);
 
 /* mg_java_sqlite.c: megler.Sqlite's native methods, on the SQLite compiled into the core -- or, in a build without it, their refusal. */
 const mg_jhle *mg_java_sqlite_natives(void);
+/* android.app.NativeActivity and android.view.InputQueue: an app's own activity on top of NativeActivity (mg_java_ndk.c). */
+const mg_jhle *mg_java_ndk_natives(void);
 /* megler.Audio: AudioTrack, MediaPlayer and SoundPool (mg_java_audio.c). */
 const mg_jhle *mg_java_audio_natives(void);
 

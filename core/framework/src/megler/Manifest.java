@@ -14,11 +14,23 @@ public final class Manifest {
         public String taskAffinity;
         public int theme, label, icon, screenOrientation = -1, configChanges, launchMode, windowSoftInputMode, uiOptions, initOrder;
         public boolean exported, enabled = true, grantUriPermissions;
+        /** android:enabled when it is a boolean resource of the app's (read by PackageManager once there are resources); 0 for a literal. */
+        public int enabledResource;
         public Bundle metaData;
         public final ArrayList<Filter> filters = new ArrayList<>();
+        /** The split whose manifest declares it (ComponentInfo.splitName), null for the base's. */
+        public String split;
     }
+    /** An <intent-filter> as Android's IntentFilter has it (megler.IntentMatch matches one). */
     public static final class Filter {
         public final ArrayList<String> actions = new ArrayList<>(), categories = new ArrayList<>(), schemes = new ArrayList<>(), mimeTypes = new ArrayList<>(), hosts = new ArrayList<>();
+        /** Each host's port, -1 for none: Android's AuthorityEntry is a <data>'s host with that <data>'s port. */
+        public final ArrayList<Integer> ports = new ArrayList<>();
+        /** Its paths and scheme-specific parts, as android.os.PatternMatcher matches them. */
+        public final ArrayList<IntentMatch.Part> paths = new ArrayList<>(), ssps = new ArrayList<>();
+        public int priority;
+        /** android:autoVerify: its web links are for this app once their domains say so (megler.AssetLinks). */
+        public boolean autoVerify;
     }
     public static String packageName, applicationClass, versionName, appComponentFactory, appTaskAffinity;
     public static int versionCode, minSdk = 21, targetSdk = 34, appTheme, appLabel, appIcon, appFlags;
@@ -28,7 +40,15 @@ public final class Manifest {
     public static Bundle appMetaData = new Bundle();
     public static final ArrayList<Component> activities = new ArrayList<>(), services = new ArrayList<>(), receivers = new ArrayList<>(), providers = new ArrayList<>();
     public static final ArrayList<String> permissions = new ArrayList<>(), libraries = new ArrayList<>();
+    /**
+     * The base's android:isolatedSplits: each feature split has a class loader of its own (megler.Splits). The feature splits
+     * (android:isFeatureSplit), by name, and the split each uses (<uses-split>; null for the base).
+     */
+    public static boolean isolatedSplits;
+    public static final java.util.HashMap<String, String> featureSplits = new java.util.HashMap<>();
     private static boolean sRead;
+    /* The name of the split whose manifest is being read (parse). */
+    private static String sSplit;
 
     private static final String NS = "http://schemas.android.com/apk/res/android";
     private static String full(String n) {
@@ -37,11 +57,30 @@ public final class Manifest {
         if (n.indexOf('.') < 0) return packageName + "." + n;
         return n;
     }
+    /** The first of the app's split APKs among Native's APKs (mg_java.c FIRST_SPLIT_APK): the base is 0, framework-res 1. */
+    private static final int FIRST_SPLIT_APK = 2;
+
     public static synchronized void read() {
         if (sRead) return;
         sRead = true;
         byte[] d = Native.readApkFile(0, "AndroidManifest.xml");
         if (d == null) return;
+        parse(d, false);
+        /*
+         * And the components each split declares, as Android's package parser adds a feature split's to the app's (its
+         * manifest and application say nothing more of the app): Chrome 158 (isolatedSplits) has its browser,
+         * ChromeTabbedActivity and the launcher alias com.google.android.apps.chrome.Main, in its split "chrome". The
+         * split's code is in the app's class loader with the base's (mg_java.c, mg_dvm_add_apk).
+         */
+        String[] splits = Native.splitPaths();
+        for (int k = 0; splits != null && k < splits.length; k++) {
+            byte[] m = Native.readApkFile(FIRST_SPLIT_APK + k, "AndroidManifest.xml");
+            if (m != null) parse(m, true);
+        }
+        sSplit = null;
+    }
+
+    private static void parse(byte[] d, boolean split) {
         try {
             XmlBlock.Parser p = new XmlBlock(d, "AndroidManifest.xml").newParser();
             Component cur = null; Filter filter = null;
@@ -58,9 +97,22 @@ public final class Manifest {
                 }
                 if (t != XmlPullParser.START_TAG) continue;
                 String tag = p.getName();
+                if (split) {
+                    // A split's manifest: its components alone, and its name, whether it is a feature split and the split it uses.
+                    if ("manifest".equals(tag)) {
+                        sSplit = p.getAttributeValue(null, "split");
+                        if (sSplit != null && p.getAttributeBooleanValue(NS, "isFeatureSplit", false) && !featureSplits.containsKey(sSplit)) featureSplits.put(sSplit, null);
+                        continue;
+                    }
+                    if ("uses-split".equals(tag) && sSplit != null && featureSplits.containsKey(sSplit)) { featureSplits.put(sSplit, p.getAttributeValue(NS, "name")); continue; }
+                    if ("application".equals(tag)) { inApp = true; continue; }
+                    if (tag.startsWith("uses-")) continue;
+                    if ("meta-data".equals(tag) && cur == null) continue;
+                }
                 switch (tag) {
                 case "manifest":
                     packageName = p.getAttributeValue(null, "package");
+                    isolatedSplits = p.getAttributeBooleanValue(NS, "isolatedSplits", false);
                     versionCode = p.getAttributeIntValue(NS, "versionCode", 1);
                     versionName = p.getAttributeValue(NS, "versionName");
                     break;
@@ -100,6 +152,7 @@ public final class Manifest {
                     cur = new Component();
                     cur.kind = tag;
                     cur.name = full(p.getAttributeValue(NS, "name"));
+                    cur.split = split ? sSplit : null;
                     cur.taskAffinity = affinity(p.getAttributeValue(NS, "taskAffinity"), appTaskAffinity, packageName);
                     if ("activity-alias".equals(tag)) {
                         String target = full(p.getAttributeValue(NS, "targetActivity"));
@@ -116,6 +169,7 @@ public final class Manifest {
                     cur.windowSoftInputMode = p.getAttributeIntValue(NS, "windowSoftInputMode", 0);
                     cur.exported = p.getAttributeBooleanValue(NS, "exported", false);
                     cur.enabled = p.getAttributeBooleanValue(NS, "enabled", true);
+                    cur.enabledResource = p.getAttributeResourceValue(NS, "enabled", 0);
                     cur.authorities = p.getAttributeValue(NS, "authorities");
                     cur.grantUriPermissions = p.getAttributeBooleanValue(NS, "grantUriPermissions", false);
                     cur.process = p.getAttributeValue(NS, "process");
@@ -129,15 +183,10 @@ public final class Manifest {
                     else activities.add(cur);
                     break;
                 }
-                case "intent-filter": if (cur != null) { filter = new Filter(); cur.filters.add(filter); } break;
+                case "intent-filter": if (cur != null) { filter = new Filter(); cur.filters.add(filter); filterAttributes(p, filter); } break;
                 case "action": if (filter != null) filter.actions.add(p.getAttributeValue(NS, "name")); break;
                 case "category": if (filter != null) filter.categories.add(p.getAttributeValue(NS, "name")); break;
-                case "data":
-                    if (filter != null) {
-                        String s = attrOrRef(p, "scheme"), h = attrOrRef(p, "host"), m = attrOrRef(p, "mimeType");
-                        if (s != null) filter.schemes.add(s); if (h != null) filter.hosts.add(h); if (m != null) filter.mimeTypes.add(m);
-                    }
-                    break;
+                case "data": if (filter != null) data(p, filter); break;
                 case "meta-data": {
                     String name = p.getAttributeValue(NS, "name");
                     Bundle target = cur != null ? (cur.metaData != null ? cur.metaData : (cur.metaData = new Bundle())) : appMetaData;
@@ -192,38 +241,59 @@ public final class Manifest {
         if (ref != 0) return "@" + ref;
         return p.getAttributeValue(NS, name);
     }
-    private static String val(String v) {
+    /* An <intent-filter>'s own attributes: its priority and whether its web links are to be verified. */
+    private static void filterAttributes(XmlBlock.Parser p, Filter f) {
+        f.priority = p.getAttributeIntValue(NS, "priority", 0);
+        f.autoVerify = p.getAttributeBooleanValue(NS, "autoVerify", false);
+    }
+    /*
+     * A <data> of a filter, as Android's package parser adds it: its scheme, its MIME type, its host with its port (a port
+     * without a host is not looked at), its path and its scheme-specific part, each of the kinds PatternMatcher has.
+     */
+    private static void data(XmlBlock.Parser p, Filter f) {
+        String s = attrOrRef(p, "scheme"), h = attrOrRef(p, "host"), m = attrOrRef(p, "mimeType");
+        if (s != null) f.schemes.add(s);
+        if (m != null) f.mimeTypes.add(m);
+        if (h != null) {
+            f.hosts.add(h);
+            int port = -1;
+            String text = val(attrOrRef(p, "port"));
+            if (text != null) try { port = Integer.parseInt(text.trim()); } catch (NumberFormatException e) {}
+            f.ports.add(port);
+        }
+        for (int k = 0; k < IntentMatch.PATH_ATTRS.length; k++) {
+            String v = attrOrRef(p, IntentMatch.PATH_ATTRS[k]);
+            if (v != null) f.paths.add(new IntentMatch.Part(k, v));
+        }
+        for (int k = 0; k < IntentMatch.SSP_ATTRS.length; k++) {
+            String v = attrOrRef(p, IntentMatch.SSP_ATTRS[k]);
+            if (v != null) f.ssps.add(new IntentMatch.Part(k, v));
+        }
+    }
+    /** A value of the manifest's, read where it names a string resource ("@<id>"). */
+    public static String val(String v) {
         if (v == null || !v.startsWith("@")) return v;
         try { return megler.ContextImpl.app().getResources().getString(Integer.parseInt(v.substring(1))); } catch (Throwable t) { return v; }
     }
     /** The process a component runs in, as Android names it: the app's own when none is named (or ""), "<package>:x" for
-     *  ":x", and a string resource's text when the manifest names one (GmsCore's "@string/common_persistent_process"). */
+     *  ":x", and a string resource's text when the manifest names one (GmsCore's "@string/common_persistent_process"). An
+     *  <activity-alias> runs in its target's, as Android's PackageParser gives it the target's process: the Google app's
+     *  RobinShellAppEntryPointActivity, which names none, is its RobinEntryPointActivity's, in ":search". */
     public static String processOf(Component c) {
+        if ("activity-alias".equals(c.kind) && c.parentActivity != null) {
+            Component target = activity(c.parentActivity);
+            if (target != null && !"activity-alias".equals(target.kind)) c = target;
+        }
         String pkg = megler.Native.packageName(), p = val(c.process);
         return p == null || p.isEmpty() ? pkg : p.startsWith(":") ? pkg + p : p;
     }
-    private static boolean hasVal(java.util.List<String> list, String x) { for (String v : list) if (val(v).equals(x)) return true; return false; }
-    /** Android's intent-filter match: the action (an intent without one passes any filter that lists one), the categories
-     *  (each one the intent names must be the filter's, IntentFilter.matchCategories), then the data -- an intent with a URI
-     *  needs a filter naming its scheme (and host, when the filter names hosts), one without needs a filter without schemes.
+    /** Android's intent-filter match (megler.IntentMatch): the action, the data -- scheme, scheme-specific part, host and port,
+     *  path, MIME type -- and the categories, each one the intent names being the filter's (IntentFilter.matchCategories).
      *  The categories were not looked at: an intent for the phone's home screen (MAIN with CATEGORY_HOME) found the app's own
      *  launcher activity (MAIN with CATEGORY_LAUNCHER), which Facebook's Back on its sign-in and first-run screens, going home
      *  through a launcher of another signature, refused as its own -- and then ended the app rather than going home. */
     static boolean matches(Filter f, android.content.Intent i) {
-        String action = i.getAction();
-        if (action != null ? !f.actions.contains(action) : f.actions.isEmpty()) return false;
-        java.util.Set<String> categories = i.getCategories();
-        if (categories != null) for (String c : categories) if (!hasVal(f.categories, c)) return false;
-        android.net.Uri d = i.getData();
-        if (d == null) return f.schemes.isEmpty() || i.getType() != null && !f.mimeTypes.isEmpty();
-        if (f.schemes.isEmpty() || !hasVal(f.schemes, d.getScheme())) return false;
-        if (!f.hosts.isEmpty()) {
-            String h = d.getHost();
-            boolean hit = false;
-            for (String fv : f.hosts) { String fh = val(fv); if (fh.equals(h) || "*".equals(fh) || (fh.startsWith("*") && h != null && h.endsWith(fh.substring(1)))) hit = true; }
-            if (!hit) return false;
-        }
-        return true;
+        return IntentMatch.matches(f, i, IntentMatch.typeOf(i), false);
     }
     /** The activity an explicit or implicit intent would open in this app, or null. */
     public static Component resolve(android.content.Intent i) {
@@ -299,19 +369,35 @@ public final class Manifest {
                     out.add(cur);
                     break;
                 }
-                case "intent-filter": if (cur != null) { filter = new Filter(); cur.filters.add(filter); } break;
+                case "intent-filter": if (cur != null) { filter = new Filter(); cur.filters.add(filter); filterAttributes(p, filter); } break;
                 case "action": if (filter != null) filter.actions.add(p.getAttributeValue(NS, "name")); break;
                 case "category": if (filter != null) filter.categories.add(p.getAttributeValue(NS, "name")); break;
-                case "data":
-                    if (filter != null) {
-                        String s = p.getAttributeValue(NS, "scheme"), h = p.getAttributeValue(NS, "host"), m = p.getAttributeValue(NS, "mimeType");
-                        if (s != null) filter.schemes.add(s); if (h != null) filter.hosts.add(h); if (m != null) filter.mimeTypes.add(m);
-                    }
-                    break;
+                case "data": if (filter != null) otherData(p, filter); break;
                 }
             }
         } catch (Exception e) { android.util.Log.e("Megler", "the manifest of " + pkg + " could not be read", e); }
         return out;
+    }
+    /* A <data> of another APK's filter: its values as they are, its string resources not being this app's. */
+    private static void otherData(XmlBlock.Parser p, Filter f) {
+        String s = p.getAttributeValue(NS, "scheme"), h = p.getAttributeValue(NS, "host"), m = p.getAttributeValue(NS, "mimeType");
+        if (s != null) f.schemes.add(s);
+        if (m != null) f.mimeTypes.add(m);
+        if (h != null) {
+            f.hosts.add(h);
+            int port = -1;
+            String text = p.getAttributeValue(NS, "port");
+            if (text != null) try { port = Integer.parseInt(text.trim()); } catch (NumberFormatException e) {}
+            f.ports.add(port);
+        }
+        for (int k = 0; k < IntentMatch.PATH_ATTRS.length; k++) {
+            String v = p.getAttributeValue(NS, IntentMatch.PATH_ATTRS[k]);
+            if (v != null) f.paths.add(new IntentMatch.Part(k, v));
+        }
+        for (int k = 0; k < IntentMatch.SSP_ATTRS.length; k++) {
+            String v = p.getAttributeValue(NS, IntentMatch.SSP_ATTRS[k]);
+            if (v != null) f.ssps.add(new IntentMatch.Part(k, v));
+        }
     }
     private static String full(String n, String pkg) {
         if (n == null) return null;

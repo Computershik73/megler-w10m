@@ -1,0 +1,4 @@
+# How tools/build-test-app.sh builds this app (tools/build-split-app.py): a base and two feature splits, each with its own
+# manifest (split/<name>/AndroidManifest.xml) and code. "more" uses "browser", whose classes it is compiled against.
+feature browser
+feature more

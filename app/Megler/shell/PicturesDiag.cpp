@@ -153,14 +153,57 @@ void copyPictures(StorageFolder const& folder, const std::string& package, std::
 /// The logs of Megler's own checks (shell/Checks.cpp: the Self-test's, the probe's, and the core's steps of the Self-test, each
 /// line on disk before the next) into the folder, each again when it has grown: megler.log has only their first and last lines,
 /// and LocalState is out of reach where no Device Portal is.
-void copyChecks(StorageFolder const& folder, std::map<std::wstring, uint64_t>& copied) {
-    for (const wchar_t* name : {L"megler-selftest.log", L"megler-selftest-steps.log", L"megler-probe.log"}) {
+void copyChanged(StorageFolder const& folder, std::initializer_list<const wchar_t*> names, std::map<std::wstring, uint64_t>& copied) {
+    for (const wchar_t* name : names) {
         const uint64_t size = files::size(platform::localStateDirectory() + L"\\" + name);
         auto at = copied.find(name);
         if (size == 0 || (at != copied.end() && at->second == size)) continue;
         copyOut(folder, name);
         copied[name] = size;
     }
+}
+void copyChecks(StorageFolder const& folder, std::map<std::wstring, uint64_t>& copied) {
+    copyChanged(folder, {L"megler-selftest.log", L"megler-selftest-steps.log", L"megler-probe.log"}, copied);
+}
+
+/// Mesa's own logs, which its driver writes beside megler.log under the flag mesa-diag (core/src/ndk/mg_egl.c, mesa_load):
+/// fd_kmt's statistics every 2 s and the shared pbuffers it could not make, each again when it has changed.
+void copyMesa(StorageFolder const& folder, std::map<std::wstring, uint64_t>& copied) {
+    copyChanged(folder, {L"fdkmt.log", L"fd_egl_share.log"}, copied);
+}
+
+/// The newest folder mesa-<n> of the diagnosis's folder (the largest n), copied into LocalState\mesa: Mesa's DLLs for the flag
+/// mesa-local (core/src/ndk/mg_egl.c, mesa_load), a build of its driver tried on the phone without a package of Megler's made
+/// for it. A new folder for each build, as MTP writes no file over another; copied again only when another is the newest
+/// (LocalState\mesa\from.txt names the one there).
+void placeMesa(StorageFolder const& folder) {
+    if (!folder) return;
+    StorageFolder newest{nullptr};
+    long best = -1;
+    for (auto const& f : folder.GetFoldersAsync().get()) {
+        const std::wstring name(f.Name());
+        if (name.rfind(L"mesa-", 0) != 0) continue;
+        const long n = wcstol(name.c_str() + 5, nullptr, 10);
+        if (n > best) {
+            best = n;
+            newest = f;
+        }
+    }
+    if (!newest) return;
+    const std::wstring dir = platform::localStateDirectory() + L"\\mesa", record = dir + L"\\from.txt";
+    const std::string from = narrow(std::wstring(newest.Name()));
+    std::string had;
+    if (files::read(record, had) && had == from) return;
+    files::makeDirectories(dir);
+    auto target = StorageFolder::GetFolderFromPathAsync(dir).get();
+    std::string said;
+    for (auto const& file : newest.GetFilesAsync().get()) {
+        file.CopyAsync(target, file.Name(), NameCollisionOption::ReplaceExisting).get();
+        const std::wstring name(file.Name());
+        said += (said.empty() ? "" : ", ") + narrow(name) + format(" (%llu bytes)", (unsigned long long)files::size(dir + L"\\" + name));
+    }
+    files::write(record, from);
+    shellLog::write("diag: Mesa's DLLs of Pictures\\Megler\\diag's " + from + " are in LocalState\\mesa now: " + said);
 }
 
 /// The folder looked for and the flags put in place. Whatever goes wrong only costs the diagnosis: this runs at every start of
@@ -180,6 +223,13 @@ StorageFolder lookAndPlace(const std::string& name) {
         shellLog::write("diag: the flags in Pictures\\Megler\\diag could not be read: " + narrow(e.message()));
     } catch (...) {
         shellLog::write("diag: the flags in Pictures\\Megler\\diag could not be read");
+    }
+    try {
+        placeMesa(folder);
+    } catch (hresult_error const& e) {
+        shellLog::write("diag: Mesa's DLLs in Pictures\\Megler\\diag could not be copied: " + narrow(e.message()));
+    } catch (...) {
+        shellLog::write("diag: Mesa's DLLs in Pictures\\Megler\\diag could not be copied");
     }
     return folder;
 }
@@ -211,13 +261,14 @@ void start() {
         shellLog::write("diag: Pictures\\Megler\\diag\\" + name + " asks for this package's log: it is copied there every 10 s");
         shellLog::flush();
         copyOut(folder, L"megler.prev.log");
-        std::map<std::wstring, uint64_t> pictures, checks;
+        std::map<std::wstring, uint64_t> pictures, checks, mesa;
         for (;;) {
             shellLog::flush();
             copyOut(folder, L"megler.log");
             try {
                 if (appPackage::isSingleApp()) copyPictures(folder, name, pictures);
                 else copyChecks(folder, checks);
+                copyMesa(folder, mesa);
             } catch (...) {
             }
             std::this_thread::sleep_for(std::chrono::seconds(10));

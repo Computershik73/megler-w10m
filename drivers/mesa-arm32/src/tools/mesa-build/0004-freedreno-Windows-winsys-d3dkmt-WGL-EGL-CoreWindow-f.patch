@@ -1,0 +1,1075 @@
+From ad559b1550b217ee76e922004c41366465553438 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:20 +0700
+Subject: [PATCH 04/15] freedreno: Windows winsys (d3dkmt) + WGL/EGL CoreWindow
+ frontend (STW_COREWINDOW)
+
+---
+ meson.build                                   |   3 +
+ meson.options                                 |   7 +
+ src/egl/drivers/wgl/egl_wgl.c                 |   4 +
+ src/egl/main/egldisplay.c                     |   5 +-
+ src/gallium/auxiliary/util/u_trace_gallium.c  |   2 +-
+ .../drivers/freedreno/freedreno_screen.c      |  16 +-
+ .../drivers/freedreno/freedreno_screen.h      |   3 +
+ src/gallium/frontends/wgl/meson.build         |   2 +-
+ src/gallium/frontends/wgl/stw_device.c        |   2 +-
+ src/gallium/frontends/wgl/stw_ext_pbuffer.c   |  19 +-
+ src/gallium/frontends/wgl/stw_framebuffer.c   |   8 +-
+ src/gallium/frontends/wgl/stw_framebuffer.h   |   2 +-
+ src/gallium/frontends/wgl/stw_gdishim.c       |  19 ++
+ src/gallium/frontends/wgl/stw_gdishim.h       |  23 ++
+ src/gallium/frontends/wgl/stw_tls.c           |   6 +-
+ src/gallium/frontends/wgl/stw_winsys.h        |   7 +
+ src/gallium/meson.build                       |  10 +-
+ .../targets/wgl/gallium_wgl_corewindow.def.in |  59 ++++
+ src/gallium/targets/wgl/meson.build           |   4 +-
+ src/gallium/targets/wgl/wgl.c                 |  34 +++
+ .../freedreno/d3dkmt/fd_d3dkmt_public.h       |  42 +++
+ .../freedreno/d3dkmt/fd_d3dkmt_winsys.c       |  34 +++
+ .../freedreno/d3dkmt/fd_renderonly_stub.c     |  27 ++
+ .../freedreno/d3dkmt/fd_wgl_framebuffer.cpp   | 282 ++++++++++++++++++
+ .../winsys/freedreno/d3dkmt/meson.build       |  27 ++
+ 25 files changed, 628 insertions(+), 19 deletions(-)
+ create mode 100644 src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+ create mode 100644 src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h
+ create mode 100644 src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+ create mode 100644 src/gallium/winsys/freedreno/d3dkmt/fd_renderonly_stub.c
+ create mode 100644 src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+ create mode 100644 src/gallium/winsys/freedreno/d3dkmt/meson.build
+
+diff --git a/meson.build b/meson.build
+index 37f2fd4..eef1eb3 100644
+--- a/meson.build
++++ b/meson.build
+@@ -343,6 +343,9 @@ endif
+ with_gallium_kmsro = with_gallium_drm or (system_has_kms_drm and with_gallium_zink)
+ 
+ pre_args += ['-DMESA_SYSTEM_HAS_KMS_DRM=@0@'.format(system_has_kms_drm.to_int())]
++if get_option('wgl-corewindow')
++  pre_args += '-DSTW_COREWINDOW'
++endif
+ if host_machine.cpu_family() == 'x86' and with_glx_read_only_text
+     pre_args += ['-DGLX_X86_READONLY_TEXT']
+ endif
+diff --git a/meson.options b/meson.options
+index d19591c..8f9f35b 100644
+--- a/meson.options
++++ b/meson.options
+@@ -234,6 +234,13 @@ option(
+   description : 'Link stub fd_kmt_* (tra ve loi) khi chua co loi D3DKMT that.',
+ )
+ 
++option(
++  'wgl-corewindow',
++  type : 'boolean',
++  value : false,
++  description : 'Frontend WGL/EGL khong GDI: native window la CoreWindow* (Windows 10 Mobile/UWP).',
++)
++
+ option(
+   'freedreno-d3dkmt-lib',
+   type : 'string',
+diff --git a/src/egl/drivers/wgl/egl_wgl.c b/src/egl/drivers/wgl/egl_wgl.c
+index f670c18..8f127a4 100644
+--- a/src/egl/drivers/wgl/egl_wgl.c
++++ b/src/egl/drivers/wgl/egl_wgl.c
+@@ -497,7 +497,9 @@ wgl_destroy_surface(_EGLDisplay *disp, _EGLSurface *surf)
+       return EGL_TRUE;
+ 
+    if (wgl_surf->fb->owner == STW_FRAMEBUFFER_PBUFFER) {
++#ifndef STW_COREWINDOW
+       DestroyWindow(wgl_surf->fb->hWnd);
++#endif
+    } else {
+       struct stw_context *ctx = stw_current_context();
+       stw_framebuffer_lock(wgl_surf->fb);
+@@ -799,7 +801,9 @@ wgl_wait_native(EGLint engine)
+    if (engine != EGL_CORE_NATIVE_ENGINE)
+       return _eglError(EGL_BAD_PARAMETER, "eglWaitNative");
+    /* It's unclear what "native" means, but GDI is as good a guess as any */
++#ifndef STW_COREWINDOW
+    GdiFlush();
++#endif
+    return EGL_TRUE;
+ }
+ 
+diff --git a/src/egl/main/egldisplay.c b/src/egl/main/egldisplay.c
+index ef653aa..a274d06 100644
+--- a/src/egl/main/egldisplay.c
++++ b/src/egl/main/egldisplay.c
+@@ -128,7 +128,10 @@ _eglNativePlatformDetectNativeDisplay(void *nativeDisplay)
+    if (nativeDisplay == EGL_DEFAULT_DISPLAY)
+       return _EGL_INVALID_PLATFORM;
+ 
+-#ifdef HAVE_WINDOWS_PLATFORM
++#if defined(HAVE_WINDOWS_PLATFORM) && defined(STW_COREWINDOW)
++   /* Windows 10 Mobile: khong co GDI; native display bat ky -> windows. */
++   return _EGL_PLATFORM_WINDOWS;
++#elif defined(HAVE_WINDOWS_PLATFORM)
+    if (GetObjectType(nativeDisplay) == OBJ_DC)
+       return _EGL_PLATFORM_WINDOWS;
+ #endif
+diff --git a/src/gallium/auxiliary/util/u_trace_gallium.c b/src/gallium/auxiliary/util/u_trace_gallium.c
+index b61386f..3281f38 100644
+--- a/src/gallium/auxiliary/util/u_trace_gallium.c
++++ b/src/gallium/auxiliary/util/u_trace_gallium.c
+@@ -81,7 +81,7 @@ u_trace_pipe_context_init(struct u_trace_context *utctx,
+                         delete_flush_data);
+ }
+ 
+-inline void
++void
+ trace_framebuffer_state(struct u_trace *ut, void *cs, const struct pipe_framebuffer_state *pfb)
+ {
+    if (likely(!u_trace_enabled(ut->utctx)))
+diff --git a/src/gallium/drivers/freedreno/freedreno_screen.c b/src/gallium/drivers/freedreno/freedreno_screen.c
+index 4213749..6e1a457 100644
+--- a/src/gallium/drivers/freedreno/freedreno_screen.c
++++ b/src/gallium/drivers/freedreno/freedreno_screen.c
+@@ -920,6 +920,7 @@ fd_screen_debug_init(void)
+    util_call_once(&once, __debug_init);
+ }
+ 
++#ifndef _WIN32
+ struct pipe_screen *
+ fd_screen_create(int fd,
+                  const struct pipe_screen_config *config,
+@@ -929,6 +930,19 @@ fd_screen_create(int fd,
+    if (!dev)
+       return NULL;
+ 
++   return fd_screen_create_dev(dev, config, ro);
++}
++
++#endif /* !_WIN32 */
++
++/* Tao screen tu fd_device co san (vd Windows/d3dkmt, khong co fd).
++ * Screen nhan quyen so huu dev.
++ */
++struct pipe_screen *
++fd_screen_create_dev(struct fd_device *dev,
++                     const struct pipe_screen_config *config,
++                     struct renderonly *ro)
++{
+    struct fd_screen *screen = CALLOC_STRUCT(fd_screen);
+    struct pipe_screen *pscreen;
+    uint64_t val;
+@@ -1096,7 +1110,7 @@ fd_screen_create(int fd,
+       if (screen->primtypes[i])
+          screen->primtypes_mask |= (1 << i);
+ 
+-   screen->perfcntrs = fd_perfcntr_state_alloc(screen->dev_id, fd);
++   screen->perfcntrs = fd_perfcntr_state_alloc(screen->dev_id, fd_device_fd(dev));
+ 
+    if (FD_DBG(PERFC) ||
+        (screen->perfcntrs && fd_perfcntr_has_reservation(screen->perfcntrs))) {
+diff --git a/src/gallium/drivers/freedreno/freedreno_screen.h b/src/gallium/drivers/freedreno/freedreno_screen.h
+index f9e239a..7f8d93c 100644
+--- a/src/gallium/drivers/freedreno/freedreno_screen.h
++++ b/src/gallium/drivers/freedreno/freedreno_screen.h
+@@ -232,6 +232,9 @@ struct fd_bo *fd_screen_bo_from_handle(struct pipe_screen *pscreen,
+ struct pipe_screen *fd_screen_create(int fd,
+                                      const struct pipe_screen_config *config,
+                                      struct renderonly *ro);
++struct pipe_screen *fd_screen_create_dev(struct fd_device *dev,
++                                         const struct pipe_screen_config *config,
++                                         struct renderonly *ro);
+ 
+ static inline bool
+ is_a20x(struct fd_screen *screen)
+diff --git a/src/gallium/frontends/wgl/meson.build b/src/gallium/frontends/wgl/meson.build
+index 5f25620..ab6afe1 100644
+--- a/src/gallium/frontends/wgl/meson.build
++++ b/src/gallium/frontends/wgl/meson.build
+@@ -28,7 +28,7 @@ files_libwgl = files(
+   'stw_tls.c',
+ )
+ 
+-if target_machine.system().startswith('Gaming.Xbox')
++if target_machine.system().startswith('Gaming.Xbox') or get_option('wgl-corewindow')
+   files_libwgl += files('stw_gdishim.c')
+ endif
+ 
+diff --git a/src/gallium/frontends/wgl/stw_device.c b/src/gallium/frontends/wgl/stw_device.c
+index 6846f33..8893793 100644
+--- a/src/gallium/frontends/wgl/stw_device.c
++++ b/src/gallium/frontends/wgl/stw_device.c
+@@ -73,7 +73,7 @@ stw_get_param(struct pipe_frontend_screen *fscreen,
+ static int
+ get_refresh_rate(void)
+ {
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+    DEVMODE devModes = { .dmSize = sizeof(DEVMODE) };
+ 
+    if (EnumDisplaySettings(NULL, ENUM_CURRENT_SETTINGS, &devModes)) {
+diff --git a/src/gallium/frontends/wgl/stw_ext_pbuffer.c b/src/gallium/frontends/wgl/stw_ext_pbuffer.c
+index d45a373..c5ba1d5 100644
+--- a/src/gallium/frontends/wgl/stw_ext_pbuffer.c
++++ b/src/gallium/frontends/wgl/stw_ext_pbuffer.c
+@@ -45,10 +45,11 @@
+ #define LARGE_WINDOW_SIZE 60000
+ 
+ 
++#ifndef STW_COREWINDOW
+ static LRESULT CALLBACK
+ WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+ {
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+     MINMAXINFO *pMMI;
+     switch (uMsg) {
+     case WM_GETMINMAXINFO:
+@@ -66,10 +67,18 @@ WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+ 
+     return DefWindowProc(hWnd, uMsg, wParam, lParam);
+ }
++#endif
+ 
+ struct stw_framebuffer *
+ stw_pbuffer_create(const struct stw_pixelformat_info *pfi, int iWidth, int iHeight, struct pipe_frontend_screen *fscreen)
+ {
++#ifdef STW_COREWINDOW
++   /* Khong co user32 (cua so an) tren Windows 10 Mobile: chua ho tro pbuffer.
++    * Ung dung dung FBO thay the.
++    */
++   (void)pfi; (void)iWidth; (void)iHeight; (void)fscreen;
++   return NULL;
++#else
+    static bool first = true;
+ 
+    /*
+@@ -80,7 +89,7 @@ stw_pbuffer_create(const struct stw_pixelformat_info *pfi, int iWidth, int iHeig
+       WNDCLASS wc;
+       memset(&wc, 0, sizeof wc);
+       wc.hbrBackground = (HBRUSH) (COLOR_BTNFACE + 1);
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+       wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+       wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+ #endif
+@@ -148,6 +157,7 @@ stw_pbuffer_create(const struct stw_pixelformat_info *pfi, int iWidth, int iHeig
+ #endif
+ 
+    return stw_framebuffer_create(NULL, hWnd, pfi, STW_FRAMEBUFFER_PBUFFER, fscreen);
++#endif /* STW_COREWINDOW */
+ }
+ 
+ 
+@@ -322,7 +332,12 @@ wglDestroyPbufferARB(HPBUFFERARB hPbuffer)
+    fb = stw_framebuffer_from_HPBUFFERARB(hPbuffer);
+ 
+    /* This will destroy all our data */
++#ifdef STW_COREWINDOW
++   (void)fb;
++   return false;
++#else
+    return DestroyWindow(fb->hWnd);
++#endif
+ }
+ 
+ 
+diff --git a/src/gallium/frontends/wgl/stw_framebuffer.c b/src/gallium/frontends/wgl/stw_framebuffer.c
+index 79f4705..dc5bc2a 100644
+--- a/src/gallium/frontends/wgl/stw_framebuffer.c
++++ b/src/gallium/frontends/wgl/stw_framebuffer.c
+@@ -178,7 +178,7 @@ stw_framebuffer_get_size(struct stw_framebuffer *fb)
+ 
+    client_pos.x = 0;
+    client_pos.y = 0;
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+    if (ClientToScreen(fb->hWnd, &client_pos) &&
+        GetWindowRect(fb->hWnd, &window_rect)) {
+       fb->client_rect.left = client_pos.x - window_rect.left;
+@@ -206,7 +206,7 @@ stw_framebuffer_get_size(struct stw_framebuffer *fb)
+ }
+ 
+ 
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+ /**
+  * @sa http://msdn.microsoft.com/en-us/library/ms644975(VS.85).aspx
+  * @sa http://msdn.microsoft.com/en-us/library/ms644960(VS.85).aspx
+@@ -266,7 +266,7 @@ stw_call_window_proc(int nCode, WPARAM wParam, LPARAM lParam)
+ 
+    return CallNextHookEx(tls_data->hCallWndProcHook, nCode, wParam, lParam);
+ }
+-#else
++#elif defined(_GAMING_XBOX)
+ LRESULT CALLBACK
+ stw_call_window_proc_xbox(HWND hWnd, UINT message,
+                           WPARAM wParam, LPARAM lParam)
+@@ -329,7 +329,7 @@ stw_framebuffer_create(HDC hdc, HWND hWnd, const struct stw_pixelformat_info *pf
+       fb->winsys_framebuffer->set_latency(fb->winsys_framebuffer, latency);
+    }
+ 
+-#ifdef _GAMING_XBOX
++#if defined(_GAMING_XBOX)
+    if (fb->hWnd)
+       fb->prev_wndproc = (WNDPROC)SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)&stw_call_window_proc_xbox);
+ #endif
+diff --git a/src/gallium/frontends/wgl/stw_framebuffer.h b/src/gallium/frontends/wgl/stw_framebuffer.h
+index bb3c242..cd44e9b 100644
+--- a/src/gallium/frontends/wgl/stw_framebuffer.h
++++ b/src/gallium/frontends/wgl/stw_framebuffer.h
+@@ -133,7 +133,7 @@ struct stw_framebuffer
+    int swap_interval;
+    int64_t prev_swap_time;
+ 
+-#ifdef _GAMING_XBOX
++#if defined(_GAMING_XBOX) || defined(STW_COREWINDOW)
+    /* For the WndProc hook chain */
+    WNDPROC prev_wndproc;
+ #endif
+diff --git a/src/gallium/frontends/wgl/stw_gdishim.c b/src/gallium/frontends/wgl/stw_gdishim.c
+index 84298b2..cfb1afd 100644
+--- a/src/gallium/frontends/wgl/stw_gdishim.c
++++ b/src/gallium/frontends/wgl/stw_gdishim.c
+@@ -28,6 +28,23 @@
+ #include "stw_gdishim.h"
+ #include "stw_pixelformat.h"
+ #include "stw_framebuffer.h"
++#include "stw_device.h"
++#include "stw_winsys.h"
++
++#if defined(STW_COREWINDOW) && !defined(_GAMING_XBOX)
++BOOL
++stw_shim_GetClientRect(HWND hwnd, LPRECT rect)
++{
++   unsigned w = 0, h = 0;
++   if (!hwnd || !stw_dev || !stw_dev->stw_winsys->get_window_size ||
++       !stw_dev->stw_winsys->get_window_size(hwnd, &w, &h))
++      return FALSE;
++   rect->left = rect->top = 0;
++   rect->right = (LONG)w;
++   rect->bottom = (LONG)h;
++   return TRUE;
++}
++#endif
+ 
+ int GetPixelFormat(HDC hdc)
+ {
+@@ -69,7 +86,9 @@ BOOL SetPixelFormat(
+    return false;
+ }
+ 
++#if defined(_GAMING_XBOX)
+ void StretchDIBits(HDC hdc, unsigned int xDest, unsigned int yDest, unsigned int DestWidth, unsigned int DestHeight, unsigned int xSrc, unsigned int ySrc, unsigned int SrcWidth, unsigned int SrcHeight, void* lpBits, void* lpbmi, unsigned int iUsage, DWORD rop)
+ {
+ 
+ }
++#endif
+diff --git a/src/gallium/frontends/wgl/stw_gdishim.h b/src/gallium/frontends/wgl/stw_gdishim.h
+index de3bbe0..a65f717 100644
+--- a/src/gallium/frontends/wgl/stw_gdishim.h
++++ b/src/gallium/frontends/wgl/stw_gdishim.h
+@@ -28,6 +28,29 @@
+ #ifndef STW_GDISHIM_H
+ #define STW_GDISHIM_H
+ 
++#if defined(STW_COREWINDOW) && !defined(_GAMING_XBOX)
++/* Windows 10 Mobile / UWP: khong co HWND/GDI. "HWND" va "HDC" chinh la con
++ * tro CoreWindow (IUnknown*) ma ung dung truyen vao eglCreateWindowSurface.
++ * SDK desktop van co wingdi.h nen chi doi ten ham sang shim noi bo.
++ */
++#include <windows.h>
++
++#define WindowFromDC(hdc)  ((HWND)(hdc))
++#define GetDC(hwnd)        ((HDC)(hwnd))
++#define ReleaseDC(hwnd, hdc) 1
++#define GetPixelFormat      stw_shim_GetPixelFormat
++#define SetPixelFormat      stw_shim_SetPixelFormat
++#define DescribePixelFormat stw_shim_DescribePixelFormat
++#define GetClientRect       stw_shim_GetClientRect
++
++int stw_shim_GetPixelFormat(HDC hdc);
++BOOL stw_shim_SetPixelFormat(HDC hdc, int format, const PIXELFORMATDESCRIPTOR *ppfd);
++int stw_shim_DescribePixelFormat(HDC hdc, int iPixelFormat, UINT nBytes,
++                                 LPPIXELFORMATDESCRIPTOR ppfd);
++/* Kich thuoc lay qua stw_winsys::get_window_size (winsys biet CoreWindow). */
++BOOL stw_shim_GetClientRect(HWND hwnd, LPRECT rect);
++#endif /* STW_COREWINDOW */
++
+ #ifdef _GAMING_XBOX
+ 
+ #include <windows.h>
+diff --git a/src/gallium/frontends/wgl/stw_tls.c b/src/gallium/frontends/wgl/stw_tls.c
+index 3bded9d..b1a882a 100644
+--- a/src/gallium/frontends/wgl/stw_tls.c
++++ b/src/gallium/frontends/wgl/stw_tls.c
+@@ -73,7 +73,7 @@ stw_tls_init(void)
+     * XXX: Except for the current thread since it there is an explicit
+     * stw_tls_init_thread() call for it later on.
+     */
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+    DWORD dwCurrentProcessId = GetCurrentProcessId();
+    DWORD dwCurrentThreadId = GetCurrentThreadId();
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, dwCurrentProcessId);
+@@ -127,7 +127,7 @@ stw_tls_data_create(DWORD dwThreadId)
+ 
+    data->dwThreadId = dwThreadId;
+ 
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+    data->hCallWndProcHook = SetWindowsHookEx(WH_CALLWNDPROC,
+                                              stw_call_window_proc,
+                                              NULL,
+@@ -165,7 +165,7 @@ stw_tls_data_destroy(struct stw_tls_data *data)
+       debug_printf("%s(0x%04lx)\n", __func__, data->dwThreadId);
+    }
+ 
+-#ifndef _GAMING_XBOX
++#if !defined(_GAMING_XBOX) && !defined(STW_COREWINDOW)
+    if (data->hCallWndProcHook) {
+       UnhookWindowsHookEx(data->hCallWndProcHook);
+       data->hCallWndProcHook = NULL;
+diff --git a/src/gallium/frontends/wgl/stw_winsys.h b/src/gallium/frontends/wgl/stw_winsys.h
+index b710340..4ed4ba0 100644
+--- a/src/gallium/frontends/wgl/stw_winsys.h
++++ b/src/gallium/frontends/wgl/stw_winsys.h
+@@ -135,6 +135,13 @@ struct stw_winsys
+     */
+    const char *
+    (*get_name)(void);
++
++   /**
++    * Kich thuoc client area cua cua so (tuy chon). Dung khi khong co
++    * GetClientRect, vd CoreWindow tren Windows 10 Mobile (STW_COREWINDOW).
++    */
++   bool
++   (*get_window_size)(HWND hWnd, unsigned *width, unsigned *height);
+ };
+ 
+ bool
+diff --git a/src/gallium/meson.build b/src/gallium/meson.build
+index 67011f5..968d230 100644
+--- a/src/gallium/meson.build
++++ b/src/gallium/meson.build
+@@ -102,7 +102,11 @@ else
+   driver_nouveau = declare_dependency()
+ endif
+ if with_gallium_freedreno
+-  subdir('winsys/freedreno/drm')
++  if freedreno_kmds.contains('d3dkmt')
++    subdir('winsys/freedreno/d3dkmt')
++  else
++    subdir('winsys/freedreno/drm')
++  endif
+   subdir('drivers/freedreno')
+ else
+   driver_freedreno = declare_dependency()
+@@ -248,7 +252,9 @@ if with_platform_windows
+       winsys_d3d12_wgl = declare_dependency()
+     endif
+     subdir('targets/wgl')
+-    subdir('targets/libgl-gdi')
++    if not get_option('wgl-corewindow')
++      subdir('targets/libgl-gdi')
++    endif
+   endif
+ endif
+ if with_swrast_vk
+diff --git a/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in b/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+new file mode 100644
+index 0000000..722b381
+--- /dev/null
++++ b/src/gallium/targets/wgl/gallium_wgl_corewindow.def.in
+@@ -0,0 +1,59 @@
++; stdcall calling convention have @number suffix on 32 bits architecture for gcc
++DrvCopyContext@12
++DrvCreateContext@4
++DrvCreateLayerContext@8
++DrvDeleteContext@4
++DrvDescribeLayerPlane@20
++DrvDescribePixelFormat@16
++DrvGetLayerPaletteEntries@20
++DrvGetProcAddress@4
++DrvPresentBuffers@8
++DrvRealizeLayerPalette@12
++DrvReleaseContext@4
++DrvSetCallbackProcs@8
++DrvSetContext@12
++DrvSetLayerPaletteEntries@20
++DrvSetPixelFormat@8
++DrvShareLists@8
++DrvSwapBuffers@4
++DrvSwapLayerBuffers@8
++DrvValidateVersion@4
++
++; __cdecl calling convention have no @number suffix
++st_context_flush
++st_context_teximage
++st_screen_destroy
++stw_get_device
++stw_init_screen
++stw_get_current_context
++stw_get_current_dc
++stw_pixelformat_choose
++stw_pixelformat_get
++stw_pixelformat_get_info
++stw_override_opengl32_entry_points
++stw_create_context_attribs
++stw_destroy_context
++stw_unbind_context
++stw_current_context
++stw_make_current
++stw_framebuffer_create
++stw_framebuffer_release_locked
++stw_framebuffer_unlock
++stw_framebuffer_swap_locked
++stw_get_framebuffer_resource
++stw_pbuffer_create
++stw_create_image_from_texture
++stw_create_image_from_renderbuffer
++stw_destroy_image
++stw_translate_image
++stw_get_config_xml
++stw_interop_query_device_info
++stw_interop_export_object
++stw_interop_flush_objects
++
++_mesa_glapi_get_proc_address
++_mesa_glapi_get_dispatch
++	stw_shim_GetClientRect
++	stw_shim_GetPixelFormat
++	stw_shim_SetPixelFormat
++	stw_shim_DescribePixelFormat
+diff --git a/src/gallium/targets/wgl/meson.build b/src/gallium/targets/wgl/meson.build
+index 3a194b3..5aa452b 100644
+--- a/src/gallium/targets/wgl/meson.build
++++ b/src/gallium/targets/wgl/meson.build
+@@ -5,7 +5,7 @@ gallium_wgl_link_args = []
+ 
+ wgl_def = custom_target(
+   'gallium_wgl.def',
+-  input: 'gallium_wgl.def.in',
++  input: get_option('wgl-corewindow') ? 'gallium_wgl_corewindow.def.in' : 'gallium_wgl.def.in',
+   output : 'gallium_wgl.def',
+   command : gen_vs_module_defs_normal_command,
+ )
+@@ -24,7 +24,7 @@ libgallium_wgl = shared_library(
+   ],
+   dependencies : [
+     dep_ws2_32, idep_nir, idep_mesautil, driver_swrast,
+-    driver_d3d12, driver_zink, winsys_d3d12_wgl
++    driver_d3d12, driver_zink, winsys_d3d12_wgl, driver_freedreno
+   ],
+   link_args : gallium_wgl_link_args,
+   name_prefix : '',
+diff --git a/src/gallium/targets/wgl/wgl.c b/src/gallium/targets/wgl/wgl.c
+index ade8397..12cf697 100644
+--- a/src/gallium/targets/wgl/wgl.c
++++ b/src/gallium/targets/wgl/wgl.c
+@@ -63,6 +63,10 @@
+ #include "zink/zink_public.h"
+ #endif
+ 
++#ifdef GALLIUM_FREEDRENO
++#include "freedreno/d3dkmt/fd_d3dkmt_public.h"
++#endif
++
+ #ifdef GALLIUM_LLVMPIPE
+ static bool use_llvmpipe = false;
+ #endif
+@@ -113,9 +117,30 @@ wgl_screen_create_by_name(HDC hDC, const char* driver, struct sw_winsys *winsys)
+    return screen;
+ }
+ 
++#ifdef GALLIUM_FREEDRENO
++static bool use_freedreno = false;
++#endif
++
+ static struct pipe_screen *
+ wgl_screen_create(HDC hDC)
+ {
++#ifdef GALLIUM_FREEDRENO
++   /* Windows 10 Mobile: Adreno qua D3DKMT. Khong co GDI nen khong tao
++    * gdi sw winsys.
++    */
++   {
++      struct pipe_screen *fd = fd_d3dkmt_screen_create(NULL);
++      if (fd) {
++         use_freedreno = true;
++         created_driver_name = "freedreno";
++         return fd;
++      }
++#ifdef STW_COREWINDOW
++      return NULL;
++#endif
++   }
++#endif
++
+    struct sw_winsys *winsys;
+    UNUSED bool sw_only = debug_get_bool_option("LIBGL_ALWAYS_SOFTWARE", false);
+ 
+@@ -229,6 +254,10 @@ wgl_create_framebuffer(struct pipe_screen *screen,
+                        HWND hWnd,
+                        int iPixelFormat)
+ {
++#if defined(GALLIUM_FREEDRENO) && defined(STW_COREWINDOW)
++   if (use_freedreno)
++      return fd_wgl_create_framebuffer(screen, hWnd, iPixelFormat);
++#endif
+ #ifdef GALLIUM_D3D12
+    if (use_d3d12)
+       return d3d12_wgl_create_framebuffer(screen, hWnd, iPixelFormat);
+@@ -256,6 +285,11 @@ static const struct stw_winsys stw_winsys = {
+    NULL, /* compose */
+    &wgl_create_framebuffer,
+    &wgl_get_name,
++#if defined(GALLIUM_FREEDRENO) && defined(STW_COREWINDOW)
++   &fd_wgl_get_window_size,
++#else
++   NULL, /* get_window_size */
++#endif
+ };
+ 
+ 
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h
+new file mode 100644
+index 0000000..60632e3
+--- /dev/null
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_public.h
+@@ -0,0 +1,42 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * Winsys freedreno cho Windows/WDDM (D3DKMT) + framebuffer CoreWindow cho
++ * frontend WGL/EGL (STW_COREWINDOW) tren Windows 10 Mobile.
++ */
++
++#ifndef FD_D3DKMT_PUBLIC_H
++#define FD_D3DKMT_PUBLIC_H
++
++#include <stdbool.h>
++
++#include <windows.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++struct pipe_screen;
++struct pipe_screen_config;
++struct stw_winsys_framebuffer;
++
++/* Mo phien fd_kmt, tao fd_device + pipe_screen freedreno. NULL neu that bai
++ * (vd fd_kmt stub, hoac khong co GPU Adreno).
++ */
++struct pipe_screen *
++fd_d3dkmt_screen_create(const struct pipe_screen_config *config);
++
++/* hwnd thuc chat la CoreWindow* (IUnknown*) - xem stw_gdishim.h. */
++struct stw_winsys_framebuffer *
++fd_wgl_create_framebuffer(struct pipe_screen *screen, HWND hwnd,
++                          int iPixelFormat);
++
++bool
++fd_wgl_get_window_size(HWND hwnd, unsigned *width, unsigned *height);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* FD_D3DKMT_PUBLIC_H */
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+new file mode 100644
+index 0000000..40ccb1c
+--- /dev/null
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+@@ -0,0 +1,34 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ */
++
++#include "fd_d3dkmt_public.h"
++
++#include "util/u_debug.h"
++#include "util/u_inlines.h"
++
++#include "freedreno/freedreno_screen.h"
++#include "drm/freedreno_drmif.h"
++#include "drm/d3dkmt/fd_kmt.h"
++
++struct pipe_screen *
++fd_d3dkmt_screen_create(const struct pipe_screen_config *config)
++{
++   struct fd_kmt *kmt = NULL;
++   int ret = fd_kmt_open(&kmt);
++   if (ret || !kmt) {
++      debug_printf("freedreno/d3dkmt: fd_kmt_open failed: %d\n", ret);
++      return NULL;
++   }
++
++   /* fd_device so huu kmt tu day. */
++   struct fd_device *dev = fd_device_new_d3dkmt(kmt);
++   if (!dev) {
++      debug_printf("freedreno/d3dkmt: fd_device_new_d3dkmt failed\n");
++      fd_kmt_close(kmt);
++      return NULL;
++   }
++
++   return fd_screen_create_dev(dev, config, NULL);
++}
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_renderonly_stub.c b/src/gallium/winsys/freedreno/d3dkmt/fd_renderonly_stub.c
+new file mode 100644
+index 0000000..f9629d7
+--- /dev/null
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_renderonly_stub.c
+@@ -0,0 +1,27 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * Windows: khong co renderonly (KMS). screen->ro luon NULL nen cac ham nay
++ * khong duoc goi; chi de link.
++ */
++
++#include <stddef.h>
++
++#include "renderonly/renderonly.h"
++
++struct renderonly_scanout *
++renderonly_create_gpu_import_for_resource(struct pipe_resource *rsc,
++                                          struct renderonly *ro,
++                                          struct winsys_handle *out_handle)
++{
++   (void)rsc; (void)ro; (void)out_handle;
++   return NULL;
++}
++
++void
++renderonly_scanout_destroy(struct renderonly_scanout *scanout,
++                           struct renderonly *ro)
++{
++   (void)scanout; (void)ro;
++}
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+new file mode 100644
+index 0000000..7879031
+--- /dev/null
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_wgl_framebuffer.cpp
+@@ -0,0 +1,282 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * stw_winsys_framebuffer cho Windows 10 Mobile: "HWND" la CoreWindow*.
++ *
++ * Phien ban 1 (don gian, cham): freedreno render vao pipe_resource rieng;
++ * khi present doc ra bang texture_map roi UpdateSubresource vao back buffer
++ * cua swapchain D3D11 (CreateSwapChainForCoreWindow) va Present.
++ * Toi uu sau: allocation dung chung giua freedreno va DXGI (khong copy CPU).
++ */
++
++#include "fd_d3dkmt_public.h"
++
++#include <new>
++
++#include <windows.h>
++#include <d3d11.h>
++#include <dxgi1_2.h>
++#include <wrl/client.h>
++#include <roapi.h>
++/* SDK 16299 winrt headers dung DEPRECATEDENUMERATOR chi dinh nghia cho MIDL moi. */
++#ifndef DEPRECATEDENUMERATOR
++#define DEPRECATEDENUMERATOR(x)
++#endif
++#include <windows.foundation.h>
++#include <windows.ui.core.h>
++#include <windows.graphics.display.h>
++#include <wrl/wrappers/corewrappers.h>
++
++#include "pipe/p_context.h"
++#include "pipe/p_screen.h"
++#include "util/format/u_format.h"
++#include "util/u_debug.h"
++#include "util/box.h"
++#include "util/u_inlines.h"
++#include "frontend/api.h"
++
++#include "stw_winsys.h"
++
++using Microsoft::WRL::ComPtr;
++namespace WUC = ABI::Windows::UI::Core;
++namespace WGD = ABI::Windows::Graphics::Display;
++
++struct fd_wgl_framebuffer {
++   struct stw_winsys_framebuffer base;
++
++   struct pipe_screen *screen;
++   IUnknown *core_window;               /* khong so huu */
++
++   ComPtr<ID3D11Device> d3d;
++   ComPtr<ID3D11DeviceContext> d3dctx;
++   ComPtr<IDXGISwapChain1> swapchain;
++   DXGI_FORMAT dxgi_format;
++
++   struct pipe_context *ctx;            /* context GL dang ve (tu resize) */
++   struct pipe_resource *color;         /* render target cua freedreno */
++};
++
++static fd_wgl_framebuffer *
++fd_wgl_fb(struct stw_winsys_framebuffer *fb)
++{
++   return (fd_wgl_framebuffer *)fb;
++}
++
++static float
++current_view_scale(void)
++{
++   ComPtr<WGD::IDisplayInformationStatics> statics;
++   HRESULT hr = RoGetActivationFactory(
++      Microsoft::WRL::Wrappers::HStringReference(
++         RuntimeClass_Windows_Graphics_Display_DisplayInformation).Get(),
++      IID_PPV_ARGS(&statics));
++   if (FAILED(hr))
++      return 1.0f;
++
++   ComPtr<WGD::IDisplayInformation> info;
++   if (FAILED(statics->GetForCurrentView(&info)) || !info)
++      return 1.0f;
++
++   ComPtr<WGD::IDisplayInformation2> info2;
++   double scale = 1.0;
++   if (SUCCEEDED(info.As(&info2)) &&
++       SUCCEEDED(info2->get_RawPixelsPerViewPixel(&scale)) && scale > 0.0)
++      return (float)scale;
++   return 1.0f;
++}
++
++extern "C" bool
++fd_wgl_get_window_size(HWND hwnd, unsigned *width, unsigned *height)
++{
++   if (!hwnd)
++      return false;
++
++   ComPtr<WUC::ICoreWindow> window;
++   if (FAILED(((IUnknown *)hwnd)->QueryInterface(IID_PPV_ARGS(&window))))
++      return false;
++
++   ABI::Windows::Foundation::Rect bounds;
++   if (FAILED(window->get_Bounds(&bounds)))
++      return false;
++
++   float scale = current_view_scale();
++   *width = (unsigned)(bounds.Width * scale + 0.5f);
++   *height = (unsigned)(bounds.Height * scale + 0.5f);
++   return *width && *height;
++}
++
++static DXGI_FORMAT
++to_dxgi_format(enum pipe_format format)
++{
++   switch (format) {
++   case PIPE_FORMAT_R8G8B8A8_UNORM:
++   case PIPE_FORMAT_R8G8B8X8_UNORM:
++      return DXGI_FORMAT_R8G8B8A8_UNORM;
++   case PIPE_FORMAT_B5G6R5_UNORM:
++      return DXGI_FORMAT_B5G6R5_UNORM;
++   default:
++      return DXGI_FORMAT_B8G8R8A8_UNORM;
++   }
++}
++
++static void
++fd_wgl_framebuffer_destroy(struct stw_winsys_framebuffer *pfb,
++                           struct pipe_context *ctx)
++{
++   fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
++   (void)ctx;
++   pipe_resource_reference(&fb->color, NULL);
++   delete fb;
++}
++
++static void
++fd_wgl_framebuffer_resize(struct stw_winsys_framebuffer *pfb,
++                          struct pipe_context *ctx,
++                          struct pipe_resource *templ)
++{
++   fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
++
++   fb->ctx = ctx;
++   pipe_resource_reference(&fb->color, NULL);
++
++   struct pipe_resource t = *templ;
++   t.target = PIPE_TEXTURE_2D;
++   t.bind |= PIPE_BIND_RENDER_TARGET | PIPE_BIND_SAMPLER_VIEW;
++   t.usage = PIPE_USAGE_DEFAULT;
++   t.depth0 = t.array_size = 1;
++   t.last_level = 0;
++   fb->color = fb->screen->resource_create(fb->screen, &t);
++   if (!fb->color) {
++      debug_printf("fd_wgl: resource_create %ux%u failed\n", t.width0,
++                   t.height0);
++      return;
++   }
++
++   fb->dxgi_format = to_dxgi_format(templ->format);
++
++   if (!fb->swapchain) {
++      ComPtr<IDXGIDevice> dxgi_dev;
++      ComPtr<IDXGIAdapter> adapter;
++      ComPtr<IDXGIFactory2> factory;
++      if (FAILED(fb->d3d.As(&dxgi_dev)) ||
++          FAILED(dxgi_dev->GetAdapter(&adapter)) ||
++          FAILED(adapter->GetParent(IID_PPV_ARGS(&factory)))) {
++         debug_printf("fd_wgl: khong lay duoc IDXGIFactory2\n");
++         return;
++      }
++
++      DXGI_SWAP_CHAIN_DESC1 desc = {};
++      desc.Width = t.width0;
++      desc.Height = t.height0;
++      desc.Format = fb->dxgi_format;
++      desc.SampleDesc.Count = 1;
++      desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
++      desc.BufferCount = 2;
++      desc.Scaling = DXGI_SCALING_STRETCH;
++      desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
++      desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
++
++      HRESULT hr = factory->CreateSwapChainForCoreWindow(
++         fb->d3d.Get(), fb->core_window, &desc, nullptr, &fb->swapchain);
++      if (FAILED(hr)) {
++         debug_printf("fd_wgl: CreateSwapChainForCoreWindow 0x%08lx\n",
++                      (unsigned long)hr);
++         return;
++      }
++   } else {
++      HRESULT hr = fb->swapchain->ResizeBuffers(2, t.width0, t.height0,
++                                                fb->dxgi_format, 0);
++      if (FAILED(hr))
++         debug_printf("fd_wgl: ResizeBuffers 0x%08lx\n", (unsigned long)hr);
++   }
++}
++
++static struct pipe_resource *
++fd_wgl_framebuffer_get_resource(struct stw_winsys_framebuffer *pfb,
++                                enum st_attachment_type statt)
++{
++   fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
++   (void)statt; /* back/front dung chung mot buffer: present la copy */
++   if (!fb->color)
++      return NULL;
++   pipe_reference(NULL, &fb->color->reference);
++   return fb->color;
++}
++
++static bool
++fd_wgl_framebuffer_present(struct stw_winsys_framebuffer *pfb, int interval)
++{
++   fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
++   if (!fb->swapchain || !fb->color || !fb->ctx)
++      return false;
++
++   struct pipe_context *ctx = fb->ctx;
++   struct pipe_resource *res = fb->color;
++   struct pipe_box box;
++   u_box_2d(0, 0, res->width0, res->height0, &box);
++
++   struct pipe_transfer *xfer = NULL;
++   /* texture_map READ tu flush + cho GPU va detile neu can. */
++   void *ptr = ctx->texture_map(ctx, res, 0, PIPE_MAP_READ, &box, &xfer);
++   if (!ptr)
++      return false;
++
++   ComPtr<ID3D11Texture2D> back;
++   if (SUCCEEDED(fb->swapchain->GetBuffer(0, IID_PPV_ARGS(&back))))
++      fb->d3dctx->UpdateSubresource(back.Get(), 0, nullptr, ptr,
++                                    xfer->stride, 0);
++
++   ctx->texture_unmap(ctx, xfer);
++
++   HRESULT hr = fb->swapchain->Present(interval > 0 ? 1 : 0, 0);
++   return SUCCEEDED(hr);
++}
++
++static void
++fd_wgl_framebuffer_flush_frontbuffer(struct stw_winsys_framebuffer *pfb,
++                                     struct pipe_context *ctx)
++{
++   fd_wgl_framebuffer *fb = fd_wgl_fb(pfb);
++   fb->ctx = ctx;
++   fd_wgl_framebuffer_present(pfb, 0);
++}
++
++extern "C" struct stw_winsys_framebuffer *
++fd_wgl_create_framebuffer(struct pipe_screen *screen, HWND hwnd,
++                          int iPixelFormat)
++{
++   (void)iPixelFormat;
++   if (!hwnd)
++      return NULL;
++
++   fd_wgl_framebuffer *fb = new (std::nothrow) fd_wgl_framebuffer();
++   if (!fb)
++      return NULL;
++
++   fb->screen = screen;
++   fb->core_window = (IUnknown *)hwnd;
++
++   static const D3D_FEATURE_LEVEL levels[] = {
++      D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
++      D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
++      D3D_FEATURE_LEVEL_9_3,  D3D_FEATURE_LEVEL_9_1,
++   };
++   HRESULT hr = D3D11CreateDevice(
++      nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
++      D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, ARRAYSIZE(levels),
++      D3D11_SDK_VERSION, &fb->d3d, nullptr, &fb->d3dctx);
++   if (FAILED(hr)) {
++      debug_printf("fd_wgl: D3D11CreateDevice 0x%08lx\n", (unsigned long)hr);
++      delete fb;
++      return NULL;
++   }
++
++   fb->base.destroy = fd_wgl_framebuffer_destroy;
++   fb->base.resize = fd_wgl_framebuffer_resize;
++   fb->base.present = fd_wgl_framebuffer_present;
++   fb->base.get_resource = fd_wgl_framebuffer_get_resource;
++   fb->base.flush_frontbuffer = fd_wgl_framebuffer_flush_frontbuffer;
++
++   return &fb->base;
++}
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/meson.build b/src/gallium/winsys/freedreno/d3dkmt/meson.build
+new file mode 100644
+index 0000000..1d27b59
+--- /dev/null
++++ b/src/gallium/winsys/freedreno/d3dkmt/meson.build
+@@ -0,0 +1,27 @@
++# Copyright © 2026
++# SPDX-License-Identifier: MIT
++
++# Winsys freedreno cho Windows (D3DKMT). Cung ten bien voi winsys/drm de
++# driver_freedreno link khong doi.
++_fd_winsys_files = files('fd_d3dkmt_public.h', 'fd_d3dkmt_winsys.c', 'fd_renderonly_stub.c')
++_fd_winsys_deps = [idep_mesautil]
++_fd_winsys_incs = [
++  inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_drivers,
++  inc_freedreno, include_directories('../../../../freedreno'),
++]
++
++if get_option('wgl-corewindow')
++  _fd_winsys_files += files('fd_wgl_framebuffer.cpp')
++  _fd_winsys_incs += include_directories('../../../frontends/wgl')
++  _fd_winsys_deps += cpp.find_library('runtimeobject')
++  _fd_winsys_deps += cpp.find_library('d3d11')
++  _fd_winsys_deps += cpp.find_library('dxgi')
++endif
++
++libfreedrenowinsys = static_library(
++  'freedrenowinsys',
++  [_fd_winsys_files, freedreno_xml_header_files],
++  include_directories : _fd_winsys_incs,
++  gnu_symbol_visibility : 'hidden',
++  dependencies : _fd_winsys_deps,
++)
+-- 
+2.35.1.windows.2
+

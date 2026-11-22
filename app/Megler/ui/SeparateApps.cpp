@@ -9,6 +9,7 @@
 #endif
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/LogMirror.h"
 #include "shell/PickedFile.h"
 #include "shell/Platform.h"
@@ -44,6 +45,15 @@ bool gListed = false;                // it came at least once
 bool gReachable = false;             // its lister answered, whether or not its list came
 std::string gProblem;                // why it could not be had last
 std::vector<appPackage::InstalledApp> gInstalled;
+/*
+ * Of each installed package of a library's app, where Mesa's freedreno can be chosen (shell/Graphics.h), as the last listing
+ * found it: whether it has Mesa's DLLs (its record) and whether its app's Graphics ask for them now. Where the two differ the
+ * app is to be updated: its package made again with them, or without. By identity name.
+ */
+struct GraphicsState {
+    bool has = false, wants = false;
+};
+std::map<std::string, GraphicsState> gGraphics;
 std::map<std::string, Status> gStatus; // the actions' part (queued, step, made), by Android package
 std::deque<Job> gJobs;
 bool gWorking = false;
@@ -52,6 +62,13 @@ std::vector<std::function<void()>> gListWaiters; // what waits for the list (ask
 int gDone = 0, gTotal = 0;           // of the jobs since the worker started
 bool gRefused = false;               // the last install or uninstall done or refused was refused for access (installsRefused)
 bool gSettling = false;              // the shared folder's APK folders are being settled (settleApks): the worker's jobs wait
+/*
+ * The apps installed on the phone whose folder of the shared folder is known for sure and that the library has no entry of,
+ * as the last settling found them (adoptInstalled): moved from another phone with Megler's shared folder (WP Migrate
+ * installed their packages there, and Megler's own library stayed behind), or installed while Megler had another library
+ * (Megler installed afresh). The Library offers to add them, and Settings' Rescan the Library does (rescanLibrary).
+ */
+std::vector<sharedApks::Known> gStray;
 /*
  * Where the apps' packages are kept (appPackage::AppsStorage), as the last listing found it: one package volume for them
  * all, which the user is asked for before the first install where Windows has more than one (requirePlace).
@@ -109,6 +126,11 @@ Status statusLocked(const std::string& package) {
         s.installed = Installed::yes;
         s.version = app.version;
         s.outdated = older(app.version, appPackage::meglerVersion());
+        const auto g = gGraphics.find(identity);
+        if (g != gGraphics.end() && g->second.has != g->second.wants) {
+            s.graphics = g->second.wants ? Graphics::addMesa : Graphics::dropMesa;
+            s.outdated = true;
+        }
     }
     return s;
 }
@@ -190,9 +212,10 @@ bool sameApk(const ApkEntry& entry, const std::wstring& apk) {
  * Google Play services' is registered for the apps (registerInstalledServices, after this); and the package made that waited
  * for Windows's installer, which settleSharedApks removed, is no longer offered on the app's page. An entry that is Megler's
  * copy of another APK (one picked since, to be installed) is left as it is, and none is made where the library has none (the
- * user took the app out of it). Off the UI thread.
+ * user took the app out of it, or the app came from another phone): true then, and the Library offers to add it, as
+ * Settings' Rescan the Library does (addToLibrary). Off the UI thread.
  */
-void adoptInstalled(const sharedApks::Known& known, const std::vector<ApkEntry>& entries) {
+bool adoptInstalled(const sharedApks::Known& known, const std::vector<ApkEntry>& entries) {
     const std::string identity = narrow(known.identity);
     if (known.waitingDone) {
         std::lock_guard<std::mutex> lock(gMutex);
@@ -210,19 +233,19 @@ void adoptInstalled(const sharedApks::Known& known, const std::vector<ApkEntry>&
         }
     if (!entry) {
         sayOnce("separate apps: the installed " + known.fullName + " reads " + narrow(folder) +
-                "; the library has no entry of its app, and none is made");
-        return;
+                "; the library has no entry of its app, and none is made unless asked (Add to Library, Rescan the Library)");
+        return files::exists(apk);
     }
-    if (entry->installedPackage == known.fullName && _wcsicmp(entry->path.c_str(), apk.c_str()) == 0) return;
+    if (entry->installedPackage == known.fullName && _wcsicmp(entry->path.c_str(), apk.c_str()) == 0) return false;
     if (!files::exists(apk)) {
         sayOnce("separate apps: the installed " + known.fullName + " reads " + narrow(folder) + ", which has no app.apk: " + entry->id +
                 " is left as it is");
-        return;
+        return false;
     }
     if (entry->installedPackage.empty() && !sameApk(*entry, apk)) {
         sayOnce("separate apps: " + entry->id + " is Megler's copy of another APK than the installed " + known.fullName + " reads (" +
                 narrow(folder) + "): left as it is, to be installed");
-        return;
+        return false;
     }
     // An entry of another installed package's APK (Google Play services' of before, where its package was made from Megler's
     // newer APK): its report and icon are those of the APK it reads now, from beside it.
@@ -237,6 +260,54 @@ void adoptInstalled(const sharedApks::Known& known, const std::vector<ApkEntry>&
     shellLog::write("separate apps: the installed " + known.fullName + ", installed by another than Megler, reads " + narrow(folder) +
                     ": the library's " + entry->id + " is its APK now");
     Library::instance().adopt(entry->id, known.fullName, folder);
+    return false;
+}
+
+/*
+ * An installed app the library has no entry of (adoptInstalled), added to it: an entry that reads its APK in the shared
+ * folder, as Megler's own install leaves one (Library::adopt), with the report and icon its package was made with beside
+ * that APK (the APK read again where there is no report). Its id is its Android package's, as an APK of that name picked
+ * would have. Nothing where the library has an entry of its package by now. True when added. Off the UI thread.
+ */
+bool addToLibrary(const sharedApks::Known& known) {
+    const std::wstring shared = appPackage::sharedFolder();
+    const std::wstring folder = L"apks\\" + known.identity + L"\\" + known.token;
+    const std::wstring apk = shared + L"\\" + folder + L"\\app.apk";
+    if (shared.empty() || !files::exists(apk)) {
+        shellLog::write("separate apps: " + known.fullName + " not added to the library: " + narrow(folder) + " has no app.apk");
+        return false;
+    }
+    std::string json;
+    files::read(apk + L".json", json);
+    ApkReport report = ApkReport::parse(json);
+    if (!report.valid || report.package.empty()) {
+        json.clear();
+        if (char* read = megler_apk_report(narrow(apk).c_str())) {
+            json = read;
+            megler_free(read);
+        }
+        report = ApkReport::parse(json);
+    }
+    if (!report.valid || report.package.empty()) {
+        shellLog::write("separate apps: " + known.fullName + " not added to the library: its APK in " + narrow(folder) + " could not be read");
+        return false;
+    }
+    Library& library = Library::instance();
+    for (const ApkEntry& e : library.entries())
+        if (e.report.package == report.package) return false;
+    std::string id = Library::idFor(report.package + ".apk");
+    if (library.find(id)) id = Library::idFor(report.package + "-" + narrow(known.token) + ".apk");
+    const std::wstring own = library.directory() + L"\\" + widen(id);
+    if (!files::write(own + L".json", json)) {
+        shellLog::write(format("separate apps: %s not added to the library: its report could not be written (error %lu)", known.fullName.c_str(),
+                               GetLastError()));
+        return false;
+    }
+    if (files::exists(apk + L".icon")) files::copy(apk + L".icon", own + L".icon");
+    library.adopt(id, known.fullName, folder);
+    shellLog::write("separate apps: the installed " + known.fullName + ", which the library had no entry of, added to it as " + id + " (it reads " +
+                    narrow(folder) + ")");
+    return true;
 }
 
 /// The folders of apps' APKs in the shared folder set right with what is installed (appPackage::settleSharedApks): the
@@ -262,7 +333,12 @@ void settleApks(const std::vector<appPackage::InstalledApp>& installed) {
     std::vector<std::wstring> read;
     for (const ApkEntry& entry : entries)
         if (appPackage::inSharedApks(entry.path)) read.push_back(entry.path.substr(0, entry.path.find_last_of(L'\\')));
-    for (const sharedApks::Known& known : appPackage::settleSharedApks(installed, read)) adoptInstalled(known, entries);
+    std::vector<sharedApks::Known> stray;
+    for (const sharedApks::Known& known : appPackage::settleSharedApks(installed, read))
+        if (adoptInstalled(known, entries)) stray.push_back(known);
+    std::lock_guard<std::mutex> lock(gMutex);
+    gStray = std::move(stray);
+    gGeneration++;
 }
 
 /// Google Play services installed as an app of its own (Google's or microG's) and not the apps' registered service: its
@@ -298,10 +374,29 @@ void listInstalled() {
     // Where they are kept, and which volume each is on (Windows's package manager again, each volume's packages).
     appPackage::AppsStorage storage;
     if (ok) storage = appPackage::appsStorage(apps);
+    // Whether each library's app's package has Mesa's freedreno, and whether its Graphics ask for it now.
+    std::map<std::string, GraphicsState> graphicsOf;
+    if (ok && appPackage::mesaChoosable()) {
+        const std::wstring shared = appPackage::sharedFolder();
+        for (const ApkEntry& e : Library::instance().entries()) {
+            if (e.report.package.empty()) continue;
+            const std::string identity = identityOf(e.report.package);
+            for (const auto& a : apps) {
+                if (a.identity != identity) continue;
+                GraphicsState& g = graphicsOf[identity];
+                g.has = graphics::recordedMesa(shared, identity, a.fullName);
+                g.wants = appPackage::glesFor(e.report.package) == "mesa";
+                if (g.has != g.wants)
+                    sayOnce("separate apps: " + e.report.package + "'s package " + (g.has ? "has" : "lacks") + " Mesa's freedreno, which its Graphics " +
+                            (g.wants ? "ask for" : "no longer ask for") + ": to update");
+            }
+        }
+    }
     {
         std::lock_guard<std::mutex> lock(gMutex);
         if (ok) {
             gInstalled = apps;
+            gGraphics = graphicsOf;
             gListed = true;
             gProblem.clear();
             gStorage = storage;
@@ -490,6 +585,8 @@ void run(Job& job, int number, int total) {
             // (On the volume the apps are kept on, unless the install says it could not be moved there: the next list says where.)
             gInstalled.push_back({made.identity, appPackage::meglerVersion(), made.fullName, made.version,
                                   result.note.empty() ? keptVolumeLocked() : -1});
+            // (Its Graphics as it was made with them, until the next list.)
+            if (appPackage::mesaChoosable()) gGraphics[made.identity] = GraphicsState{made.mesa, made.mesa};
             gGeneration++;
         }
         // The library's entry is that APK now, and Megler's own copy, if it had one, goes: one copy of it on the phone. (In the
@@ -969,6 +1066,16 @@ std::vector<std::string> outdatedIds() {
     return ids;
 }
 
+std::optional<bool> packageHasMesa(const std::string& androidPackage) {
+    const std::string identity = identityOf(androidPackage);
+    std::lock_guard<std::mutex> lock(gMutex);
+    const auto g = gGraphics.find(identity);
+    if (g == gGraphics.end() ||
+        std::none_of(gInstalled.begin(), gInstalled.end(), [&](const appPackage::InstalledApp& a) { return a.identity == identity; }))
+        return std::nullopt;
+    return g->second.has;
+}
+
 void updateAll(AppShell& shell) {
     // (Which apps are outdated is known from the list: asked for before it came, as the flag ui-update-all is, it waits.)
     if (!requireList(shell, [&shell] { updateAll(shell); })) return;
@@ -985,6 +1092,57 @@ std::string working() {
 bool installsRefused() {
     std::lock_guard<std::mutex> lock(gMutex);
     return gRefused;
+}
+
+unsigned strayCount() {
+    std::lock_guard<std::mutex> lock(gMutex);
+    return unsigned(gStray.size());
+}
+
+void rescanLibrary(AppShell& shell, bool tell) {
+    if (appPackage::isSingleApp()) return;
+    shellLog::write("separate apps: the library rescanned");
+    // The APKs a PC has put in Pictures\Megler\apks since the start.
+    Library::instance().takeUsbApksNow();
+    // The list asked for again, which settles the shared folder's APK folders and finds the installed apps the library has
+    // no entry of (gStray); each added; then the list once more, which takes them as Megler's own installs.
+    AppShell* shellPointer = &shell;
+    askList(shell, [shellPointer, tell] {
+        auto added = std::make_shared<unsigned>(0);
+        auto stray = std::make_shared<unsigned>(0);
+        shellPointer->runInBackground(
+            [added, stray] {
+                std::vector<sharedApks::Known> apps;
+                {
+                    std::lock_guard<std::mutex> lock(gMutex);
+                    apps = gStray;
+                }
+                *stray = unsigned(apps.size());
+                for (const auto& known : apps)
+                    if (addToLibrary(known)) ++*added;
+                {
+                    std::lock_guard<std::mutex> lock(gMutex);
+                    gStray.clear();
+                    gGeneration++;
+                }
+                shellLog::write(format("separate apps: the rescan added %u of the %u installed apps the library had no entry of", *added, *stray));
+            },
+            [shellPointer, tell, added, stray] {
+                refresh(*shellPointer);
+                if (!tell) return;
+                if (!listProblem().empty())
+                    shellPointer->alert("Library Rescanned", "Megler can't tell which apps are installed: " + listProblem());
+                else if (*added)
+                    shellPointer->alert("Library Rescanned", format(*added == 1 ? "%u app installed on this phone was added to the library."
+                                                                                 : "%u apps installed on this phone were added to the library.",
+                                                                    *added));
+                else if (*stray)
+                    shellPointer->alert("Library Rescanned", "The apps installed on this phone that the library lacked could not be added: "
+                                                             "Megler › Log says why.");
+                else
+                    shellPointer->alert("Library Rescanned", "Every app of Megler's installed on this phone is in the library already.");
+            });
+    });
 }
 
 } // namespace megler::app::ui::separateApps

@@ -139,8 +139,10 @@ w() { cygpath -w "$1"; }
 export INCLUDE="$(w "$MEGLER_VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um")"
 export LIB="$(w "$MEGLER_VC/lib/$VCARCH");$(w "$SDK/Lib/$SDKV/ucrt/$VCARCH");$(w "$SDK/Lib/$SDKV/um/$VCARCH")"
 export MSYS2_ARG_CONV_EXCL="*"
+# (mg_kmt_trace.c: the graphics kernel's trace is the phone's alone; on a desktop it is the stub that says so, which
+# mg_egl.c's flag kmt-trace calls: without it the desktop packages did not link once that flag came, 989b31c0.)
 HOST_SRCS=(core/src/host/mg_host_win32.c core/src/host/mg_host_common.c core/src/host/win32/mg_core_loader.c
-           core/src/host/win32/mg_crt_bridge.c core/src/host/win32/mg_host_base.c "$GLUE")
+           core/src/host/win32/mg_crt_bridge.c core/src/host/win32/mg_host_base.c core/src/host/mg_kmt_trace.c "$GLUE")
 [ "$WHAT" = tests ] && HOST_SRCS+=(core/src/host/win32/mg_desktop_tests.c)
 for s in core/src/appx/*.c; do HOST_SRCS+=("$s"); done
 COFF_FLAGS=(--target=$WIN /nologo /c /O2 /MT /W3 /utf-8 /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DMG_ELF_HOST=1

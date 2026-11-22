@@ -131,6 +131,13 @@
 #                          taken from (build/angle/dist, Megler's own ANGLE, where
 #                          tools/build-angle.py has made it; else C:/rw-obj/dist/bin,
 #                          gecko-w10m's build)
+#   MEGLER_GLES         Windows 10 Mobile's package (arm, not --rt) carries ANGLE and
+#                          Mesa's freedreno side by side, each app choosing at its start
+#                          (Settings, Graphics; app/Megler/shell/Graphics.h), ANGLE where
+#                          nothing is chosen. "mesa": Mesa where nothing is chosen
+#                          (gles-default.txt), and no package without it; "angle":
+#                          ANGLE alone, no Mesa (some 20 MB less, no Graphics setting)
+#   MEGLER_MESA         where Mesa's DLLs are (drivers/mesa-arm32, the repository's; or a Mesa build folder)
 #   MEGLER_ANGLE_MAPS   ANGLE's linker maps (build/angle/maps for Megler's own;
 #                          else <ANGLE>/../../third_party/angle)
 #   MEGLER_ANGLE_DESKTOP  desktop Windows: where libEGL.dll and libGLESv2.dll of the
@@ -268,7 +275,17 @@ done
 [ -d "$SDK/Lib/$SDKV_LIB/um/$ARCH" ] || { echo "missing: SDK $SDKV_LIB libraries for $ARCH" >&2; exit 1; }
 
 w() { cygpath -w "$1"; }
-export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um");$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$SDKV/cppwinrt")"
+# VS 2017's MSVC 14.16 (MEGLER_VC=.../2017/.../MSVC/14.16.*): no C++20 and no C11 _Static_assert. The shell is compiled
+# as C++17 with the coroutines of /await, against C++/WinRT of SDK 10.0.19041 (MEGLER_CPPWINRT_SDK), whose base.h still
+# takes <experimental/coroutine>; 10.0.22621's does not with this compiler. The core's C gets tools/vs2017/mg_vs2017.h.
+VS2017=0
+case "$(basename "$VC")" in 14.1[0-9].*) VS2017=1 ;; esac
+CPPWINRT_SDKV="$SDKV"
+if [ "$VS2017" = 1 ]; then
+  CPPWINRT_SDKV="${MEGLER_CPPWINRT_SDK:-10.0.19041.0}"
+  [ -f "$SDK/Include/$CPPWINRT_SDKV/cppwinrt/winrt/base.h" ] || { echo "VS 2017: no C++/WinRT in SDK $CPPWINRT_SDKV (MEGLER_CPPWINRT_SDK)" >&2; exit 1; }
+fi
+export INCLUDE="$(w "$VC/include");$(w "$SDK/Include/$SDKV/ucrt");$(w "$SDK/Include/$SDKV/shared");$(w "$SDK/Include/$SDKV/um");$(w "$SDK/Include/$SDKV/winrt");$(w "$SDK/Include/$CPPWINRT_SDKV/cppwinrt")"
 export LIB="$(w "$VC/lib/$ARCH");$(w "$SDK/Lib/$SDKV_LIB/ucrt/$ARCH");$(w "$SDK/Lib/$SDKV_LIB/um/$ARCH")"
 # The cross compiler loads its helper DLLs (mspdb and friends) from the x64 host bin.
 export PATH="$VC/bin/Hostx64/x64:$PATH"
@@ -297,6 +314,8 @@ COMMON=(/nologo /c /O2 /MT /utf-8 /Zi /FS
         /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_WARNINGS /DNDEBUG)
 [ "$ARCH" = arm ] && COMMON+=(/D_ARM_)
 CXX=(/EHsc /GR /permissive- /Zc:__cplusplus)
+CXXSTD=/std:c++20
+[ "$VS2017" = 1 ] && CXXSTD="/std:c++17 /await /Zm400"
 
 # newest_mtime <dir> <name pattern>...: the newest modification time among
 # the matching files, so an edited header recompiles what may include it.
@@ -360,6 +379,7 @@ TESTS="$ROOT/core/tests"
 # (mg_diag.c the tests' header, the tests the core's).
 CORE_HEADERS="$(newest_mtime "$ROOT/core" '*.h')"
 CORE_FLAGS=(/TC /std:c11 /W3 "/I$(w "$ZLIB")")
+[ "$VS2017" = 1 ] && CORE_FLAGS=(/TC /W3 "/FI$(w "$ROOT/tools/vs2017/mg_vs2017.h")" "/I$(w "$ZLIB")")
 # SQLite is compiled into the core where its amalgamation is (build/sqlite/sqlite3.c: tools/sqlite-fetch.sh fetches it;
 # core/src/sqlite/mg_sqlite3.c includes it). Without it the package is built all the same, and a Java app that asks for
 # a database is told, once and in a sentence, that this build has none.
@@ -407,7 +427,7 @@ if [ "$(cat "$AUTO_CONFIG/AutoConfig.h" 2>/dev/null)" != "$AUTO_HEADER" ]; then
   echo "$AUTO_HEADER" > "$AUTO_CONFIG/AutoConfig.h"
   rm -f "$OBJ/shell/AutoRun.obj"
 fi
-SHELL_FLAGS=("${CXX[@]}" /std:c++20 /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
+SHELL_FLAGS=("${CXX[@]}" $CXXSTD /W3 /bigobj "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" "/I$(w "$AUTO_CONFIG")"
              "/Fp$(w "$OBJ/shell/pch.pch")")
 # (Desktop: the shell loads the core's ELF before it calls it, shell/Platform.cpp. Xbox: it installs through the console's
 # Device Portal, shell/AppPackage.cpp.)
@@ -435,7 +455,7 @@ compile_group "$OBJ/shell" "$SHELL_HEADERS" "${SHELL_FLAGS[@]}" /Yu"pch.h" -- "$
 # A Java app's drawing (player/GfxHost.cpp: Direct2D, DirectWrite, WIC) is plain COM with no WinRT in it and is also
 # built into the core's test program on a PC (tools/build-tests.sh win): the one shell file compiled without the
 # precompiled header, so that it cannot come to lean on what that brings in.
-compile_group "$OBJ/gfx" "$SHELL_HEADERS" "${CXX[@]}" /std:c++20 /W3 "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" -- "$APP/player/GfxHost.cpp"
+compile_group "$OBJ/gfx" "$SHELL_HEADERS" "${CXX[@]}" $CXXSTD /W3 "/I$(w "$APP")" "/I$(w "$ROOT/core/include")" -- "$APP/player/GfxHost.cpp"
 
 # MARK: Link
 
@@ -471,6 +491,13 @@ echo mg_dvm_interpret > "$BUILD/link/order.txt"
 # (On the desktop the interpreter is in the core's ELF, which this link does not see.)
 ORDER=("/ORDER:@$(w "$BUILD/link/order.txt")")
 [ "$DESKTOP" = 1 ] && ORDER=()
+if [ "$VS2017" = 1 ]; then
+  # (VS 2017: the processor affinity its Concurrency Runtime asks for, tools/vs2017/mg_vs2017_link.c.)
+  mkdir -p "$OBJ/vs2017"
+  "$CL" "${COMMON[@]}" /TC /W3 "$(w "$ROOT/tools/vs2017/mg_vs2017_link.c")" "/Fo$(w "$OBJ/vs2017/mg_vs2017_link.obj")" > /dev/null ||
+    { echo "compile failed: tools/vs2017/mg_vs2017_link.c" >&2; exit 1; }
+  OBJS_W+=("$(w "$OBJ/vs2017/mg_vs2017_link.obj")")
+fi
 "$LINK" /nologo "${OBJS_W[@]}" "/OUT:$(w "$BUILD/link/Megler.exe")" "/PDB:$(w "$BUILD/link/Megler.pdb")" \
   "/MAP:$(w "$BUILD/link/Megler.map")" ${ORDER[@]+"${ORDER[@]}"} /DEBUG /OPT:REF /OPT:ICF /INCREMENTAL:NO \
   /APPCONTAINER /SUBSYSTEM:WINDOWS "/MACHINE:$MACHINE" /DYNAMICBASE /NXCOMPAT /MANIFEST:NO \
@@ -704,6 +731,19 @@ if [ "$JAVA" = 1 ]; then
     [ -f "$STAGE/android/$need" ] || echo "    WARNING: no android/$need in the package: a Java app will not start, or will start bare" >&2
   done
 fi
+# Android's own Settings (AOSP 9's, as Google's emulator image has it: tools/android9-unpack.sh settings), which Megler
+# installs as an app of its own (app/Megler/ui/AndroidSettings.cpp): the phone's Android Settings, which apps open and the
+# user opens from the Library, with Megler's framework answering its system calls.
+if [ "$JAVA" = 1 ]; then
+  SETTINGS_APK="$ROOT/build/android9/apps/android-settings.apk"
+  if [ -f "$SETTINGS_APK" ]; then
+    mkdir -p "$STAGE/platform-apps"
+    cp "$SETTINGS_APK" "$STAGE/platform-apps/AndroidSettings.apk"
+    echo "    platform-apps: AndroidSettings.apk ($(stat -c %s "$SETTINGS_APK") bytes, sha256 $(sha256sum "$SETTINGS_APK" | cut -d' ' -f1))"
+  else
+    echo "    WARNING: no build/android9/apps/android-settings.apk (tools/android9-unpack.sh settings): no Android Settings in the package" >&2
+  fi
+fi
 if [ -n "$BITGAPPS" ]; then
   python "$(w "$ROOT/tools/bitgapps-extract.py")" "$(w "$BITGAPPS")" "$(w "$STAGE/bitgapps")"
   # The APKs given instead of the archive's, under the names the library offers them by.
@@ -899,6 +939,69 @@ if [ "$ARCH" = arm ]; then
       exit 1
     fi
   fi
+fi
+
+# Windows 10 Mobile's package: Mesa's freedreno over D3DKMT (OpenGLES-For-Windows-Phone, drivers/mesa-arm32/README.md) beside
+# ANGLE, which an app set to it in Settings' Graphics draws with (app/Megler/shell/Graphics.h; the core's mg_egl.c, mesa_load,
+# falls back to ANGLE where it cannot have it). Staged after ANGLE, whose api-set forwarders are made for ANGLE's DLLs alone.
+# Its three DLLs link their C runtime in and import KERNEL32.dll, api-sets, d3d11.dll and each other alone. libEGL.dll and
+# libGLESv2.dll are staged as libEGL_mesa.dll and libGLESv2_mesa.dll: ANGLE's have their names at the package's root, and a
+# module loaded by a name stands for every DLL of that name in the process (ANGLE's libEGL.dll imports libGLESv2.dll); the two
+# import libgallium_wgl.dll, which Windows finds beside them. Not in Windows RT's package (--rt), the desktop's or the Xbox's:
+# freedreno drives a phone's Adreno through Windows 10 Mobile's kernel-mode graphics driver.
+stage_mesa() {
+  local mesa="${MEGLER_MESA:-$ROOT/drivers/mesa-arm32}" src dll need missing="" staged
+  local -A from=([libEGL.dll]="src/egl" [libGLESv2.dll]="src/mesa/glapi/es2api" [libgallium_wgl.dll]="src/gallium/targets/wgl")
+  local -A as=([libEGL.dll]="libEGL_mesa.dll" [libGLESv2.dll]="libGLESv2_mesa.dll" [libgallium_wgl.dll]="libgallium_wgl.dll")
+  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
+    src="$mesa/${from[$dll]}/$dll"
+    [ -f "$src" ] || src="$mesa/$dll"
+    [ -f "$src" ] || { MESA_WHY="no $dll in $mesa (MEGLER_MESA)"; return 1; }
+    cp "$src" "$STAGE/${as[$dll]}"
+  done
+  for dll in libEGL.dll libGLESv2.dll libgallium_wgl.dll; do
+    staged="${as[$dll]}"
+    while IFS= read -r need; do
+      [ -n "$need" ] || continue
+      case "${need,,}" in
+        kernel32.dll|libgallium_wgl.dll|d3d11.dll|dxgi.dll|api-ms-win-*|ext-ms-win-*) ;;
+        *) missing="$missing $staged->$need" ;;
+      esac
+    done < <(dependents "$STAGE/$staged")
+  done
+  [ -z "$missing" ] || { MESA_WHY="imports with nothing to satisfy them:$missing"; return 1; }
+  # Their licences go with them (MIT, BSD and the others ask that their notices go with every copy): drivers/mesa-arm32/
+  # LICENSES, whatever folder the DLLs came from, as mesa-licenses\ at the package's root -- into an app's own package too
+  # while it carries Mesa (app/Megler/shell/Graphics.h, mesaLicenses).
+  [ -f "$ROOT/drivers/mesa-arm32/LICENSES/README.md" ] || { MESA_WHY="no drivers/mesa-arm32/LICENSES"; return 1; }
+  mkdir -p "$STAGE/mesa-licenses"
+  cp "$ROOT/drivers/mesa-arm32/LICENSES/"* "$STAGE/mesa-licenses/"
+  echo "    Mesa (freedreno, D3DKMT) from $mesa: libEGL_mesa.dll, libGLESv2_mesa.dll, libgallium_wgl.dll ($(stat -c %s "$STAGE/libgallium_wgl.dll") bytes), beside ANGLE; its licences in mesa-licenses\\ ($(ls "$STAGE/mesa-licenses" | tr '\n' ' '))"
+}
+# (Nothing of a stage of before: each build stages them anew, or not at all.)
+rm -f "$STAGE"/libEGL_mesa.dll "$STAGE"/libGLESv2_mesa.dll "$STAGE"/libgallium_wgl.dll "$STAGE"/gles-default.txt
+rm -rf "$STAGE/mesa-licenses"
+if [ "$ARCH" = arm ] && [ "$RT" = 0 ]; then
+  case "${MEGLER_GLES:-}" in
+    ""|mesa)
+      echo "=== Mesa (beside ANGLE; each app chooses: Settings, Graphics) ==="
+      MESA_WHY=""
+      if ! stage_mesa; then
+        rm -f "$STAGE"/libEGL_mesa.dll "$STAGE"/libGLESv2_mesa.dll "$STAGE"/libgallium_wgl.dll
+        rm -rf "$STAGE/mesa-licenses"
+        echo "    WARNING: Mesa is NOT in this package: $MESA_WHY (apps draw with ANGLE, and Settings have no Graphics)" >&2
+        if [ "${MEGLER_GLES:-}" = mesa ] && [ "$PACK" = 1 ]; then echo "MEGLER_GLES=mesa: refusing to pack without Mesa" >&2; exit 1; fi
+      elif [ "${MEGLER_GLES:-}" = mesa ]; then
+        # The choice where an app and Megler have none: Mesa (app/Megler/shell/Graphics.h, packageDefault).
+        printf 'mesa\r\n' > "$STAGE/gles-default.txt"
+        echo "    Mesa where nothing is chosen (MEGLER_GLES=mesa: gles-default.txt)"
+      fi
+      ;;
+    angle) echo "=== Mesa: left out (MEGLER_GLES=angle): ANGLE alone ===" ;;
+    *) echo "MEGLER_GLES: \"$MEGLER_GLES\" is neither mesa nor angle" >&2; exit 2 ;;
+  esac
+elif [ -n "${MEGLER_GLES:-}" ]; then
+  echo "    (MEGLER_GLES is for Windows 10 Mobile's package: this one has ANGLE alone)"
 fi
 
 # On desktop Windows: Megler's own build of the same ANGLE for the processor (python tools/build-angle.py --arch <arch>), its

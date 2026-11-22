@@ -27,6 +27,11 @@
 // component, by its action within the package it names, or by its action alone -- which megler.HostedApps would bind here.
 // Total Commander lists its plug-ins so (the action com.android.tcplugins.IPluginFunctions, no package), and took every
 // plug-in for not installed.
+//
+// Their splits, as Android names an installed app's (splits): splitNames and splitSourceDirs, /data/app/<package>-1/
+// split_<name>.apk, where they can be read. Google Play knows from them which feature modules an app has, adds only those
+// it lacks (megler.PlaySplits), and updates it with them; with none told, it updated TikTok Lite without the module it had
+// added, and the app was its small start screen again (issue #6).
 package megler;
 
 import android.content.ComponentName;
@@ -54,20 +59,25 @@ public final class PhoneApps {
         public final String name, target, label;
         public final int icon;
         public final boolean enabled, exported;
-        final java.util.List<Filter> filters;
-        Activity(String name, String target, String label, int icon, boolean enabled, boolean exported, java.util.List<Filter> filters) {
+        final java.util.List<Manifest.Filter> filters;
+        Activity(String name, String target, String label, int icon, boolean enabled, boolean exported, java.util.List<Manifest.Filter> filters) {
             this.name = name; this.target = target; this.label = label; this.icon = icon; this.enabled = enabled; this.exported = exported;
             this.filters = filters;
         }
         boolean launcher() {
-            for (Filter f : filters) if (f.actions.contains(Intent.ACTION_MAIN) && f.categories.contains(Intent.CATEGORY_LAUNCHER)) return true;
+            for (Manifest.Filter f : filters) if (f.actions.contains(Intent.ACTION_MAIN) && f.categories.contains(Intent.CATEGORY_LAUNCHER)) return true;
             return false;
         }
         /** Whether one of its filters takes the intent. */
-        boolean takes(Intent i) {
-            for (Filter f : filters) if (f.takes(i)) return true;
-            return false;
+        boolean takes(Intent i) { return filterFor(i, IntentMatch.typeOf(i), false) != null; }
+        /** The first of its filters that takes the intent, of MIME type `type`; with `defaultOnly` one with CATEGORY_DEFAULT too, as
+         *  startActivity resolves (megler.Resolver). Null when none does. */
+        public Manifest.Filter filterFor(Intent i, String type, boolean defaultOnly) {
+            for (Manifest.Filter f : filters) if (IntentMatch.matches(f, i, type, defaultOnly)) return f;
+            return null;
         }
+        /** Its filters, as the shell described them. */
+        public java.util.List<Manifest.Filter> filters() { return filters; }
     }
 
     /** One of an app's services another app may bind, as the shell described it. */
@@ -75,42 +85,45 @@ public final class PhoneApps {
         public final String name, label, permission;
         public final int icon;
         public final boolean enabled;
-        final java.util.List<Filter> filters;
-        Service(String name, String label, String permission, int icon, boolean enabled, java.util.List<Filter> filters) {
+        final java.util.List<Manifest.Filter> filters;
+        Service(String name, String label, String permission, int icon, boolean enabled, java.util.List<Manifest.Filter> filters) {
             this.name = name; this.label = label; this.permission = permission; this.icon = icon; this.enabled = enabled; this.filters = filters;
         }
         /** Whether one of its filters takes the intent. */
         boolean takes(Intent i) {
-            for (Filter f : filters) if (f.takes(i)) return true;
+            String type = IntentMatch.typeOf(i);
+            for (Manifest.Filter f : filters) if (IntentMatch.matches(f, i, type, false)) return true;
             return false;
         }
     }
 
-    /** An intent filter as the shell described it: as Android's resolver has it, the action, every category, the data. */
-    static final class Filter {
-        final java.util.List<String> actions, categories, schemes, hosts, types;
-        Filter(java.util.List<String> actions, java.util.List<String> categories, java.util.List<String> schemes, java.util.List<String> hosts,
-               java.util.List<String> types) {
-            this.actions = actions; this.categories = categories; this.schemes = schemes; this.hosts = hosts; this.types = types;
-        }
-        boolean takes(Intent i) {
-            if (i.getAction() != null ? !actions.contains(i.getAction()) : actions.isEmpty()) return false;
-            if (i.getCategories() != null) for (String c : i.getCategories()) if (!categories.contains(c)) return false;
-            android.net.Uri data = i.getData();
-            String type = i.getType(), scheme = data != null ? data.getScheme() : null;
-            if (type == null && scheme == null) return schemes.isEmpty() && types.isEmpty();
-            if (type != null) {
-                boolean typed = false;
-                for (String t : types) if (t.equals(type) || t.equals("*/*") || (t.endsWith("/*") && type.startsWith(t.substring(0, t.length() - 1)))) typed = true;
-                if (!typed) return false;
-            } else if (!types.isEmpty()) return false;
-            if (scheme != null) {
-                // A filter of types alone takes content: and file: data (Android's IntentFilter.matchData).
-                if (schemes.isEmpty()) return type != null && ("content".equals(scheme) || "file".equals(scheme));
-                if (!schemes.contains(scheme)) return false;
-                if (!hosts.isEmpty() && (data.getHost() == null || !hosts.contains(data.getHost()))) return false;
-            }
-            return true;
+    /*
+     * An intent filter as the shell described it (megler_apk_describe_activities), as Android's resolver has it: the action,
+     * every category, the data -- schemes, hosts each with its port, paths and scheme-specific parts, types -- its priority
+     * and autoVerify; megler.IntentMatch matches it as the app's own filters are matched. A description of before (Megler
+     * 0.1.0.734 and earlier) has no ports, paths or parts, until the shell describes the app again.
+     */
+    static Manifest.Filter filter(org.json.JSONObject x) throws org.json.JSONException {
+        Manifest.Filter f = new Manifest.Filter();
+        f.actions.addAll(strings(x, "actions"));
+        f.categories.addAll(strings(x, "categories"));
+        f.schemes.addAll(strings(x, "schemes"));
+        f.hosts.addAll(strings(x, "hosts"));
+        f.mimeTypes.addAll(strings(x, "types"));
+        org.json.JSONArray ports = x.optJSONArray("ports");
+        for (int k = 0; k < f.hosts.size(); k++) f.ports.add(ports != null && k < ports.length() ? ports.optInt(k, -1) : -1);
+        parts(x.optJSONArray("paths"), f.paths);
+        parts(x.optJSONArray("ssps"), f.ssps);
+        f.priority = x.optInt("priority", 0);
+        f.autoVerify = x.optBoolean("autoVerify", false);
+        return f;
+    }
+
+    private static void parts(org.json.JSONArray a, java.util.List<IntentMatch.Part> out) throws org.json.JSONException {
+        for (int k = 0; a != null && k < a.length(); k++) {
+            org.json.JSONObject o = a.getJSONObject(k);
+            int kind = IntentMatch.kindOf(o.optString("kind"));
+            if (kind >= 0 && o.has("value")) out.add(new IntentMatch.Part(kind, o.getString("value")));
         }
     }
 
@@ -246,12 +259,9 @@ public final class PhoneApps {
                     list = new java.util.ArrayList<>();
                     for (int k = 0; k < acts.length(); k++) {
                         org.json.JSONObject o = acts.getJSONObject(k);
-                        java.util.ArrayList<Filter> filters = new java.util.ArrayList<>();
+                        java.util.ArrayList<Manifest.Filter> filters = new java.util.ArrayList<>();
                         org.json.JSONArray fs = o.optJSONArray("filters");
-                        for (int f = 0; fs != null && f < fs.length(); f++) {
-                            org.json.JSONObject x = fs.getJSONObject(f);
-                            filters.add(new Filter(strings(x, "actions"), strings(x, "categories"), strings(x, "schemes"), strings(x, "hosts"), strings(x, "types")));
-                        }
+                        for (int f = 0; fs != null && f < fs.length(); f++) filters.add(filter(fs.getJSONObject(f)));
                         list.add(new Activity(o.getString("name"), o.has("target") ? o.getString("target") : null, o.has("label") ? o.getString("label") : null,
                                               (int) o.optLong("icon", 0), o.optBoolean("enabled", true), o.optBoolean("exported", false), filters));
                     }
@@ -281,12 +291,9 @@ public final class PhoneApps {
                     org.json.JSONArray all = new org.json.JSONObject(new String(json, java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("services");
                     for (int k = 0; k < all.length(); k++) {
                         org.json.JSONObject o = all.getJSONObject(k);
-                        java.util.ArrayList<Filter> filters = new java.util.ArrayList<>();
+                        java.util.ArrayList<Manifest.Filter> filters = new java.util.ArrayList<>();
                         org.json.JSONArray fs = o.optJSONArray("filters");
-                        for (int f = 0; fs != null && f < fs.length(); f++) {
-                            org.json.JSONObject x = fs.getJSONObject(f);
-                            filters.add(new Filter(strings(x, "actions"), strings(x, "categories"), strings(x, "schemes"), strings(x, "hosts"), strings(x, "types")));
-                        }
+                        for (int f = 0; fs != null && f < fs.length(); f++) filters.add(filter(fs.getJSONObject(f)));
                         list.add(new Service(o.getString("name"), o.has("label") ? o.getString("label") : null, o.has("permission") ? o.getString("permission") : null,
                                              (int) o.optLong("icon", 0), o.optBoolean("enabled", true), filters));
                     }
@@ -418,7 +425,38 @@ public final class PhoneApps {
         String abi = Abis.PRIMARY;
         i.nativeLibraryDir = dir + "/lib/" + (abi.equals("arm64-v8a") ? "arm64" : abi.equals("armeabi-v7a") ? "arm" : abi);
         i.dataDir = i.deviceProtectedDataDir = "/data/data/" + a.packageName;
+        // (An app whose activities view web links, as Android's package parser marks it: Android's Settings offers its links so.)
+        if (Resolver.hasDomainUrls(a.packageName)) i.privateFlags |= ApplicationInfo.PRIVATE_FLAG_HAS_DOMAIN_URLS;
+        // Its splits beside it, as Android names an installed app's (sorted): there to be read too.
+        String[] splits = splits(a);
+        if (splits.length > 0) {
+            i.splitNames = splits;
+            i.splitSourceDirs = new String[splits.length];
+            for (int k = 0; k < splits.length; k++) i.splitSourceDirs[k] = dir + "/split_" + splits[k] + ".apk";
+            i.splitPublicSourceDirs = i.splitSourceDirs.clone();
+        }
         return i;
+    }
+
+    /* The splits of each app as last read, { when, names }: Google Play asks for the PackageInfo of every app, and often. */
+    private static final java.util.HashMap<String, Object[]> sSplits = new java.util.HashMap<>();
+
+    /**
+     * The app's splits by their names, sorted (Native.appSplits): the ones it was installed with and the feature modules
+     * Google Play has added since (megler.PlaySplits), read again when two seconds have passed. Google Play reads them from
+     * the PackageInfo to know which modules an app has, and updates it with those; it was told of none, and its update of
+     * TikTok Lite installed it without the module that is the whole app (issue #6).
+     */
+    public static String[] splits(App a) {
+        long now = android.os.SystemClock.uptimeMillis();
+        synchronized (sSplits) {
+            Object[] had = sSplits.get(a.packageName);
+            if (had != null && now - (Long) had[0] < 2000) return ((String[]) had[1]).clone();
+        }
+        String[] names = Native.appSplits(a.packageName);
+        if (names == null) names = new String[0];
+        synchronized (sSplits) { sSplits.put(a.packageName, new Object[] { now, names }); }
+        return names.clone();
     }
 
     public static ActivityInfo activityInfo(App a, String activity) {
@@ -495,6 +533,10 @@ public final class PhoneApps {
         p.versionName = a.versionName;
         p.versionCode = (int) a.versionCode;
         p.applicationInfo = applicationInfo(a);
+        if (p.applicationInfo.splitNames != null) {
+            p.splitNames = p.applicationInfo.splitNames.clone();
+            p.splitRevisionCodes = new int[p.splitNames.length];
+        }
         // Its own signatures, not the running app's (a PackageInfo's), and those only when asked for, as on Android; an app
         // the shell has not described has an empty one.
         p.signatures = null;
@@ -532,6 +574,13 @@ public final class PhoneApps {
     /** For an intent for an activity of another app the phone has: that app's package and the activity (null when the intent
      *  names none); for any other intent, null. */
     public static String[] target(Intent i) {
+        String[] t = reached(i);
+        return t == null ? null : new String[] { t[0], t[1] };
+    }
+
+    /* target's package and activity, and the component the intent reaches there: the activity, or the <activity-alias> of it
+       that names it or whose filter takes it (null where the intent names no activity). */
+    private static String[] reached(Intent i) {
         ComponentName c = i.getComponent();
         String target = c != null ? c.getPackageName() : i.getPackage();
         if (target == null || target.equals(Native.packageName())) return null;
@@ -539,6 +588,7 @@ public final class PhoneApps {
         if (a == null) return null;
         String activity = c != null ? c.getClassName() : null;
         if (activity != null && activity.startsWith(".")) activity = target + activity;
+        String component = activity;
         // An alias has no class: what is started is the activity it stands for, as Android starts it.
         Activity x = activity(a, activity);
         if (x != null && x.target != null) activity = x.target;
@@ -548,8 +598,8 @@ public final class PhoneApps {
         java.util.List<Activity> acts = activities(a);
         if (activity == null && acts != null && i.getAction() != null && !Intent.ACTION_MAIN.equals(i.getAction()))
             for (Activity y : acts)
-                if (y.enabled && y.exported && y.takes(i)) { activity = y.target != null ? y.target : y.name; break; }
-        return new String[] { target, activity };
+                if (y.enabled && y.exported && y.takes(i)) { activity = y.target != null ? y.target : y.name; component = y.name; break; }
+        return new String[] { target, activity, component };
     }
 
     /*
@@ -594,7 +644,8 @@ public final class PhoneApps {
     /**
      * What another app asked this one for (megler.AppRunner.startRequested): the activity's class and, when the request names
      * an Intent's file ("<class>~<token>", withIntent), that Intent, read and deleted, made by `l`'s classes; the plain intent
-     * for the class otherwise. Its component is this app's activity either way. Never null: { class, Intent }.
+     * for the class otherwise. Its component is this app's activity either way, or the <activity-alias> of it the written
+     * intent reached. Never null: { class, Intent }.
      */
     public static Object[] asked(String request, ClassLoader l) {
         int at = request.indexOf('~');
@@ -615,17 +666,35 @@ public final class PhoneApps {
             file.delete();
         }
         if (i == null) i = new Intent();
-        i.setComponent(new ComponentName(Native.packageName(), cls));
+        // (An <activity-alias> of the activity's that the intent reached stays its component, as on Android: start writes it.)
+        ComponentName reached = i.getComponent();
+        Manifest.Component alias = reached != null && Native.packageName().equals(reached.getPackageName()) ? Manifest.activity(reached.getClassName()) : null;
+        boolean viaAlias = alias != null && "activity-alias".equals(alias.kind) && cls.equals(alias.parentActivity);
+        i.setComponent(viaAlias ? new ComponentName(Native.packageName(), alias.name) : new ComponentName(Native.packageName(), cls));
         i.setPackage(null);
         return new Object[] { cls, i };
     }
 
+    /** An intent for an activity of another app the phone has, started by the shell; a result asked for (`request`, 0 or more)
+     *  comes back to the caller when it is in front again (megler.AppResults), as AppRunner.startActivity has it. */
+    static void startWith(android.content.Context from, Intent i, int request) {
+        String[] t = target(i);
+        if (t == null) return;
+        if (request >= 0) AppResults.await(from instanceof android.app.Activity ? (android.app.Activity) from : AppRunner.top(), request, t[0], t[1]);
+        start(i);
+    }
+
     /** An intent for an activity of another app the phone has: started by the shell, true; any other intent, false. */
     public static boolean start(Intent i) {
-        String[] t = target(i);
+        String[] t = reached(i);
         if (t == null) return false;
         android.util.Log.i("Megler", "phone apps: starting " + t[0] + (t[1] != null ? "/" + t[1] : ""));
-        if (!Native.launchApp(t[0], t[1] == null ? null : withIntent(t[0], t[1], i))) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
+        // The request names the activity; the intent written for it names the component it reached, as Android's resolution
+        // gives it the started activity -- an <activity-alias> of it, which that app's code may go by (asked keeps it).
+        // Gemini's link to the Google app reaches its MainAssistantDeeplink, an alias of its GatewayActivity, which looks up
+        // its handler by the alias's name, and with GatewayActivity's own found none and finished.
+        Intent sent = t[2] != null && !t[2].equals(t[1]) ? new Intent(i).setComponent(new ComponentName(t[0], t[2])) : i;
+        if (!Native.launchApp(t[0], t[1] == null ? null : withIntent(t[0], t[1], sent))) android.util.Log.w("Megler", "phone apps: " + t[0] + " was not started");
         return true;
     }
 }

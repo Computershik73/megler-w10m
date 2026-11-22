@@ -6,7 +6,10 @@
 //     says which were put there so; a flag set through the portal is left alone);
 //   - the package's log (LocalState\megler.log, and megler.prev.log once) is copied into the folder every 10 s and when
 //     the app is suspended, for the PC to copy off over MTP; and so are the pictures the flag trace-views saves in an app's
-//     files (screen-N.png, window-I-N.png), each new or changed one once.
+//     files (screen-N.png, window-I-N.png), each new or changed one once, and Mesa's own logs the flag mesa-diag has its
+//     driver write beside megler.log (fdkmt.log, fd_egl_share.log), each again when it has changed;
+//   - the files of its newest folder mesa-<n> (the largest n) are copied into LocalState\mesa before the app runs, once:
+//     Mesa's DLLs that the flag mesa-local has the app load instead of its package's (core/src/ndk/mg_egl.c).
 // Nothing is done where the folder is not there. A Lumia 650's owner moved the phone to a PC without the portal while its
 // TikTok Lite was being diagnosed (package 626).
 #pragma once

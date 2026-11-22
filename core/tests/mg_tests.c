@@ -1947,6 +1947,118 @@ static void test_host_fonts(const char *scratch)
 }
 
 /*
+ * Android's own names of its fonts for Chinese, Japanese and Korean under the root's fonts (bionic/mg_libc_io.c,
+ * k_android_font_names; issue #25: Shattered Pixel Dungeon opens /system/fonts/NotoSansSC-Regular.otf and the rest by path and
+ * drew no Chinese): each the first of the host's fonts for that language, opened, stat'ed and listed as any file of the root;
+ * DroidSansFallback.ttf the Simplified Chinese one; a name the root has a file of its own by kept as the root's; none for a
+ * language the host has no font of, and no NotoSansCJK-Regular.ttc, whose faces by number no file of the host's has.
+ */
+static void test_host_font_names(const char *scratch)
+{
+    typedef int (*open_fn)(const char *, int, int);
+    typedef gssize (*read_fn)(int, void *, size_t);
+    typedef int (*close_fn)(int);
+    typedef int (*stat_fn)(const char *, void *);
+    typedef void *(*opendir_fn)(const char *);
+    typedef int (*closedir_fn)(void *);
+    typedef struct t_dirent {
+        u64 d_ino;
+        i64 d_off;
+        u16 d_reclen;
+        u8 d_type;
+        char d_name[256];
+    } t_dirent;
+    typedef t_dirent *(*readdir_fn)(void *);
+    static const struct {
+        const char *name;
+        char first;                        /* the first byte of the file it is: 'S' Simplified, 'T' Traditional, 'K' Korean, 'R' the root's; 0 none */
+    } want[] = {
+        { "NotoSansSC-Regular.otf", 'S' }, { "NotoSansHans-Regular.otf", 'R' }, { "NotoSansTC-Regular.otf", 'T' }, { "NotoSansHant-Regular.otf", 'T' },
+        { "NotoSansJP-Regular.otf", 0 }, { "NotoSansKR-Regular.otf", 'K' }, { "DroidSansFallback.ttf", 'S' }, { "DroidSansFallbackFull.ttf", 'S' },
+        { "NotoSansCJK-Regular.ttc", 0 }, { "Roboto-Regular.ttf", 'R' },
+    };
+    open_fn open_ = (open_fn)mg_bionic_find("open");
+    read_fn read_ = (read_fn)mg_bionic_find("read");
+    close_fn close_ = (close_fn)mg_bionic_find("close");
+    stat_fn stat_ = (stat_fn)mg_bionic_find("stat");
+    opendir_fn opendir_ = (opendir_fn)mg_bionic_find("opendir");
+    readdir_fn readdir_ = (readdir_fn)mg_bionic_find("readdir");
+    closedir_fn closedir_ = (closedir_fn)mg_bionic_find("closedir");
+    char *root = mg_sprintf("%s/names-root", scratch), *etc = mg_sprintf("%s/names-root/etc", scratch), *fonts_dir = mg_sprintf("%s/names-root/fonts", scratch);
+    char *list = mg_sprintf("%s/names-root/etc/fonts.xml", scratch), *made = mg_sprintf("%s/fonts-made/names.xml", scratch);
+    char *sc = mg_sprintf("%s/host fonts/msyh.ttc", scratch), *tc = mg_sprintf("%s/host fonts/msjh.ttc", scratch), *ko = mg_sprintf("%s/host fonts/malgun.ttf", scratch);
+    char *hans = mg_sprintf("%s/names-root/fonts/NotoSansHans-Regular.otf", scratch), *roboto = mg_sprintf("%s/names-root/fonts/Roboto-Regular.ttf", scratch);
+    char *host_dir = mg_sprintf("%s/host fonts", scratch), said[200], guest[200];
+    static const char root_list[] = "<familyset version=\"23\">\n</familyset>\n";
+    mg_fs_font fonts[4];
+    u8 st[256];
+    int i, n, listed = 0, wanted = 0;
+    say("fonts: Android's names of its fonts for Chinese, Japanese and Korean are the host's fonts of those languages");
+    CHECK(open_ && read_ && close_ && stat_ && opendir_ && readdir_ && closedir_);
+    if (!open_ || !read_ || !close_ || !stat_ || !opendir_ || !readdir_ || !closedir_) return;
+    CHECK(mg_path_mkdirs(etc) && mg_path_mkdirs(fonts_dir) && mg_path_mkdirs(host_dir));
+    CHECK(mg_file_write_all(list, root_list, sizeof(root_list) - 1));
+    CHECK(mg_file_write_all(sc, "S-font", 6) && mg_file_write_all(tc, "T-font", 6) && mg_file_write_all(ko, "K-font", 6));
+    CHECK(mg_file_write_all(hans, "R-font", 6) && mg_file_write_all(roboto, "R-font", 6));
+    /* The root as /system is: its folder mounted, and the host's fonts given as the shell gives them (Microsoft YaHei UI is face 1). */
+    mg_fs_mount("/names-test", root);
+    fonts[0].path = sc, fonts[0].index = 1, fonts[0].langs = "zh-Hans";
+    fonts[1].path = tc, fonts[1].index = 1, fonts[1].langs = "zh-Hant zh-Bopo";
+    fonts[2].path = ko, fonts[2].index = 0, fonts[2].langs = "ko";
+    fonts[3].path = tc, fonts[3].index = 0, fonts[3].langs = "und-Hani zh-Hans";
+    n = mg_fs_host_fonts("/names-test", list, made, fonts, 4, said, sizeof(said));
+    CHECK_INT(n, 4);
+    for (i = 0; i < (int)MG_COUNT(want); i++) {
+        char got[8];
+        gssize r = -1;
+        int fd;
+        snprintf(guest, sizeof(guest), "/names-test/fonts/%s", want[i].name);
+        fd = open_(guest, 0, 0);
+        memset(got, 0, sizeof(got));
+        if (fd >= 0) {
+            r = read_(fd, got, 6);
+            close_(fd);
+        }
+        if (want[i].first) CHECK(fd >= 0 && r == 6 && got[0] == want[i].first && stat_(guest, st) == 0);
+        else CHECK(fd < 0 && stat_(guest, st) != 0);
+        say("  %s: %s", want[i].name, fd >= 0 ? got : "none");
+    }
+    /* The listing of the root's fonts has each name that is there, once. */
+    {
+        void *d = opendir_("/names-test/fonts");
+        t_dirent *e;
+        CHECK(d != NULL);
+        while (d && (e = readdir_(d)) != NULL) {
+            for (i = 0; i < (int)MG_COUNT(want); i++)
+                if (!strcmp(e->d_name, want[i].name)) {
+                    listed++;
+                    CHECK(want[i].first != 0);
+                }
+        }
+        if (d) closedir_(d);
+        for (i = 0; i < (int)MG_COUNT(want); i++)
+            if (want[i].first) wanted++;
+        CHECK_INT(listed, wanted);
+    }
+    /* The fonts are the host's own files, and are not written. */
+    *mg_errno_ptr() = 0;
+    i = open_("/names-test/fonts/NotoSansSC-Regular.otf", 02, 0);
+    CHECK(i < 0 && *mg_errno_ptr() == GE_ROFS);
+    if (i >= 0) close_(i);
+    free(root);
+    free(etc);
+    free(fonts_dir);
+    free(list);
+    free(made);
+    free(sc);
+    free(tc);
+    free(ko);
+    free(hans);
+    free(roboto);
+    free(host_dir);
+}
+
+/*
  * A file mapped shared shows what is written to it through a descriptor afterwards (bionic/mg_libc_mem.c,
  * mg_mem_file_written), as a kernel's mapping of a file does. Bolt (Psiphon's database, in WhatsApp's libgojni.so) maps
  * its file read-only and shared, from a descriptor open for writing, past the file's end; writes it with pwrite, and
@@ -3927,6 +4039,36 @@ static void test_libc_odds(void)
         CHECK(get64 && get64(9, lim) == 0 && lim[0] == ~(u64)0 && lim[1] == ~(u64)0);
     }
     /*
+     * And into a page the app made read-only, getrlimit and getrlimit64 fail with EFAULT and write nothing, as the kernel's
+     * copy_to_user refuses: Chromium asks so whether its protected memory is read-only (base::AssertMemoryIsReadOnly, Chrome
+     * 158's first tab), and the layer wrote there and faulted. Writable again, they answer.
+     */
+    {
+        typedef int (*rlimit_fn)(int, void *);
+        typedef void *(*mmap_fn)(void *, size_t, int, int, int, goff);
+        typedef int (*mprotect_fn)(void *, size_t, int);
+        typedef int (*munmap_fn)(void *, size_t);
+        typedef int *(*errno_fn)(void);
+        rlimit_fn get = (rlimit_fn)mg_bionic_find("getrlimit"), get64 = (rlimit_fn)mg_bionic_find("getrlimit64");
+        mmap_fn mmap_ = (mmap_fn)mg_bionic_find("mmap");
+        mprotect_fn mprotect_ = (mprotect_fn)mg_bionic_find("mprotect");
+        munmap_fn munmap_ = (munmap_fn)mg_bionic_find("munmap");
+        errno_fn errno_ = (errno_fn)mg_bionic_find("__errno");
+        u8 *page = mmap_ ? (u8 *)mmap_(NULL, 4096, 3, 0x22, -1, 0) : NULL;
+        CHECK(get && get64 && mprotect_ && munmap_ && errno_ && page && page != (u8 *)-1);
+        if (get && get64 && mprotect_ && munmap_ && errno_ && page && page != (u8 *)-1) {
+            memset(page, 0x5A, 4096);
+            CHECK(mprotect_(page, 4096, 1) == 0);
+            *errno_() = 0;
+            CHECK(get(6, page) == -1 && *errno_() == 14);
+            *errno_() = 0;
+            CHECK(get64(6, page + 64) == -1 && *errno_() == 14);
+            CHECK(page[0] == 0x5A && page[64] == 0x5A && page[4095] == 0x5A);
+            CHECK(mprotect_(page, 4096, 3) == 0 && get(7, page) == 0 && ((u32 *)page)[0] == 1024);
+            munmap_(page, 4096);
+        }
+    }
+    /*
      * getauxval: what every Linux process's vector has -- AT_EXECFN, the path it was started from, an app's its zygote's (it was
      * zero: a string read through null), the clock's ticks, the app's ids -- and zero with ENOENT for what it has not. And the
      * process's executable through realpath is what readlink says it links to; lstat, by either of its names and as fstatat
@@ -3975,6 +4117,20 @@ static void test_libc_odds(void)
         const char *storage = env ? env("ANDROID_STORAGE") : NULL, *assets = env ? env("ANDROID_ASSETS") : NULL, *data = env ? env("ANDROID_DATA") : NULL;
         CHECK(storage && !strcmp(storage, "/storage") && assets && !strcmp(assets, "/system/app") && data && !strcmp(data, "/data"));
         CHECK(env && env("ASEC_MOUNTPOINT") && env("ANDROID_BOOTLOGO") && env("ANDROID_ROOT") && env("EXTERNAL_STORAGE") && !env("BOOTCLASSPATH"));
+    }
+    /* bionic's exec family, all of it there and failing with ENOSYS, no program being started here: WhatsApp's libessential.so
+       imports execle, which was not provided (0.1.0.734). */
+    {
+        static const char *const execs[] = { "execl", "execle", "execlp", "execv", "execve", "execvp", "execvpe", "fexecve" };
+        size_t k;
+        for (k = 0; k < MG_COUNT(execs); k++) {
+            typedef int (*exec_fn)(void);
+            exec_fn f = (exec_fn)mg_bionic_find(execs[k]);
+            CHECK(f != NULL);
+            if (!f) continue;
+            *mg_errno_ptr() = 0;
+            CHECK(f() == -1 && *mg_errno_ptr() == GE_NOSYS);
+        }
     }
     /*
      * malloc's blocks at bionic's alignment, 16 bytes but on 32-bit ARM 8 (x86-64's SSE stores fault on less: exteraGram's
@@ -5260,6 +5416,81 @@ static void test_input(void)
     /* ...and nothing said to be there once there is not. */
     CHECK_INT(G_INPUT.left_readable, 0);
     say("  wakes with nothing to take: %d", (int)G_INPUT.idle_wakes);
+}
+
+/*
+ * ALooper_addFd and ALooper_removeFd wake nobody's poll, as on Android: only ALooper_wake makes one answer ALOOPER_POLL_WAKE
+ * (-1). A descriptor added on the looper's own thread, then a poll that waits for ever: it waits until the descriptor is
+ * readable (written 200 ms later by another thread) and answers its ident, where it answered -1 at once, kicked by the
+ * add -- android_native_app_glue's thread of KOReader's launcher took that -1 for "the activity is ready" and started its
+ * Lua while the activity was still in onCreate (issue #23).
+ */
+static struct {
+    int write_fd;
+    int added_poll, waited, waited_fd, removed_poll, woken_poll;
+} G_LOOPER;
+
+static MG_HOSTCB void looper_writer(void *arg)
+{
+    gssize (*write_)(int, const void *, size_t) = (gssize (*)(int, const void *, size_t))mg_bionic_find("write");
+    (void)arg;
+    mg_sleep_ns(200000000ull);
+    write_(G_LOOPER.write_fd, "x", 1);
+}
+
+static MG_HOSTCB void looper_waiter(void *arg)
+{
+    void *(*prepare)(int) = (void *(*)(int))mg_bionic_find("ALooper_prepare");
+    int (*add_fd)(void *, int, int, int, void *, void *) = (int (*)(void *, int, int, int, void *, void *))mg_bionic_find("ALooper_addFd");
+    int (*remove_fd)(void *, int) = (int (*)(void *, int))mg_bionic_find("ALooper_removeFd");
+    void (*wake)(void *) = (void (*)(void *))mg_bionic_find("ALooper_wake");
+    int (*poll_all)(int, int *, int *, void **) = (int (*)(int, int *, int *, void **))mg_bionic_find("ALooper_pollAll");
+    int (*pipe_)(int *) = (int (*)(int *))mg_bionic_find("pipe");
+    int (*close_)(int) = (int (*)(int))mg_bionic_find("close");
+    int a[2] = { -1, -1 }, b[2] = { -1, -1 }, fd = -1;
+    void *looper = prepare(0);
+    mg_thread *writer;
+    (void)arg;
+    if (pipe_(a) || pipe_(b)) return;
+    add_fd(looper, a[0], 1, 1 /* ALOOPER_EVENT_INPUT */, NULL, NULL);
+    G_LOOPER.added_poll = poll_all(0, NULL, NULL, NULL);
+    /* Another added just before a wait for ever, as the glue adds its command pipe and then waits: the wait is the descriptor's. */
+    add_fd(looper, b[0], 2, 1, NULL, NULL);
+    G_LOOPER.write_fd = a[1];
+    writer = mg_thread_start(looper_writer, NULL, 64 * 1024, "test-looper-writer");
+    G_LOOPER.waited = poll_all(-1, &fd, NULL, NULL);
+    G_LOOPER.waited_fd = fd == a[0];
+    if (writer) mg_thread_join(writer);
+    remove_fd(looper, a[0]);
+    G_LOOPER.removed_poll = poll_all(0, NULL, NULL, NULL);
+    wake(looper);
+    G_LOOPER.woken_poll = poll_all(0, NULL, NULL, NULL);
+    remove_fd(looper, b[0]);
+    close_(a[0]);
+    close_(a[1]);
+    close_(b[0]);
+    close_(b[1]);
+}
+
+static void test_looper_wake(void)
+{
+    mg_thread *t;
+    say("ALooper: a descriptor added or removed wakes no poll; ALooper_wake does");
+    if (!mg_bionic_find("ALooper_wake") || !mg_bionic_find("pipe")) {
+        CHECK(!"the NDK's functions are registered");
+        return;
+    }
+    memset(&G_LOOPER, 0, sizeof(G_LOOPER));
+    t = mg_thread_start(looper_waiter, NULL, 256 * 1024, "test-looper");
+    CHECK(t != NULL);
+    if (t) mg_thread_join(t);
+    say("  after an add %d, the wait for ever %d (its descriptor %d), after a remove %d, after ALooper_wake %d", G_LOOPER.added_poll, G_LOOPER.waited,
+        G_LOOPER.waited_fd, G_LOOPER.removed_poll, G_LOOPER.woken_poll);
+    CHECK_INT(G_LOOPER.added_poll, -3);       /* ALOOPER_POLL_TIMEOUT */
+    CHECK_INT(G_LOOPER.waited, 1);
+    CHECK_INT(G_LOOPER.waited_fd, 1);
+    CHECK_INT(G_LOOPER.removed_poll, -3);
+    CHECK_INT(G_LOOPER.woken_poll, -1);       /* ALOOPER_POLL_WAKE */
 }
 
 #if MG_GUEST_CODE
@@ -7908,6 +8139,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_mmap_commit();
     test_mmap_file(scratch);
     test_host_fonts(scratch);
+    test_host_font_names(scratch);
     test_mmap_file_written(scratch);
     test_mmap_write_back_unlocked(scratch);
     test_mmap_lock_order(scratch);
@@ -7922,6 +8154,7 @@ int mg_tests_run(const char *libdir, const char *scratch, mg_test_sink sink, voi
     test_shm_views();
     test_free_stretches();
     test_input();
+    test_looper_wake();
     test_audio_callback_stack();
     test_audio_heard();
     {

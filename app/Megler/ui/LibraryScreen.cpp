@@ -59,7 +59,10 @@ UIElement apkRow(const ApkEntry& entry) {
         onPhone = phone.step;
         color = p.primary;
     } else if (phone.installed == separateApps::Installed::yes) {
-        onPhone = phone.outdated ? "Installed, made by Megler " + phone.version + ": to update" : std::string("Installed");
+        // (To update: made by another Megler, or its Graphics no longer what its package was made with -- shell/Graphics.h.)
+        onPhone = !phone.outdated                                         ? std::string("Installed")
+                  : phone.graphics == separateApps::Graphics::asMade ? "Installed, made by Megler " + phone.version + ": to update"
+                                                                          : std::string("Installed, its Graphics changed: to update");
         color = phone.outdated ? p.orange : p.green;
     } else if (phone.installed == separateApps::Installed::no && entry.report.ready()) {
         onPhone = "Not installed";
@@ -297,6 +300,15 @@ private:
                 java.Margin(ThicknessHelper::FromLengths(0, 4, 0, 0));
                 empty.Children().Append(java);
             }
+            // Apps of Megler's installed on the phone that its library lacks: moved from another phone (WP Migrate), or
+            // installed while Megler had another library (separateApps::strayCount).
+            if (const unsigned stray = separateApps::strayCount()) {
+                auto rescan = textButton(format(stray == 1 ? "Add the App Installed on This Phone" : "Add the %u Apps Installed on This Phone", stray),
+                                         [this] { separateApps::rescanLibrary(shell_); });
+                rescan.HorizontalAlignment(HorizontalAlignment::Center);
+                rescan.Margin(ThicknessHelper::FromLengths(0, 4, 0, 0));
+                empty.Children().Append(rescan);
+            }
             listHost_.Content(empty);
             return;
         }
@@ -338,15 +350,42 @@ private:
         const auto outdated = separateApps::outdatedIds();
         if (separateApps::working().empty() && !outdated.empty()) {
             auto column = vstack(16);
-            auto line = text(format("%u of the apps on the phone were made by another Megler. A package carries the Megler that made it: "
-                                    "Update All makes and installs each again with this one.",
-                                    unsigned(outdated.size())),
+            // (Or their Graphics changed, where Mesa's freedreno can be chosen: it goes into an app's package only while the app
+            // draws with it, shell/Graphics.h.)
+            auto line = text(appPackage::mesaChoosable()
+                                 ? format("%u of the apps on the phone are to be updated: made by another Megler (a package carries the Megler "
+                                          "that made it), or with other Graphics than they are set to now (Mesa's freedreno is in an app's "
+                                          "package only while the app draws with it). Update All makes and installs each again with this one.",
+                                          unsigned(outdated.size()))
+                                 : format("%u of the apps on the phone were made by another Megler. A package carries the Megler that made it: "
+                                          "Update All makes and installs each again with this one.",
+                                          unsigned(outdated.size())),
                              font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
             line.TextWrapping(TextWrapping::Wrap);
             add(column, line);
             auto update = primaryButton("Update All", glyphs::refresh, [this] { separateApps::updateAll(shell_); });
             update.HorizontalAlignment(HorizontalAlignment::Right);
             add(column, update);
+            auto box = card(column, 12, 16);
+            box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
+            add(top, box);
+        }
+        // Apps of Megler's installed on the phone that the library has no entry of: moved from another phone with Megler's shared
+        // folder (WP Migrate installs their packages, and Megler's library stays behind), or installed while Megler had another
+        // library. They ran, but had no page here, and Update All left them out.
+        if (const unsigned stray = separateApps::strayCount(); stray && separateApps::working().empty()) {
+            auto column = vstack(16);
+            auto line = text(format(stray == 1 ? "An app of Megler's is installed on this phone and not in the library: moved from another "
+                                                 "phone, or installed while Megler had another library."
+                                               : "%u apps of Megler's are installed on this phone and not in the library: moved from another "
+                                                 "phone, or installed while Megler had another library.",
+                                    stray),
+                             font::bodyMedium, weightNormal(), palette().onSurfaceVariant);
+            line.TextWrapping(TextWrapping::Wrap);
+            add(column, line);
+            auto rescan = primaryButton("Add to Library", glyphs::add, [this] { separateApps::rescanLibrary(shell_); });
+            rescan.HorizontalAlignment(HorizontalAlignment::Right);
+            add(column, rescan);
             auto box = card(column, 12, 16);
             box.Margin(ThicknessHelper::FromLengths(0, 8, 0, 8));
             add(top, box);

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Main's step "disabled-activities": an activity whose android:enabled is this resource, as Android's Settings has its Tips &
+     support on config_support_enabled. -->
+<resources>
+    <bool name="tile_configured">false</bool>
+</resources>

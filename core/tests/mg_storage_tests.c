@@ -1601,6 +1601,75 @@ static void test_odd_names(void)
 }
 
 /*
+ * A descriptor the core opened by the host's path (mg_fd_open_host: a ParcelFileDescriptor's file) has no guest path: fstat
+ * gives it its size and no execute bit, whether or not a bit is kept for any file (the Play Store ended in fstat of one, its
+ * FileChannel.map's size, at 0.1.0.750: strstr of a null path).
+ */
+static bool host_fd_no_exec(const char *file, i64 size)
+{
+    char *host = mg_fs_host_path(file);
+    int hfd = host ? mg_fd_open_host(host, MG_O_READ) : -1;
+    t_stat st;
+    bool ok = hfd >= 0 && C.fstat(hfd, &st) == 0 && (st.st_mode & 0111) == 0 && st.st_size == size;
+    if (hfd >= 0) C.close(hfd);
+    free(host);
+    return ok;
+}
+
+/*
+ * A file's execute bit (exec_bit in mg_libc_io.c): none for a file the app made, as Android makes them, so access(X_OK) --
+ * File.canExecute -- says no of it, and of one made read-only: Facebook loads a module it downloaded only when canWrite and
+ * canExecute say no and canRead yes (Messenger 586: "Downloaded module file must be read only: ... read only:false").
+ * chmod and fchmod give it and take it away, stat and fstat say it, a rename takes it along (a directory's too), an unlink
+ * drops it; a directory may be searched; the app's library folder's files have one, as Android's are 0755.
+ */
+static void test_file_exec_bits(void)
+{
+    const char *dir = "/data/data/" PKG "/files/exec", *file = "/data/data/" PKG "/files/exec/download.zip";
+    const char *other = "/data/data/" PKG "/files/exec/moved.zip", *sub = "/data/data/" PKG "/files/exec/sub";
+    const char *in_sub = "/data/data/" PKG "/files/exec/sub/tool", *sub2 = "/data/data/" PKG "/files/exec/sub2";
+    const char *lib = "/data/data/" PKG "/lib/libmodes.so", *lib_dir = "/data/data/" PKG "/lib";
+    t_stat st;
+    bool lib_made;
+    int fd;
+    say("a file's execute bit: none for a file made, chmod and fchmod, stat, access, rename and unlink");
+    C.mkdir("/data/data/" PKG "/files", 0700);
+    CHECK(C.mkdir(dir, 0700) == 0 || last_errno() == GE_EXIST);
+    CHECK(put(file, "zip") && C.access(file, 1) == -1 && last_errno() == GE_ACCES && C.stat(file, &st) == 0 && (st.st_mode & 0111) == 0);
+    CHECK(host_fd_no_exec(file, 3));
+    /* Facebook's test of a module: made read-only, it may not be written nor executed, and may be read. */
+    CHECK(C.chmod(file, 0444) == 0 && C.access(file, 2) == -1 && C.access(file, 1) == -1 && last_errno() == GE_ACCES && C.access(file, 4) == 0);
+    CHECK(C.access(file, 0) == 0 && C.access(file, 5) == -1 && C.access(file, 6) == -1);
+    /* Executable: chmod's owner bit, which stat and fstat say; fchmod takes it away and gives it back. */
+    CHECK(C.chmod(file, 0755) == 0 && C.access(file, 1) == 0 && C.access(file, 7) == 0 && C.stat(file, &st) == 0 && (st.st_mode & 0100) != 0);
+    CHECK(C.chmod(file, 0655) == 0 && C.access(file, 1) == -1 && C.chmod(file, 0500) == 0 && C.access(file, 1) == 0 && C.access(file, 2) == -1);
+    fd = C.open(file, T_RDONLY, 0);
+    CHECK(fd >= 0 && C.fstat(fd, &st) == 0 && (st.st_mode & 0100) != 0 && (st.st_mode & 0222) == 0);
+    CHECK(fd >= 0 && C.fchmod(fd, 0644) == 0 && C.access(file, 1) == -1 && C.fstat(fd, &st) == 0 && (st.st_mode & 0111) == 0);
+    CHECK(fd >= 0 && C.fchmod(fd, 0700) == 0 && C.access(file, 1) == 0);
+    if (fd >= 0) C.close(fd);
+    CHECK(host_fd_no_exec(file, 3));
+    /* A rename takes it along, and back; what was renamed over loses its own. */
+    CHECK(C.rename(file, other) == 0 && C.access(other, 1) == 0 && stat_errno(file) == GE_NOENT && C.rename(other, file) == 0 && C.access(file, 1) == 0);
+    CHECK(put(other, "plain") && C.rename(other, file) == 0 && C.access(file, 1) == -1 && C.chmod(file, 0700) == 0);
+    /* An unlink drops it: a file made again at the path has none. */
+    CHECK(C.unlink(file) == 0 && put(file, "again") && C.access(file, 1) == -1 && C.unlink(file) == 0);
+    /* A directory may be searched, and one renamed takes its files' bits along. */
+    CHECK(C.access(dir, 1) == 0 && C.mkdir(sub, 0700) == 0 && put(in_sub, "#!") && C.chmod(in_sub, 0700) == 0 && C.rename(sub, sub2) == 0);
+    {
+        char *moved = mg_sprintf("%s/tool", sub2);
+        CHECK(C.access(moved, 1) == 0 && C.chmod(moved, 0600) == 0 && C.access(moved, 1) == -1 && C.unlink(moved) == 0);
+        free(moved);
+    }
+    CHECK(C.rmdir(sub2) == 0 && C.rmdir(dir) == 0);
+    /* The library folder's files are executable, as Android's package manager makes them. */
+    lib_made = C.mkdir(lib_dir, 0700) == 0;
+    CHECK(lib_made || last_errno() == GE_EXIST);
+    CHECK(put(lib, "\177ELF") && C.access(lib, 1) == 0 && C.stat(lib, &st) == 0 && (st.st_mode & 0100) != 0 && C.unlink(lib) == 0);
+    if (lib_made) C.rmdir(lib_dir);
+}
+
+/*
  * A file's write bits, as chmod takes them away and gives them back (File.setReadOnly and setWritable): Facebook makes each
  * module it downloads read-only and loads only one that is ("Downloaded module file must be read only"). Read-only, a file
  * says so in stat and fstat, refuses access(W_OK) and an open for writing, and still opens for reading; it is replaced by a
@@ -1642,6 +1711,7 @@ static void test_file_modes(void)
     CHECK(C.chmod(dir, 0500) == 0 && put(inside, "x") && C.unlink(inside) == 0);
     CHECK(C.chmod("/data/data/" PKG "/files/modes/none", 0444) == -1 && last_errno() == GE_NOENT);
     CHECK(C.unlink(file) == 0 && C.rmdir(dir) == 0);
+    test_file_exec_bits();
 }
 
 /*

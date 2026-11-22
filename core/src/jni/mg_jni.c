@@ -2132,11 +2132,31 @@ static mg_jobj *l_ExceptionOccurred(JNIEnvP e) { return given_local(j_ExceptionO
 /* ------------------------------------------------------------- the tables */
 
 static void *g_env_table[240];
-static void **g_env = g_env_table;         /* a JNIEnv is a pointer to the table pointer */
 static void *g_vm_table[8];
 static void **g_vm = g_vm_table;
 
-void *mg_jni_env(void) { return &g_env; }
+/*
+ * A JNIEnv is a pointer to the table pointer, and each thread has its own, as each of ART's threads has its JNIEnvExt: native
+ * code may put a table of its own in its thread's JNIEnv, and the other threads keep the runtime's. Chrome 158 does: its
+ * table's FindClass asks its isolated splits' class loaders first, then the FindClass of the table it replaced, which it
+ * keeps for its thread alone. With one JNIEnv for the process, Chrome's table was every thread's -- Google Play services'
+ * threads in its process too, whose native libraries' JNI_OnLoad (Cronet's, DroidGuard's, conscrypt's) had their classes
+ * looked for among Chrome's splits and then, finding no table of that thread's to call, ended Chrome with an access
+ * violation at 0x18 in libchrome.so (0.1.0.755, the HP Elite x3). A thread's cell is made at its first JNIEnv and never
+ * freed: a word, and native code that keeps a JNIEnv past its thread still reads the runtime's table there.
+ */
+static MG_THREAD_LOCAL void **t_env;
+
+void *mg_jni_env(void)
+{
+    void **env = t_env;
+    if (!env) {
+        env = (void **)mg_alloc(sizeof(void *));
+        *env = g_env_table;
+        t_env = env;
+    }
+    return env;
+}
 void *mg_jni_vm(void) { return &g_vm; }
 
 /*

@@ -38,7 +38,9 @@
  *       start one of the Java test apps (core/tests/app) through megler_run on that Android root, with a stand-in
  *       for the shell's drawing; check what it logs and draws, touch it, press Back; write each picture as a BMP
  *   mg_tests --java app <apk> <data dir> <android root> <picture dir | -> <verbose> <WIDTHxHEIGHT@DPI> [tap:X,Y | drag:X,Y,X2,Y2 | wait:MS | back | key:CODE]...
- *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked
+ *       the same for any APK: started, its pictures written (app-1, and one more after each step of the script), nothing checked;
+ *       with MG_GFX_RECORD=<record file> its drawing is recorded as --gfx-record's is, each of those pictures in it, for
+ *       --gfx-replay to draw again with the shell's Direct2D (its pictures <name>-N are the app-N of the run)
  *   mg_tests --gfx-windows <picture dir | -> [gpu | warp | memory | copy]
  *       the shell's drawing (app/Megler/player/GfxHost.cpp: Direct2D, DirectWrite, WIC) through megler_gfx_host: scenes drawn,
  *       written as PNG files, compared with the stand-in's and checked (mg_gfx_scenes.c). On this machine's graphics processor
@@ -91,16 +93,22 @@
  *       tests' own at that address (tools/device-portal-mock.py, which tools/build-tests.sh win starts): its handshake, user
  *       name and password, CSRF token, an install, a refused one, the list of the packages, an uninstall. Only in the build
  *       tools/build-tests.sh win makes; any other says so and does nothing
- *   mg_tests --angle-windows <ANGLE dir> <scratch dir> [9_3]
+ *   mg_tests --angle-windows <ANGLE dir> <scratch dir> [9_3] [mesa|mesa-missing|mesa-any-gpu]
  *       OpenGL ES 1 on ANGLE itself (mg_angle_windows.c): Megler's own ANGLE for this PC from that folder
  *       (tools/build-angle.py --arch x64), loaded and driven by the core's EGL as an app's Java drives it, at Direct3D
  *       feature level 9_3 (the flag egl-level-9_3, as a Lumia 650's graphics processor has) or at this PC's own; scenes drawn
  *       as Google Maps' legacy renderer draws them, read back and checked, each written as a BMP into the scratch folder.
+ *       With a Mesa mode, Mesa's freedreno is asked for first where it cannot be had (its DLLs missing, this PC's graphics
+ *       processor no Adreno, its DLLs not loaded): ANGLE instead, and why in one line of the log.
  *       Only in the build tools/build-tests.sh win makes; any other says so and does nothing
  *   mg_tests --bundles <test apps dir> <scratch dir> [real bundles dir]
  *       bundles of split APKs (.apks, .xapk, .apkm) unpacked as the shell unpacks them, and the APK report of what comes out
  *       (mg_bundle_tests.c): the test app `splits` in the folder of the test apps (build/guest/java), and the real bundles
  *       in the third folder where one is named
+ *   mg_tests --data-zip <zip> <data dir> <package>
+ *       a ZIP of an app's data installed as the app page's Install Data from ZIP installs it (megler_data_zip_install),
+ *       into the app's own storage under the data folder, where an app run with that data folder (--java app) finds it;
+ *       what it said (the log has the folder it left out, if any)
  *   mg_tests --icon <apk> <out file> [drawable]
  *       the APK's icon as megler_apk_icon gives it, written to the file: a picture of the APK's, or one drawn from its
  *       drawables (core/src/apk/mg_icon.c: an adaptive icon, a vector), to look at; with a drawable's path in the APK
@@ -1656,7 +1664,7 @@ static int window_windows_mode(void)
 /* ------------------------------------------------------- --angle-windows */
 
 /* mg_angle_windows.c: OpenGL ES 1 on ANGLE itself, through the core's EGL, at feature level 9_3 or at this PC's own. */
-int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, mg_test_sink sink, void *user, int *checks,
+int mg_angle_windows_run(const char *dir, const char *scratch, bool level_9_3, const char *mesa, mg_test_sink sink, void *user, int *checks,
                          bool (*label)(void *user, const char *ascii, u32 ink, u32 halo, int w, int h, u8 *rgba), void *label_user);
 
 #ifdef MG_GFX_WINDOWS
@@ -1730,7 +1738,14 @@ static bool angle_label(void *user, const char *ascii, u32 ink, u32 halo, int w,
 static int angle_windows_mode(int argc, char **argv)
 {
     megler_config config;
-    int checks = 0, failed;
+    int checks = 0, failed, i;
+    bool level_9_3 = false;
+    const char *mesa = NULL;
+    /* [9_3] [mesa | mesa-missing | mesa-any-gpu], in either order. */
+    for (i = 4; i < argc; i++) {
+        if (!strcmp(argv[i], "9_3")) level_9_3 = true;
+        else if (!strncmp(argv[i], "mesa", 4)) mesa = argv[i];
+    }
     memset(&config, 0, sizeof(config));
     mg_path_mkdirs(argv[3]);
     config.data_dir = argv[3];
@@ -1739,10 +1754,10 @@ static int angle_windows_mode(int argc, char **argv)
     megler_init(&config);
 #ifdef MG_GFX_WINDOWS
     /* Google Maps' labels as Megler draws them, by the shell's drawing in memory. */
-    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, angle_label,
+    failed = mg_angle_windows_run(argv[2], argv[3], level_9_3, mesa, print_line, NULL, &checks, angle_label,
                                   (void *)mg_gfx_windows_host(print_line, NULL, 2));
 #else
-    failed = mg_angle_windows_run(argv[2], argv[3], argc >= 5 && !strcmp(argv[4], "9_3"), print_line, NULL, &checks, NULL, NULL);
+    failed = mg_angle_windows_run(argv[2], argv[3], level_9_3, mesa, print_line, NULL, &checks, NULL, NULL);
 #endif
     printf("%d checks, %d failed\n", checks, failed);
     return failed ? 1 : 0;
@@ -1822,6 +1837,20 @@ int main(int argc, char **argv)
         config.package_dir = argv[3];
         megler_init(&config);
         return mg_bundle_tests_run(argv[2], argv[3], argc >= 5 ? argv[4] : NULL) ? 1 : 0;
+    }
+    if (argc >= 5 && !strcmp(argv[1], "--data-zip")) {
+        megler_config config;
+        char *json;
+        bool ok;
+        memset(&config, 0, sizeof(config));
+        config.data_dir = argv[3];
+        config.package_dir = argv[3];
+        megler_init(&config);
+        json = megler_data_zip_install(argv[2], argv[3], argv[4], NULL, NULL);
+        ok = json && strstr(json, "\"ok\":true");
+        printf("%s\n", json ? json : "(nothing)");
+        megler_free(json);
+        return ok ? 0 : 1;
     }
     if (argc >= 4 && !strcmp(argv[1], "--sqlite-hold")) return mg_tests_sqlite_hold(argv[2], argv[3]);
 #if MG_GUEST_CODE

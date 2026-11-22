@@ -13,6 +13,8 @@
 // Application is attached: the field was not there (NoSuchFieldException: mInstrumentation, 0.1.0.699), and its own was
 // never in place.
 // Everything else is the original's, unchanged.
+// And getPackageManager, the package manager's hidden interface as AppGlobals gives it, which an app of the platform's own
+// (Android's Settings) calls.
 package android.app;
 
 /** The hidden ActivityThread apps reach by reflection for the process's Application (ActivityThread.currentApplication() and
@@ -44,13 +46,13 @@ public final class ActivityThread {
         }
         t.mInitialApplication = app;
     }
+    /** The package manager's hidden interface, as AppGlobals.getPackageManager gives it (an app of the platform's own has it). */
+    public static android.content.pm.IPackageManager getPackageManager() { return android.app.AppGlobals.getPackageManager(); }
     public static String currentPackageName() { Application a = currentApplication(); return a != null ? a.getPackageName() : null; }
     public static String currentOpPackageName() { return currentPackageName(); }
-    /* As Application.getProcessName (overlaid): the process of the code that asks, a class scope's for code of one. */
-    public static String currentProcessName() {
-        String scoped = megler.Processes.nameOf(dalvik.system.VMStack.getClosestUserClassLoader());
-        return scoped != null ? scoped : currentPackageName();
-    }
+    /* As Application.getProcessName (overlaid): the process of the code that asks, a class scope's for code of one, the own
+       scope's (megler.Processes.own) for the app's. */
+    public static String currentProcessName() { return megler.Processes.current(); }
     public static boolean isSystem() { return false; }
 
     public Application getApplication() { return mInitialApplication; }

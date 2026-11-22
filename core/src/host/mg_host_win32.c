@@ -459,6 +459,13 @@ bool mg_mem_page_state(const void *p, bool *committed, int *prot)
     }
     return true;
 }
+int mg_mem_writable(const void *p)
+{
+    MEMORY_BASIC_INFORMATION info;
+    if (VirtualQuery(p, &info, sizeof(info)) != sizeof(info)) return -1;
+    /* (A guard page, a stack's, is written once the system has grown the stack over it.) */
+    return info.State == MEM_COMMIT && (info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+}
 #define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
 void mg_mem_release(void *p, size_t size) { (void)size; VirtualFree(p, 0, MEM_RELEASE); }
 void mg_icache_flush(void *p, size_t size) { FlushInstructionCache(GetCurrentProcess(), p, size); }
@@ -5028,6 +5035,113 @@ void *mg_dl_open(const char *name)
 
 void *mg_dl_sym(void *lib, const char *name) { return (void *)GetProcAddress((HMODULE)lib, name); }
 
+void *mg_dl_open_file(const char *path)
+{
+    wchar_t *w = wide_path(path);
+    HMODULE h;
+    DWORD e;
+    SetLastError(0);
+    /* (Its own folder searched first for what it imports, as for a program's DLLs: Mesa's two DLLs import its driver.) */
+    h = LoadLibraryExW(w, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    e = GetLastError();
+    if (!h) mg_err("host: %s did not load: Windows error %lu (%s)", path, (unsigned long)e, dl_error_meaning(e));
+    free(w);
+    return (void *)h;
+}
+
+bool mg_host_setenv(const char *name, const char *value)
+{
+    wchar_t *n = wide_of(name), *v = wide_of(value);
+    BOOL ok = SetEnvironmentVariableW(n, v);
+    free(n);
+    free(v);
+    return ok != 0;
+}
+
+/* -------------------------------------------- the host DLLs' standard error */
+
+/* The pipe the DLLs loaded meanwhile take as their standard error, its reading end, and what it was before. */
+static HANDLE g_stderr_read = INVALID_HANDLE_VALUE, g_stderr_write = INVALID_HANDLE_VALUE, g_stderr_was;
+static char g_stderr_prefix[32];
+
+/* One line of theirs into the log: the first 2000 of a process, then a count every 1000 more (a DLL that says the same
+   every frame does not fill the log). */
+static void stderr_line(const char *line, unsigned *said, unsigned *left_out)
+{
+    if (!line[0]) return;
+    if (*said < 2000) {
+        (*said)++;
+        mg_warn("%s%s", g_stderr_prefix, line);
+    } else if (++*left_out % 1000 == 1) {
+        mg_warn("%s(more lines than the log takes of them: %u left out so far)", g_stderr_prefix, *left_out);
+    }
+}
+
+static DWORD WINAPI stderr_reader(LPVOID unused)
+{
+    char buf[512], line[512];
+    size_t n = 0;
+    unsigned said = 0, left_out = 0;
+    DWORD got = 0, i;
+    (void)unused;
+    while (ReadFile(g_stderr_read, buf, sizeof(buf), &got, NULL) && got) {
+        for (i = 0; i < got; i++) {
+            if (buf[i] == '\r') continue;
+            if (buf[i] == '\n' || n == sizeof(line) - 1) {
+                line[n] = 0;
+                stderr_line(line, &said, &left_out);
+                n = 0;
+                if (buf[i] == '\n') continue;
+            }
+            line[n++] = buf[i];
+        }
+    }
+    return 0;
+}
+
+bool mg_host_stderr_to_log_begin(const char *prefix)
+{
+    if (g_stderr_write == INVALID_HANDLE_VALUE) {
+        /* (CreatePipe found where SetStdHandle is, the system's kernelbase, rather than imported: an import a phone's
+           API sets lacked would keep Megler from starting at all, where this only goes without.) */
+        typedef BOOL(WINAPI * create_pipe_fn)(PHANDLE, PHANDLE, LPSECURITY_ATTRIBUTES, DWORD);
+        HMODULE base = NULL;
+        create_pipe_fn create_pipe = NULL;
+        HANDLE r, w, t;
+        if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCWSTR)(void *)&SetStdHandle, &base))
+            create_pipe = (create_pipe_fn)(void *)GetProcAddress(base, "CreatePipe");
+        if (!create_pipe) {
+            mg_warn("host: no CreatePipe for the standard error of the DLLs about to load");
+            return false;
+        }
+        if (!create_pipe(&r, &w, NULL, 0)) {
+            mg_warn("host: no pipe for the standard error of the DLLs about to load (Windows error %lu)", (unsigned long)GetLastError());
+            return false;
+        }
+        mg_strlcpy(g_stderr_prefix, prefix, sizeof(g_stderr_prefix));
+        g_stderr_read = r;
+        t = CreateThread(NULL, 0, stderr_reader, NULL, 0, NULL);
+        if (!t) {
+            mg_warn("host: no thread to read the standard error of the DLLs about to load (Windows error %lu)", (unsigned long)GetLastError());
+            CloseHandle(r);
+            CloseHandle(w);
+            g_stderr_read = INVALID_HANDLE_VALUE;
+            return false;
+        }
+        CloseHandle(t);
+        g_stderr_write = w;
+    }
+    g_stderr_was = GetStdHandle(STD_ERROR_HANDLE);
+    if (!SetStdHandle(STD_ERROR_HANDLE, g_stderr_write)) {
+        mg_warn("host: the standard error could not be set for the DLLs about to load (Windows error %lu)", (unsigned long)GetLastError());
+        return false;
+    }
+    return true;
+}
+
+void mg_host_stderr_to_log_end(void) { SetStdHandle(STD_ERROR_HANDLE, g_stderr_was); }
+
 #if defined(MG_ELF_HOST)
 bool mg_core_image(mg_addr *base, size_t *size);
 #endif
@@ -5571,6 +5685,30 @@ bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
     if (adapter3) IDXGIAdapter3_Release(adapter3);
     if (adapter) IDXGIAdapter_Release(adapter);
     if (dxgi) IDXGIDevice_Release(dxgi);
+    return ok;
+}
+
+bool mg_host_gpu_adapter(char *name, size_t size, u32 *vendor)
+{
+    ID3D11Device *device = NULL;
+    IDXGIDevice *dxgi = NULL;
+    IDXGIAdapter *adapter = NULL;
+    DXGI_ADAPTER_DESC desc;
+    bool ok = false;
+    if (size) name[0] = 0;
+    *vendor = 0;
+    memset(&desc, 0, sizeof(desc));
+    if (SUCCEEDED(D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, NULL, 0, D3D11_SDK_VERSION, &device, NULL, NULL)) && device &&
+        SUCCEEDED(ID3D11Device_QueryInterface(device, &g_iid_dxgi_device, (void **)&dxgi)) && dxgi && SUCCEEDED(IDXGIDevice_GetAdapter(dxgi, &adapter)) &&
+        adapter && SUCCEEDED(IDXGIAdapter_GetDesc(adapter, &desc))) {
+        if (size) WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, (int)size, NULL, NULL);
+        if (size) name[size - 1] = 0;
+        *vendor = (u32)desc.VendorId;
+        ok = true;
+    }
+    if (adapter) IDXGIAdapter_Release(adapter);
+    if (dxgi) IDXGIDevice_Release(dxgi);
+    if (device) ID3D11Device_Release(device);
     return ok;
 }
 

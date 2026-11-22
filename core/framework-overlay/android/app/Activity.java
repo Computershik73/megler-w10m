@@ -60,6 +60,10 @@
 // and what onProvideReferrer gives goes into the intents of the activities this one starts. It was null, and Device Info HW
 // ended at its start.
 // Everything else is the original's, unchanged.
+//
+// And startActivityAsUser and startActivityForResultAsUser are startActivity and startActivityForResult, as the phone has one
+// user; they did nothing. Android's own Settings (AOSP 9, which Megler's package carries) opens each section of its main
+// screen so (DashboardFeatureProviderImpl.launchIntentOrSelectProfile).
 package android.app;
 
 import android.content.*;
@@ -501,13 +505,17 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
     public LayoutInflater getLayoutInflater() { return getWindow().getLayoutInflater(); }
     public MenuInflater getMenuInflater() { return new MenuInflater(this); }
     public ActionBar getActionBar() { initWindowDecorActionBar(); return mActionBar; }
-    public void setActionBar(android.widget.Toolbar t) { if (t != null) t.setTitle(getTitle()); }
+    /* A toolbar of the app's own as the activity's action bar, as Android's ToolbarActionBar (megler.SimpleActionBar): the title,
+       the up button, the options menu on it. (It only had the title it had then.) */
+    public void setActionBar(android.widget.Toolbar t) {
+        mActionBar = t != null ? new megler.SimpleActionBar(this, t) : null;   /* (which makes the options menu on it, posted) */
+    }
     public void setTitle(CharSequence t) { mTitle = t; onTitleChanged(t, mTitleColor); if (mParent != null) mParent.onChildTitleChanged(this, t); }
     public void setTitle(int id) { setTitle(getText(id)); }
     public void setTitleColor(int c) { mTitleColor = c; }
     public final CharSequence getTitle() { return mTitle; }
     public final int getTitleColor() { return mTitleColor; }
-    protected void onTitleChanged(CharSequence t, int color) { if (mWindow != null) mWindow.setTitle(t); }
+    protected void onTitleChanged(CharSequence t, int color) { if (mWindow != null) mWindow.setTitle(t); if (mActionBar != null) mActionBar.setWindowTitle(t); }
     protected void onChildTitleChanged(Activity child, CharSequence t) {}
     public void onContentChanged() {}
     public void onWindowFocusChanged(boolean f) {}
@@ -928,12 +936,27 @@ public class Activity extends ContextThemeWrapper implements Window.Callback, Ke
             public void showLockTaskEscapeMessage() {}
             public void startActivityAsCaller(android.content.Intent p0, android.os.Bundle p1, boolean p2, int p3) {}
             public void startActivityAsCaller(android.content.Intent p0, android.os.Bundle p1, boolean p2, int p3, int p4) {}
-            public void startActivityAsUser(android.content.Intent p0, android.os.Bundle p1, android.os.UserHandle p2) {}
-            public void startActivityAsUser(android.content.Intent p0, android.os.UserHandle p1) {}
+            public void startActivityAsUser(android.content.Intent p0, android.os.Bundle p1, android.os.UserHandle p2) {
+                // the phone has one user
+                startActivity(p0, p1);
+            }
+            public void startActivityAsUser(android.content.Intent p0, android.os.UserHandle p1) {
+                // the phone has one user
+                startActivity(p0);
+            }
             public void startActivityForResult(java.lang.String p0, android.content.Intent p1, int p2, android.os.Bundle p3) {}
-            public void startActivityForResultAsUser(android.content.Intent p0, int p1, android.os.Bundle p2, android.os.UserHandle p3) {}
-            public void startActivityForResultAsUser(android.content.Intent p0, int p1, android.os.UserHandle p2) {}
-            public void startActivityForResultAsUser(android.content.Intent p0, java.lang.String p1, int p2, android.os.Bundle p3, android.os.UserHandle p4) {}
+            public void startActivityForResultAsUser(android.content.Intent p0, int p1, android.os.Bundle p2, android.os.UserHandle p3) {
+                // the phone has one user
+                startActivityForResult(p0, p1, p2);
+            }
+            public void startActivityForResultAsUser(android.content.Intent p0, int p1, android.os.UserHandle p2) {
+                // the phone has one user
+                startActivityForResult(p0, p1);
+            }
+            public void startActivityForResultAsUser(android.content.Intent p0, java.lang.String p1, int p2, android.os.Bundle p3, android.os.UserHandle p4) {
+                // the phone has one user
+                startActivityForResult(p0, p2, p3);
+            }
             public void startActivityFromChild(android.app.Activity p0, android.content.Intent p1, int p2, android.os.Bundle p3) {}
             public void startActivityFromFragment(android.app.Fragment p0, android.content.Intent p1, int p2, android.os.Bundle p3) {}
             public boolean startActivityIfNeeded(android.content.Intent p0, int p1, android.os.Bundle p2) { return false; }

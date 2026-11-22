@@ -7,7 +7,9 @@
 // that high. The list in it then had less than its rows: the platform's popup background is a nine-patch with a shadow
 // around the panel, 14 pixels above and below at 280 dpi, and this class gives its list 8 dp of padding at either end,
 // which the list does not count before it has been measured once. QuickShortcutMaker's overflow menu, two rows of 84
-// pixels, got a panel 140 high and showed a row and a half. Everything else is the original's, unchanged.
+// pixels, got a panel 140 high and showed a row and a half. And the theme's floating background, when it is a colour file,
+// is read from the value the theme gives (Resources.loadColorStateList), not asked for by its number, for which a platform
+// colour of Android 12's would be given in its stead. Everything else is the original's, unchanged.
 package android.widget;
 
 import android.content.Context;
@@ -52,7 +54,7 @@ public class ListPopupWindow {
         android.util.TypedValue v = new android.util.TypedValue();
         int bg = 0xFFFFFFFF;
         if (c.getTheme().resolveAttribute(android.R.attr.colorBackgroundFloating, v, true) && v.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT && v.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT) bg = v.data;
-        else if (c.getTheme().resolveAttribute(android.R.attr.colorBackgroundFloating, v, true) && v.resourceId != 0) { try { bg = c.getColor(v.resourceId); } catch (Exception e) {} }
+        else if (c.getTheme().resolveAttribute(android.R.attr.colorBackgroundFloating, v, true) && v.resourceId != 0) { try { bg = c.getResources().loadColorStateList(v, v.resourceId, c.getTheme()).getDefaultColor(); } catch (Exception e) {} }
         g.setColor(bg);
         g.setCornerRadius(4 * c.getResources().getDisplayMetrics().density);
         return g;

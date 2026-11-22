@@ -17,6 +17,7 @@
 #include "../mg_core.h"
 #include "../host/mg_host.h"
 #include "../ld/mg_ld.h"
+#include "../ndk/mg_egl.h"
 #include "../ndk/mg_sensors.h"
 #include "mg_bluetooth.h"
 
@@ -774,6 +775,9 @@ bool mg_run_start(const megler_run_config *config)
     if (g_config.gms_package) mg_info("run: Google Play services go by %s in this app", g_config.gms_package);
     if (g_services_microg) mg_info("run: Google Play services are microG's: their data is the shared folder's services/data-microg");
     g_config.gsf_apk_path = config->gsf_apk_path ? mg_strdup(config->gsf_apk_path) : NULL;
+    /* Which OpenGL ES the app is to draw with, before anything of it is loaded (the string is the caller's: not kept). */
+    mg_egl_choose(config->gles);
+    g_config.gles = NULL;
     /* The host's fonts are the caller's until this returns (megler.h), and read by the driver on the app's thread: kept. */
     g_config.host_fonts = NULL;
     g_config.host_font_count = 0;
@@ -825,26 +829,6 @@ bool mg_run_start(const megler_run_config *config)
     mg_bluetooth_set_host(&g_config.bluetooth);
     /* Each app gets its own Android data directories under ours, and all of them one shared storage. */
     mg_run_files(megler_data_dir(), megler_storage_dir(), info.package, &g_config.storage);
-
-    /*
-     * A NativeActivity of the app's own Java class whose library the reading could not look into (mg_apk.c, native_entry:
-     * not known): the library is loaded -- not started: its constructors run when Java loads it -- and asked for the entry.
-     * Without one, the activity loads the library through JNI itself, as Qt's QtActivity does, and the app is a Java one: the
-     * Java driver starts it, where the NativeActivity driver would end at once ("has no ANativeActivity_onCreate", 2GIS).
-     */
-    if (!strcmp(info.engine, "native-activity") && info.native_entry == -1) {
-        const char *entry = info.func_name[0] ? info.func_name : "ANativeActivity_onCreate";
-        const mg_driver *java = mg_driver_find("java");
-        char name[160];
-        mg_lib *lib;
-        snprintf(name, sizeof(name), "lib%s.so", info.native_library);
-        lib = mg_ld_load(name);
-        if (lib && !mg_ld_sym(lib, entry) && java) {
-            mg_info("run: %s has no %s: its activity (%s) loads it through JNI itself, and the app is started as a Java one", name, entry, info.activity);
-            g_driver = java;
-            strcpy(info.engine, "java");
-        }
-    }
 
     mg_guest_exit_hook = on_guest_exit;
     mg_core_set_crash_hook(on_crash);

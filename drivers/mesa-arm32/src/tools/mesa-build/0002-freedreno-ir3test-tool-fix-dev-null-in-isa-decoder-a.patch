@@ -1,0 +1,255 @@
+From 32f88c8adec920655940b18da24e00a7be0d2f14 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:19 +0700
+Subject: [PATCH 02/15] freedreno: ir3test tool; fix /dev/null in isa decoder
+ and weak ir3_assert_handler on COFF
+
+---
+ src/compiler/isaspec/isaspec_decode_impl.c |   4 +
+ src/freedreno/ir3/instr-a3xx.h             |   8 +
+ src/freedreno/ir3/meson.build              |  13 ++
+ src/freedreno/ir3/tests/ir3test.c          | 174 +++++++++++++++++++++
+ 4 files changed, 199 insertions(+)
+ create mode 100644 src/freedreno/ir3/tests/ir3test.c
+
+diff --git a/src/compiler/isaspec/isaspec_decode_impl.c b/src/compiler/isaspec/isaspec_decode_impl.c
+index 522c76a..ba44564 100644
+--- a/src/compiler/isaspec/isaspec_decode_impl.c
++++ b/src/compiler/isaspec/isaspec_decode_impl.c
+@@ -990,7 +990,11 @@ isa_disasm(void *bin, int sz, FILE *out, const struct isa_decode_options *option
+ 		state->call_targets = BITSET_RZALLOC(state, state->num_instr);
+ 
+ 		/* Do a pre-pass to find all the branch targets: */
++#ifdef _WIN32
++		state->print.out = fopen("NUL", "w");
++#else
+ 		state->print.out = fopen("/dev/null", "w");
++#endif
+ 		state->options = &default_options;   /* skip hooks for prepass */
+ 		disasm(state, bin, sz);
+ 		fclose(state->print.out);
+diff --git a/src/freedreno/ir3/instr-a3xx.h b/src/freedreno/ir3/instr-a3xx.h
+index 5185437..c1296c0 100644
+--- a/src/freedreno/ir3/instr-a3xx.h
++++ b/src/freedreno/ir3/instr-a3xx.h
+@@ -14,8 +14,16 @@
+ #include <stdio.h>
+ 
+ /* clang-format off */
++#ifdef _WIN32
++/* COFF: weak cua clang sinh dinh nghia trung o moi object. Dinh nghia that
++ * nam trong disasm-a3xx.c (luon duoc link cung ir3).
++ */
++void ir3_assert_handler(const char *expr, const char *file, int line,
++                        const char *func) __attribute__((__noreturn__));
++#else
+ void ir3_assert_handler(const char *expr, const char *file, int line,
+                         const char *func) __attribute__((weak)) __attribute__((__noreturn__));
++#endif
+ /* clang-format on */
+ 
+ /* A wrapper for assert() that allows overriding handling of a failed
+diff --git a/src/freedreno/ir3/meson.build b/src/freedreno/ir3/meson.build
+index a9106e1..45fc16f 100644
+--- a/src/freedreno/ir3/meson.build
++++ b/src/freedreno/ir3/meson.build
+@@ -175,3 +175,16 @@ test('ir3_delay_test',
+   suite: ['freedreno'],
+ )
+ endif
++
++# Windows ARM32 (W10M): tool kiem tra NIR+ir3 tren may, khong can GPU.
++if host_machine.system() == 'windows'
++  ir3test = executable(
++    'ir3test',
++    'tests/ir3test.c',
++    link_with : [libfreedreno_ir3],
++    link_args : ['/STACK:16777216'],
++    dependencies : [idep_libir3decode, idep_mesautil, idep_nir],
++    include_directories : [inc_freedreno, inc_include, inc_src],
++    build_by_default : false,
++  )
++endif
+diff --git a/src/freedreno/ir3/tests/ir3test.c b/src/freedreno/ir3/tests/ir3test.c
+new file mode 100644
+index 0000000..3fc7ada
+--- /dev/null
++++ b/src/freedreno/ir3/tests/ir3test.c
+@@ -0,0 +1,174 @@
++/*
++ * Copyright © 2026
++ * SPDX-License-Identifier: MIT
++ *
++ * ir3test: dung shader NIR (fragment) bang nir_builder, bien dich bang ir3 cho
++ * Adreno 530 (a5xx) va in disassembly. Khong can GPU/KMD - dung de kiem tra
++ * NIR + ir3 chay dung tren Windows 10 Mobile ARM32.
++ *
++ *   ir3test [gpu_id]     (mac dinh 530)
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++
++#include "compiler/glsl_types.h"
++#include "compiler/nir/nir_builder.h"
++
++#include "ir3/ir3_compiler.h"
++#include "ir3/ir3_nir.h"
++#include "ir3/ir3_shader.h"
++#include "freedreno/isa/ir3-isa.h"
++#include "isa/isa.h"
++
++#ifdef _WIN32
++#include <signal.h>
++#define WIN32_LEAN_AND_MEAN
++#include <windows.h>
++
++/* In ma loi + dia chi (offset trong exe) khi crash, de map voi .pdb. */
++static LONG WINAPI
++crash_filter(EXCEPTION_POINTERS *ep)
++{
++   uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
++   uintptr_t addr = (uintptr_t)ep->ExceptionRecord->ExceptionAddress;
++   fprintf(stderr, "ir3test: EXCEPTION 0x%08lx at %p (exe+0x%x) info0=%p info1=%p\n",
++           (unsigned long)ep->ExceptionRecord->ExceptionCode, (void *)addr,
++           (unsigned)(addr - base),
++           (void *)ep->ExceptionRecord->ExceptionInformation[0],
++           (void *)ep->ExceptionRecord->ExceptionInformation[1]);
++   fflush(stderr);
++   return EXCEPTION_EXECUTE_HANDLER;
++}
++
++static LONG WINAPI
++veh_first_chance(EXCEPTION_POINTERS *ep)
++{
++   uintptr_t base = (uintptr_t)GetModuleHandleA(NULL);
++   uintptr_t addr = (uintptr_t)ep->ExceptionRecord->ExceptionAddress;
++   fprintf(stderr, "ir3test: first-chance 0x%08lx at exe+0x%x\n",
++           (unsigned long)ep->ExceptionRecord->ExceptionCode,
++           (unsigned)(addr - base));
++   fflush(stderr);
++   return EXCEPTION_CONTINUE_SEARCH;
++}
++
++static void
++on_abort(int sig)
++{
++   (void)sig;
++   fprintf(stderr, "ir3test: SIGABRT\n");
++   fflush(stderr);
++}
++
++static void
++on_exit_hook(void)
++{
++   fprintf(stderr, "ir3test: atexit\n");
++   fflush(stderr);
++}
++#endif
++
++int
++main(int argc, char **argv)
++{
++   setvbuf(stdout, NULL, _IONBF, 0);
++#ifdef _WIN32
++   SetUnhandledExceptionFilter(crash_filter);
++   AddVectoredExceptionHandler(1, veh_first_chance);
++   signal(SIGABRT, on_abort);
++   atexit(on_exit_hook);
++#endif
++   unsigned gpu_id = argc > 1 ? (unsigned)atoi(argv[1]) : 530;
++   struct fd_dev_id dev_id = { .gpu_id = gpu_id };
++
++   const struct fd_dev_info *info = fd_dev_info_raw(&dev_id);
++   if (!info) {
++      fprintf(stderr, "ir3test: khong biet GPU %u\n", gpu_id);
++      return 2;
++   }
++   printf("ir3test: GPU %u (%s), chip a%dxx\n", gpu_id, fd_dev_name(&dev_id),
++          info->chip);
++
++   printf("ir3test: [glsl_types]\n");
++   glsl_type_singleton_init_or_ref();
++
++   struct ir3_compiler_options copts = {0};
++   struct ir3_compiler *compiler =
++      ir3_compiler_create(NULL, &dev_id, info, &copts);
++   if (!compiler) {
++      fprintf(stderr, "ir3test: ir3_compiler_create that bai\n");
++      return 3;
++   }
++
++   /* out = sin(v.x) * v + vec4(0.5)   - co ALU + SFU (sin) + varying */
++   nir_builder b = nir_builder_init_simple_shader(
++      MESA_SHADER_FRAGMENT, ir3_get_compiler_options(compiler), "ir3test");
++
++   nir_variable *in = nir_variable_create(b.shader, nir_var_shader_in,
++                                          glsl_vec4_type(), "v");
++   in->data.location = VARYING_SLOT_VAR0;
++   in->data.driver_location = 0;
++
++   nir_variable *out = nir_variable_create(b.shader, nir_var_shader_out,
++                                           glsl_vec4_type(), "color");
++   out->data.location = FRAG_RESULT_DATA0;
++   out->data.driver_location = 0;
++
++   nir_def *v = nir_load_var(&b, in);
++   nir_def *s = nir_fsin(&b, nir_channel(&b, v, 0));
++   nir_def *r = nir_fadd_imm(&b, nir_fmul(&b, v, s), 0.5);
++   nir_store_var(&b, out, r, 0xf);
++
++   printf("ir3test: [nir built]\n");
++   nir_shader *nir = b.shader;
++   nir_validate_shader(nir, "ir3test build");
++
++   /* Viec frontend GL (st/mesa) thuong lam: so luong IO + gather info. */
++   nir->num_inputs = 1;
++   nir->num_outputs = 1;
++   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
++
++   printf("ir3test: [gather_info]\n");
++   ir3_nir_lower_io_vars_to_temporaries(nir);
++   ir3_nir_lower_io(nir);
++   struct ir3_shader_nir_options nopts = {0};
++   printf("ir3test: [lower_io]\n");
++   ir3_finalize_nir(compiler, &nopts, nir);
++
++   printf("ir3test: [finalize]\n");
++   struct ir3_shader_options sopts = {0};
++   struct ir3_shader *shader = ir3_shader_from_nir(compiler, nir, &sopts);
++
++   printf("ir3test: [from_nir]\n");
++   printf("ir3test: [get_variant]\n");
++   struct ir3_shader_key key = {0};
++   struct ir3_shader_variant *var =
++      ir3_shader_get_variant(shader, &key, false, getenv("IR3TEST_WDISASM") != NULL, NULL, NULL);
++   if (!var || !var->bin) {
++      fprintf(stderr, "ir3test: bien dich variant that bai\n");
++      return 4;
++   }
++
++   printf("ir3test: OK, %u dword, instrlen %u\n", var->info.size / 4,
++          var->instrlen);
++   if (getenv("IR3TEST_NODISASM")) {
++      for (unsigned i = 0; i < var->info.size / 4; i += 2)
++         printf("  %04u: %08x_%08x\n", i / 2, var->bin[i + 1], var->bin[i]);
++   } else {
++      /* Decoder ISA thuan (khong can giu IR nhu ir3_shader_disasm). */
++      printf("ir3test: [disasm]\n");
++      struct isa_decode_options dopts = {
++         .gpu_id = gpu_id,
++         .show_errors = true,
++         .branch_labels = true,
++      };
++      ir3_isa_disasm(var->bin, var->info.sizedwords * 4, stdout, &dopts);
++   }
++
++   ir3_shader_destroy(shader);
++   ir3_compiler_destroy(compiler);
++   glsl_type_singleton_decref();
++   printf("ir3test: DONE\n");
++   return 0;
++}
+-- 
+2.35.1.windows.2
+

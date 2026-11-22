@@ -27,6 +27,12 @@ static void *g_lib_egl, *g_lib_gles;
 static bool g_angle_tried;
 static mg_lock g_egl_lock = MG_LOCK_INIT;      /* the display */
 static mg_lock g_angle_lock = MG_LOCK_INIT;    /* loading ANGLE: taken while the display's lock is held */
+/*
+ * Which OpenGL ES the process draws with (megler_run_config.gles, mg_egl_choose): ANGLE, libEGL.dll and libGLESv2.dll at the
+ * package's root, or Mesa's freedreno, asked for and loaded (mesa_load). One of them, once: a process cannot have both,
+ * the guest's OpenGL ES being bound to one library's functions for the whole process.
+ */
+static bool g_mesa_asked, g_mesa_loaded;
 /* Whether this EGL makes contexts without a configuration (EGL_KHR_no_config_context; g_eglCreateContext): -1, not asked yet. */
 static int g_no_config = -1;
 
@@ -47,6 +53,200 @@ void mg_egl_set_provider(void *(*resolve)(const char *name))
 #define ADAPTED(name, p) (p)
 #endif
 
+void mg_egl_choose(const char *gles)
+{
+    const bool mesa = gles && !strcmp(gles, "mesa");
+    mg_lock_acquire(&g_angle_lock);
+    if (!g_angle_tried) g_mesa_asked = mesa;
+    else if (mesa != g_mesa_loaded)
+        mg_warn("egl: %s asked for once OpenGL ES was loaded: this process keeps %s", mesa ? "Mesa's freedreno" : "ANGLE",
+                g_mesa_loaded ? "Mesa's freedreno" : "ANGLE");
+    mg_lock_release(&g_angle_lock);
+}
+
+bool mg_egl_gpu_is_adreno(const char *name, u32 vendor)
+{
+    /* (Qualcomm's PCI vendor id, which Windows gives a Snapdragon's graphics processor: "QC".) */
+    return vendor == 0x5143 || (name && strstr(name, "Adreno") != NULL);
+}
+
+/* A flag mesa-env-<NAME>=<value>: the variable set in the process's environment, for Mesa's DLLs about to load. */
+static void mesa_env(const char *rest, void *user)
+{
+    char name[96];
+    const char *eq = strchr(rest, '=');
+    size_t n = eq ? (size_t)(eq - rest) : 0;
+    (void)user;
+    if (!n || n >= sizeof(name)) {
+        mg_warn("egl: the flag mesa-env-%s says no variable: its name is mesa-env-<NAME>=<value>", rest);
+        return;
+    }
+    memcpy(name, rest, n);
+    name[n] = 0;
+    if (mg_host_setenv(name, eq + 1)) mg_info("egl: Mesa's environment: %s=%s (a flag mesa-env-)", name, eq + 1);
+    else mg_warn("egl: Mesa's environment: %s could not be set (the process's environment refused it)", name);
+}
+
+/*
+ * Mesa's freedreno (tools/build-appx.sh, drivers/mesa-arm32): its libEGL_mesa.dll and libGLESv2_mesa.dll import its driver,
+ * libgallium_wgl.dll, which Windows finds beside them at the package's root. They are named apart from ANGLE's on purpose:
+ * Windows takes a DLL asked for by name for any loaded module of that name, and ANGLE's libEGL.dll imports libGLESv2.dll by
+ * name -- with Mesa's own names a Mesa that loaded and then failed stays loaded, unused (a driver that has begun is not
+ * safely let go of), and ANGLE loads beside it as ever. Mesa is taken only once its display has initialized, before any of
+ * its functions is handed out: an app's library binds its OpenGL ES functions as it is loaded, before it asks for a
+ * display, and a function of Mesa's bound then could not become ANGLE's after. False, with why in `why`, where it cannot
+ * be: then the process draws with ANGLE. Under g_angle_lock, once.
+ */
+static bool mesa_load(char *why, size_t size)
+{
+    static const char *const files[] = { "libgallium_wgl.dll", "libGLESv2_mesa.dll", "libEGL_mesa.dll" };
+    /* (EGL's types are named below: a display is a pointer, EGLBoolean unsigned, EGLint int.) */
+    typedef void *(*fn_get_display_)(void *);
+    typedef unsigned (*fn_initialize_)(void *, int *, int *);
+    typedef int (*fn_get_error_)(void);
+    char missing[160] = "", gpu[128] = "";
+    u32 vendor = 0;
+    size_t i, n;
+    void *gles, *egl, *d;
+    fn_get_display_ get;
+    fn_initialize_ init;
+    fn_get_error_ error;
+    int major = 0, minor = 0;
+    bool diag, caught, local = false;
+    char *folder = NULL;
+    /*
+     * The flag mesa-local: Mesa's three DLLs from the data folder's mesa\ (the shell puts there what the newest
+     * Pictures\Megler\diag\<package>\mesa-<n> holds: shell/PicturesDiag.h), not the package's -- a build of Mesa tried on
+     * the phone without a package of Megler's made for it. Where they are not all there, the package's.
+     */
+    if (mg_flag("mesa-local")) {
+        folder = mg_sprintf("%s/mesa", megler_data_dir());
+        local = true;
+        for (i = 0; i < MG_COUNT(files) && local; i++) {
+            char *path = mg_sprintf("%s/%s", folder, files[i]);
+            mg_stat st;
+            local = mg_path_stat(path, &st, NULL);
+            free(path);
+        }
+        if (local) mg_info("egl: the flag mesa-local: Mesa's DLLs from %s", folder);
+        else mg_warn("egl: the flag mesa-local: %s has not all of Mesa's DLLs; the package's are taken", folder);
+    }
+    for (i = 0; i < MG_COUNT(files) && !local; i++) {
+        char *path = mg_sprintf("%s/%s", megler_package_dir(), files[i]);
+        mg_stat st;
+        n = strlen(missing);
+        if (!mg_path_stat(path, &st, NULL)) snprintf(missing + n, sizeof(missing) - n, "%s%s", n ? ", " : "", files[i]);
+        free(path);
+    }
+    if (missing[0]) {
+        snprintf(why, size, "its DLLs are not in this package (%s): an app's own package made while the app went by ANGLE has none -- "
+                            "Megler's Library makes it again with them (the app's Update)", missing);
+        return false;
+    }
+    /* (The flag mesa-any-gpu tries it on whatever the graphics processor is: an Adreno that Windows names otherwise.) */
+    if (!mg_flag("mesa-any-gpu")) {
+        if (!mg_host_gpu_adapter(gpu, sizeof(gpu), &vendor)) {
+            snprintf(why, size, "the graphics processor could not be asked what it is, and Mesa's freedreno drives an Adreno alone");
+            return false;
+        }
+        if (!mg_egl_gpu_is_adreno(gpu, vendor)) {
+            snprintf(why, size, "the graphics processor is %s (vendor 0x%04x), not an Adreno, which is what Mesa's freedreno drives", gpu,
+                     (unsigned)vendor);
+            return false;
+        }
+    }
+    /*
+     * The flag mesa-diag: Mesa's own diagnosis, which Megler's patch to it leaves off (drivers/mesa-arm32, megler-0025):
+     * its crash handlers -- a vectored one, for the whole process and in front of Megler's own, that prints a backtrace on
+     * stderr for every exception, and its C runtime's for an invalid parameter and abort() -- and its log files, fd_kmt's
+     * statistics every 2 s (fdkmt.log) and the shared pbuffers it could not make (fd_egl_share.log), in the data folder
+     * beside megler.log, where the package's log copies take them (the shell's LogMirror and PicturesDiag). Set before its
+     * DLLs load: their C runtime reads the process's environment as it starts.
+     */
+    diag = mg_flag("mesa-diag");
+    if (diag) {
+        bool set = mg_host_setenv("MESA_CRASH_HANDLERS", "1") && mg_host_setenv("MESA_LOG_DIR", megler_data_dir());
+        if (set) mg_info("egl: the flag mesa-diag: Mesa's crash handlers on, and its log files (fdkmt.log, fd_egl_share.log) in %s", megler_data_dir());
+        else mg_warn("egl: the flag mesa-diag: Mesa's diagnosis could not be asked for (the process's environment refused it)");
+    }
+    /*
+     * The flag mesa-gmem: Mesa renders in GMEM tiles where its autotune finds it worth it, as freedreno does on Linux,
+     * instead of every batch in system memory (bypass), which the project's patch 0017 makes its default on D3DKMT:
+     * GMEM hung the GPU in some 25-35 % of dEQP's color_clear runs there, the KMD ending the packet after 2.5 s
+     * (drivers/mesa-arm32/src/ISSUES.md, 1). For trying it on a game the GPU keeps waiting on at a high resolution --
+     * GTA: Vice City at 2560x1440, 22-35 frames a second on Mesa where ANGLE has 30-44 -- whose bypass costs memory
+     * bandwidth. Read when Mesa's screen is made, from the environment its DLLs take as they load.
+     */
+    if (mg_flag("mesa-gmem")) {
+        if (mg_host_setenv("FD_D3DKMT_GMEM", "1"))
+            mg_info("egl: the flag mesa-gmem: Mesa renders in GMEM tiles (FD_D3DKMT_GMEM=1; may hang the GPU, see "
+                    "drivers/mesa-arm32/src/ISSUES.md)");
+        else
+            mg_warn("egl: the flag mesa-gmem: GMEM could not be asked for (the process's environment refused it)");
+    }
+    /*
+     * What Mesa says of its errors -- on its C runtime's stderr (mesa_log, fd_kmt's failures with their NTSTATUS, EGL's
+     * warnings), which an app's process has nowhere to go -- into the log as "mesa: ...": its DLLs take a pipe of the
+     * host's as their stderr as they load (mg_host_stderr_to_log_begin). Warnings and errors (MESA_LOG_LEVEL=warning), and
+     * Mesa's own default, information too, under the flag mesa-diag. A texture GTA: Vice City's map could not be given
+     * memory for ended it at once, and the reason was lost (package 745).
+     */
+    if (!diag) mg_host_setenv("MESA_LOG_LEVEL", "warning");
+    /*
+     * The flags mesa-env-<NAME>=<value>: that variable of Mesa's set before its DLLs load, for trying its own switches on
+     * the phone (FD_MESA_DEBUG, FD_D3DKMT_GMEM, FDKMT_DEBUG, FD_MAX_BATCH_DRAWS...; drivers/mesa-arm32/README.md).
+     */
+    mg_flags_each("mesa-env-", mesa_env, NULL);
+    caught = mg_host_stderr_to_log_begin("mesa: ");
+    if (local) {
+        /* (The driver first, by its path: the other two import it by name, which is then the one loaded.) */
+        char *path = mg_sprintf("%s/libgallium_wgl.dll", folder);
+        void *driver = mg_dl_open_file(path);
+        free(path);
+        gles = egl = NULL;
+        if (driver) {
+            path = mg_sprintf("%s/libGLESv2_mesa.dll", folder);
+            gles = mg_dl_open_file(path);
+            free(path);
+            path = mg_sprintf("%s/libEGL_mesa.dll", folder);
+            egl = gles ? mg_dl_open_file(path) : NULL;
+            free(path);
+        }
+    } else {
+        gles = mg_dl_open("libGLESv2_mesa.dll");
+        egl = gles ? mg_dl_open("libEGL_mesa.dll") : NULL;
+    }
+    free(folder);
+    if (caught) mg_host_stderr_to_log_end();
+    else mg_warn("egl: what Mesa says of its errors cannot be taken into the log (the host's line before says why)");
+    if (!gles || !egl) {
+        snprintf(why, size, "%s did not load (the host's line before says why)", gles ? "libEGL_mesa.dll" : "libGLESv2_mesa.dll");
+        return false;
+    }
+    get = (fn_get_display_)mg_dl_sym(egl, "eglGetDisplay");
+    init = (fn_initialize_)mg_dl_sym(egl, "eglInitialize");
+    error = (fn_get_error_)mg_dl_sym(egl, "eglGetError");
+    if (!get || !init) {
+        snprintf(why, size, "its libEGL_mesa.dll has no eglGetDisplay or eglInitialize");
+        return false;
+    }
+    /* (Its display is the default one, drawing through the phone's own kernel-mode graphics driver, D3DKMT: make_display.) */
+    d = get(NULL);
+    if (!d) {
+        snprintf(why, size, "it made no display (EGL error 0x%x)", error ? (unsigned)error() : 0u);
+        return false;
+    }
+    if (!init(d, &major, &minor)) {
+        snprintf(why, size, "its display did not initialize (EGL error 0x%x)", error ? (unsigned)error() : 0u);
+        return false;
+    }
+    g_lib_gles = gles;
+    g_lib_egl = egl;
+    mg_info("egl: OpenGL ES is Mesa's freedreno, as the app's setting asks: EGL %d.%d, on %s", (int)major, (int)minor,
+            gpu[0] ? gpu : "a graphics processor not asked (the flag mesa-any-gpu)");
+    return true;
+}
+
 /* ANGLE's own function by name, or its adapter: everything here, and everything given to guest code, calls ANGLE through this. */
 static void *angle(const char *name)
 {
@@ -55,17 +255,64 @@ static void *angle(const char *name)
     if (!g_angle_tried) {
         mg_lock_acquire(&g_angle_lock);
         if (!g_angle_tried) {
-            g_lib_gles = mg_dl_open("libGLESv2.dll");
-            g_lib_egl = mg_dl_open("libEGL.dll");
-            if (!g_lib_egl || !g_lib_gles)
-                mg_err("egl: ANGLE did not load (libEGL.dll %s, libGLESv2.dll %s): the host's lines before say why",
-                       g_lib_egl ? "loaded" : "not loaded", g_lib_gles ? "loaded" : "not loaded");
+            char why[400];
+            /*
+             * The flag kmt-trace: what this process asks of the graphics kernel from now on -- ANGLE's Direct3D 11 device
+             * through Qualcomm's own driver, or Mesa's D3DKMT core -- with the command buffers it submits, into
+             * kmt-trace.bin beside the log (host/mg_kmt_trace.c, tools/kmt-trace.py). Before either loads: a device's
+             * context and its first buffers are made as it starts.
+             */
+            if (mg_flag("kmt-trace")) {
+                char *path = mg_sprintf("%s/kmt-trace.bin", megler_data_dir()), said[700];
+                int traced = mg_host_kmt_trace_start(path, said, sizeof(said));
+                if (traced) mg_info("egl: the flag kmt-trace: %s, into %s", said, path);
+                else mg_warn("egl: the flag kmt-trace: no trace: %s", said);
+                free(path);
+            }
+            if (g_mesa_asked) {
+                g_mesa_loaded = mesa_load(why, sizeof(why));
+                if (!g_mesa_loaded) mg_warn("egl: Mesa's freedreno was asked for, ANGLE instead: %s", why);
+            }
+            if (!g_mesa_loaded) {
+                g_lib_gles = mg_dl_open("libGLESv2.dll");
+                g_lib_egl = mg_dl_open("libEGL.dll");
+                if (!g_lib_egl || !g_lib_gles)
+                    mg_err("egl: ANGLE did not load (libEGL.dll %s, libGLESv2.dll %s): the host's lines before say why",
+                           g_lib_egl ? "loaded" : "not loaded", g_lib_gles ? "loaded" : "not loaded");
+            }
             g_angle_tried = true;
         }
         mg_lock_release(&g_angle_lock);
     }
     p = g_lib_egl ? mg_dl_sym(g_lib_egl, name) : NULL;
     if (!p && g_lib_gles) p = mg_dl_sym(g_lib_gles, name);
+    if (!p && g_lib_egl && name[0] == 'e' && mg_egl_is_mesa()) {
+        /* Mesa's libEGL.dll exports EGL 1.5's functions alone: its extensions' (eglQuerySurfacePointerANGLE, for the
+           shared textures of EGL_ANGLE_surface_d3d_texture_2d_share_handle) come from its eglGetProcAddress. */
+        typedef void *(*fn_proc_address)(const char *);
+        fn_proc_address get = (fn_proc_address)mg_dl_sym(g_lib_egl, "eglGetProcAddress");
+        if (get) p = get(name);
+    }
+    if (!p && g_lib_gles && name[0] == 'g' && mg_egl_is_mesa()) {
+        /*
+         * Mesa's DLLs export the core functions alone, where ANGLE's export the extensions' too: cocos2d-x 3 asks for
+         * glGenVertexArraysOES and called NULL (Kingdom Rush Vengeance, cocos2d::Renderer::setupVBOAndVAO). The core
+         * function the extension became (ES 3's glGenVertexArrays for GL_OES_vertex_array_object), else Mesa's own
+         * eglGetProcAddress, which has every extension it offers.
+         */
+        size_t n = strlen(name);
+        if (n > 5 && n < 120 && (!strcmp(name + n - 3, "OES") || !strcmp(name + n - 3, "EXT"))) {
+            char core[128];
+            memcpy(core, name, n - 3);
+            core[n - 3] = 0;
+            p = mg_dl_sym(g_lib_gles, core);
+        }
+        if (!p && g_lib_egl) {
+            typedef void *(*fn_proc_address)(const char *);
+            fn_proc_address get = (fn_proc_address)mg_dl_sym(g_lib_egl, "eglGetProcAddress");
+            if (get) p = get(name);
+        }
+    }
     return ADAPTED(name, p);
 }
 
@@ -206,6 +453,31 @@ static int below_9_3(void)
 }
 static bool g_said_software;
 
+/*
+ * Whether the process's OpenGL ES is Mesa's rather than ANGLE: Mesa's as the app's setting asked (mesa_load), or a libEGL.dll
+ * whose exports Mesa's alone has MesaGLInteropEGLQueryDeviceInfo among (MESA_GLINTEROP: a Mesa build put where ANGLE's is,
+ * MEGLER_ANGLE). The flag egl-default-display says yes with any EGL.
+ */
+static int g_mesa = -1;
+bool mg_egl_is_mesa(void)
+{
+    if (g_mesa < 0) {
+        bool mesa = mg_flag("egl-default-display");
+        if (!mesa && !g_provider) {
+            if (!g_angle_tried) (void)angle("eglGetDisplay");
+            mesa = g_mesa_loaded || (g_lib_egl && mg_dl_sym(g_lib_egl, "MesaGLInteropEGLQueryDeviceInfo"));
+        }
+        g_mesa = mesa ? 1 : 0;
+    }
+    return g_mesa == 1;
+}
+
+const char *mg_egl_gles(void)
+{
+    if (!g_angle_tried && !g_provider) return NULL;
+    return mg_egl_is_mesa() ? "mesa" : "angle";
+}
+
 static void make_display(made_display *m)
 {
     /*
@@ -242,7 +514,25 @@ static void make_display(made_display *m)
     fn_initialize init = A(fn_initialize, "eglInitialize");
     size_t i;
     if (!get) get = A(fn_platform_display, "eglGetPlatformDisplay");
-    if (!get || !init) return;
+    if (!init) return;
+    /* Mesa's freedreno in ANGLE's place (the app's setting Graphics, mesa_load): it knows no ANGLE platform, and its display
+       is the default one, drawing through the phone's own kernel-mode graphics driver (D3DKMT), initialized once already. */
+    if (mg_egl_is_mesa()) {
+        typedef EGLDisplay (*fn_get_display)(void *);
+        fn_get_display plain = A(fn_get_display, "eglGetDisplay");
+        EGLDisplay d;
+        mg_info("egl: asking Mesa for its default display%s%s", m->whose ? " for " : "", m->whose ? m->whose : "");
+        /* (EGL_DEFAULT_DISPLAY: the WebView's own native display is ANGLE's alone, and Mesa gives the one display to both.) */
+        d = plain ? plain(NULL) : NULL;
+        if (d && init(d, &m->major, &m->minor)) {
+            mg_strlcpy(m->how, "Mesa (freedreno, D3DKMT)", sizeof(m->how));
+            m->d = d;
+            return;
+        }
+        mg_warn("egl: Mesa made no display%s%s", m->whose ? " for " : "", m->whose ? m->whose : "");
+        return;
+    }
+    if (!get) return;
     for (i = 0; i < MG_COUNT(tries); i++) {
         EGLDisplay d;
         /* The flag egl-level-9_3: the display is made at feature level 9_3 whatever the graphics processor has, to see a Lumia 650's
@@ -2465,6 +2755,88 @@ static EGLBoolean window_swap(EGLDisplay d, surface *w)
     return 1;
 }
 
+/*
+ * Mesa's frames (mesa_load). Mesa has no surface over the shell's Direct3D texture (ANGLE's EGL_D3D_TEXTURE_ANGLE), so
+ * an app's window surface is an off-screen buffer of Mesa's, and each swap reads it back and hands it to the shell as
+ * pixels (megler_window_host.present_pixels): B, G, R, A, the top row first, where OpenGL's rows are the bottom first.
+ */
+typedef void (*fn_read_pixels)(i32 x, i32 y, i32 width, i32 height, u32 format, u32 type, void *pixels);
+typedef void (*fn_pixel_store)(u32 pname, i32 param);
+#define GL_RGBA_ 0x1908
+#define GL_UNSIGNED_BYTE_ 0x1401
+#define GL_PACK_ALIGNMENT_ 0x0D05
+#define GL_PACK_ROW_LENGTH_ 0x0D02
+#define GL_PIXEL_PACK_BUFFER_ 0x88EB
+#define GL_PIXEL_PACK_BUFFER_BINDING_ 0x88ED
+#define GL_READ_FRAMEBUFFER_BINDING_ 0x8CAA
+#define GL_READ_FRAMEBUFFER_ 0x8CA8
+typedef void (*fn_bind_buffer)(u32 target, u32 buffer);
+typedef void (*fn_bind_framebuffer)(u32 target, u32 framebuffer);
+static mg_lock g_readback_lock = MG_LOCK_INIT;
+static u8 *g_readback, *g_readback_rgba;
+static size_t g_readback_size;
+static int g_read_bgra = -1;   /* glReadPixels gives B, G, R, A here (GL_EXT_read_format_bgra): 1, 0, -1 not asked */
+
+static void mesa_present(int width, int height)
+{
+    const megler_run_config *run = mg_run_config();
+    fn_read_pixels read = A(fn_read_pixels, "glReadPixels");
+    fn_pixel_store store = A(fn_pixel_store, "glPixelStorei");
+    fn_gl_get_integerv get = A(fn_gl_get_integerv, "glGetIntegerv");
+    fn_bind_buffer bind_buffer = A(fn_bind_buffer, "glBindBuffer");
+    fn_bind_framebuffer bind_fb = A(fn_bind_framebuffer, "glBindFramebuffer");
+    size_t row = (size_t)width * 4, size = row * (size_t)height;
+    int pack = 0, pbo = 0, fb = 0, y;
+    if (!read || !store || !get || width <= 0 || height <= 0 || !run->window.present_pixels) return;
+    mg_lock_acquire(&g_readback_lock);
+    if (size > g_readback_size) {
+        free(g_readback);
+        free(g_readback_rgba);
+        g_readback = (u8 *)malloc(size);
+        g_readback_rgba = (u8 *)malloc(size);
+        g_readback_size = g_readback && g_readback_rgba ? size : 0;
+    }
+    if (g_readback_size) {
+        /* The app's own state is put back as it was: its pack alignment, a pack buffer it has bound, the framebuffer it reads. */
+        get(GL_PACK_ALIGNMENT_, &pack);
+        get(GL_PIXEL_PACK_BUFFER_BINDING_, &pbo);
+        get(GL_READ_FRAMEBUFFER_BINDING_, &fb);
+        if (pbo && bind_buffer) bind_buffer(GL_PIXEL_PACK_BUFFER_, 0);
+        if (fb && bind_fb) bind_fb(GL_READ_FRAMEBUFFER_, 0);
+        store(GL_PACK_ALIGNMENT_, 4);
+        if (g_read_bgra < 0) {
+            typedef const u8 *(*fn_get_string_)(u32);
+            fn_get_string_ string = A(fn_get_string_, "glGetString");
+            const u8 *ext = string ? string(0x1F03) : NULL;
+            g_read_bgra = ext && strstr((const char *)ext, "GL_EXT_read_format_bgra") ? 1 : 0;
+        }
+        read(0, 0, width, height, g_read_bgra ? 0x80E1 : GL_RGBA_, GL_UNSIGNED_BYTE_, g_readback_rgba);
+        store(GL_PACK_ALIGNMENT_, pack ? pack : 4);
+        if (pbo && bind_buffer) bind_buffer(GL_PIXEL_PACK_BUFFER_, (u32)pbo);
+        if (fb && bind_fb) bind_fb(GL_READ_FRAMEBUFFER_, (u32)fb);
+        for (y = 0; y < height; y++) {
+            const u8 *from = g_readback_rgba + (size_t)(height - 1 - y) * row;
+            u8 *to = g_readback + (size_t)y * row;
+            int x;
+            if (g_read_bgra) {
+                /* Already B, G, R, A (GL_EXT_read_format_bgra): the rows turned over, and made opaque a word at a time. */
+                u32 *w = (u32 *)to;
+                memcpy(to, from, row);
+                for (x = 0; x < width; x++) w[x] |= 0xff000000u;
+                continue;
+            }
+            for (x = 0; x < width; x++, from += 4, to += 4) {
+                to[0] = from[2];
+                to[1] = from[1];
+                to[2] = from[0];
+                to[3] = 0xff;
+            }
+        }
+        run->window.present_pixels(run->window.user, g_readback, width, height, (int)row);
+    }
+    mg_lock_release(&g_readback_lock);
+}
+
 static EGLBoolean g_eglSwapBuffers(EGLDisplay d, EGLSurface handle)
 {
     surface *w = window_surface(handle), *s;
@@ -2480,6 +2852,8 @@ static EGLBoolean g_eglSwapBuffers(EGLDisplay d, EGLSurface handle)
         fn_gl_void flush = A(fn_gl_void, "glFlush");
         if (flush) flush();
         if (run->window.present) run->window.present(run->window.user);
+    } else if (s->window && mg_egl_is_mesa()) {
+        mesa_present(s->width, s->height);
     }
     mg_run_count_frame();
     return 1;

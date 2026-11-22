@@ -15,8 +15,10 @@ comment says how). Like the other test apps, nothing is signed.
 
 aapt2 makes the config splits (link --split) and names them as bundletool does (config.xxhdpi, config.en: with the
 minimum SDK at 21 it gives a density no API level). The splits for a processor, the feature split and the asset pack have
-manifests written here and linked by aapt2. An app with a stubs/ folder is compiled against those classes before
-android.jar's, as tools/build-test-app.sh compiles one in one APK.
+manifests written here and linked by aapt2 -- a feature split with an AndroidManifest.xml of its own in split/<name>/ has
+that one (its components, its <uses-split>). A feature split's code is compiled against the base's and the feature splits'
+before it. An app with a stubs/ folder is compiled against those classes before android.jar's, as tools/build-test-app.sh
+compiles one in one APK.
 """
 import json
 import os
@@ -115,8 +117,9 @@ def split_manifest(split, feature=False, code=False):
     return path
 
 
-def link_split(split, out_name, feature=False, code=False):
-    run(aapt2, 'link', '-o', os.path.join(work, 'parts', out_name), '-I', jar, '--manifest', split_manifest(split, feature, code), quiet_compressed=True)
+def link_split(split, out_name, feature=False, code=False, manifest=None):
+    run(aapt2, 'link', '-o', os.path.join(work, 'parts', out_name), '-I', jar, '--manifest', manifest or split_manifest(split, feature, code),
+        quiet_compressed=True)
     return os.path.join(work, 'parts', out_name)
 
 
@@ -127,7 +130,9 @@ for abi in spec['abi']:
         for lib in libs:
             z.write(os.path.join(work, 'lib', lib), 'lib/%s/%s' % (abi.replace('_', '-'), lib))
 
-# Feature splits, with code of their own compiled against the base's.
+# Feature splits, with code of their own compiled against the base's and the feature splits' before them (one may use another:
+# <uses-split>), and their own manifest where they have one.
+before = []
 for feature in spec['feature']:
     src = os.path.join(app, 'split', feature, 'src')
     fsources = [os.path.join(r, f) for r, _, fs in os.walk(src) for f in fs if f.endswith('.java')]
@@ -135,12 +140,15 @@ for feature in spec['feature']:
     fdex = os.path.join(work, 'dex-' + feature)
     os.makedirs(fclasses)
     os.makedirs(fdex)
-    run(javac, '-nowarn', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-bootclasspath', boot, '-cp', os.path.join(work, 'classes'),
-        '-d', fclasses, *fsources)
+    run(javac, '-nowarn', '-source', '8', '-target', '8', '-encoding', 'UTF-8', '-bootclasspath', boot,
+        '-cp', sep.join([os.path.join(work, 'classes')] + [os.path.join(work, 'classes-' + b) for b in before]), '-d', fclasses, *fsources)
     run(jartool, 'cf', fclasses + '.jar', '-C', fclasses, '.')
+    libs_before = [a for b in before for a in ('--lib', os.path.join(work, 'classes-' + b) + '.jar')]
     run(java, '-cp', d8, 'com.android.tools.r8.D8', '--release', '--min-api', '26', '--lib', jar, '--lib', os.path.join(work, 'classes.jar'),
-        '--output', fdex, fclasses + '.jar')
-    apk = link_split(feature, feature + '.apk', feature=True, code=True)
+        *libs_before, '--output', fdex, fclasses + '.jar')
+    before.append(feature)
+    own = os.path.join(app, 'split', feature, 'AndroidManifest.xml')
+    apk = link_split(feature, feature + '.apk', feature=True, code=True, manifest=own if os.path.isfile(own) else None)
     with zipfile.ZipFile(apk, 'a', zipfile.ZIP_DEFLATED) as z:
         z.write(os.path.join(fdex, 'classes.dex'), 'classes.dex')
 

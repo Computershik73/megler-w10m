@@ -648,6 +648,7 @@ final class HttpEngineSteps {
      * Two streams at once to the HTTP/2 server's echo, each writing twice and ending, as gRPC does: both on one connection
      * (the server is connected to once), the response's headers before its body (the server sends them first), the echo
      * read whole, the trailers (grpc-status 0) before the end, both writes completed and the last said as the end; the
+     * response's headers with their :status, as Cronet's BidirectionalStream gives them (grpc-cronet reads it there); the
      * protocol h2. And a GET, which sends no body: its HEADERS end the request. The server saw the engine's settings (no
      * push, a window of a megabyte for each stream), the pseudo-headers, the app's headers in lower case and its user agent.
      */
@@ -675,7 +676,7 @@ final class HttpEngineSteps {
                     && a.before("trailers", "read end") && a.events.contains("written") && a.events.contains("written end") && !a.events.contains("failed")
                     && b.events.contains("written end") && b.events.get(b.events.size() - 1).equals("succeeded") && b.trailers != null
                     && "grpc-status: 0; grpc-message: fine".equals(fields(a.trailers)) && ia.getHttpStatusCode() == 200 && "h2".equals(ia.getNegotiatedProtocol())
-                    && "content-type: application/grpc; x-echo-of: /echo; x-megler-was: a".equals(fields(ia.getHeaders()))
+                    && ":status: 200; content-type: application/grpc; x-echo-of: /echo; x-megler-was: a".equals(fields(ia.getHeaders()))
                     && g.events.equals(Arrays.asList("ready", "headers 200", "read", "trailers", "read end", "succeeded")) && ig != null && ig.getHttpStatusCode() == 200
                     && server.connections.get() == 1 && server.log.contains("alpn h2") && server.log.contains("client-settings push=0 window=1048576")
                     && headersA != null && headersA.contains(" :method=POST ") && headersA.contains(" :scheme=https ")
@@ -847,9 +848,9 @@ final class HttpEngineSteps {
         try {
             String url = "https://localhost:" + server.port() + "/hpack";
             String[] want = {
-                "302 cache-control: private; date: Mon, 21 Oct 2013 20:13:21 GMT; location: https://www.example.com",
-                "307 cache-control: private; date: Mon, 21 Oct 2013 20:13:21 GMT; location: https://www.example.com",
-                "200 cache-control: private; date: Mon, 21 Oct 2013 20:13:22 GMT; location: https://www.example.com; content-encoding: gzip; "
+                "302 :status: 302; cache-control: private; date: Mon, 21 Oct 2013 20:13:21 GMT; location: https://www.example.com",
+                "307 :status: 307; cache-control: private; date: Mon, 21 Oct 2013 20:13:21 GMT; location: https://www.example.com",
+                "200 :status: 200; cache-control: private; date: Mon, 21 Oct 2013 20:13:22 GMT; location: https://www.example.com; content-encoding: gzip; "
                         + "set-cookie: foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1" };
             StringBuilder got = new StringBuilder();
             boolean held = true;

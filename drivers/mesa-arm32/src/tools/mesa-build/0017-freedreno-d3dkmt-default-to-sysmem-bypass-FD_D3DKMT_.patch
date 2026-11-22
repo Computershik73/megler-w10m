@@ -1,0 +1,41 @@
+From 45ef2cf0c2c17f2a306fc5e7ba6d4b60a4abd0b9 Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:34:00 +0700
+Subject: [PATCH 17/17] freedreno/d3dkmt: default to sysmem (bypass);
+ FD_D3DKMT_GMEM=1 re-enables GMEM
+
+---
+ .../winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c       | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+index f7d0061..fac096b 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+@@ -12,6 +12,7 @@
+ #include "util/xmlconfig.h"
+ 
+ #include "freedreno/freedreno_screen.h"
++#include "freedreno/freedreno_util.h"
+ #include "drm/freedreno_drmif.h"
+ #include "drm/d3dkmt/fd_kmt.h"
+ 
+@@ -62,5 +63,14 @@ fd_d3dkmt_screen_create(const struct pipe_screen_config *config)
+       return NULL;
+    }
+ 
+-   return fd_screen_create_dev(dev, config, NULL);
++   struct pipe_screen *screen = fd_screen_create_dev(dev, config, NULL);
++
++   /* GMEM (tiled) tren KMD Qualcomm/Windows lam GPU treo ngau nhien (dEQP
++    * color_clear, 2026-11-18/19); bypass (sysmem) on dinh. Mac dinh sysmem,
++    * FD_D3DKMT_GMEM=1 de bat lai GMEM.
++    */
++   if (screen && !debug_get_bool_option("FD_D3DKMT_GMEM", false))
++      fd_mesa_debug |= FD_DBG_SYSMEM;
++
++   return screen;
+ }
+-- 
+2.35.1.windows.2
+

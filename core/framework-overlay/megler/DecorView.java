@@ -31,6 +31,11 @@
 // background away once it has started and makes the status bar's colour transparent, and its status bar was black here
 // (with the dark icons of a light status bar on it), where Android shows its page's colour.
 //
+// And in a window whose input is taken (Window.takeInputQueue, NativeActivity's): its touches and keys go into the queue
+// native code reads (Window.meglerTakenInput) instead of to the callback and the views, and the queue is made when the
+// window is added and goes when it is removed (Window.meglerAttached, meglerDetached), as ViewRootImpl has it. An app on
+// top of NativeActivity, run by the Java driver since issue #23 (KOReader), reads all its input so.
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -103,13 +108,23 @@ public final class DecorView extends FrameLayout {
     private WindowInsetsController mPending;
     public int meglerHiddenBars() { return mHiddenBars; }
     public int meglerAppearance() { return mAppearance; }
+    /* (Bars hidden or shown as they are already, and the appearance the window has, change nothing, as Android's
+       InsetsController leaves them: here each call made the window's insets new and laid it out again, and a controller that
+       says them again as the insets come laid the window out at every frame -- see ViewRoot.systemUiChanged.) */
     public void meglerHideBars(int types, boolean hide) {
         int bars = types & (WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
         if (bars == 0) return;
-        mHiddenBars = hide ? mHiddenBars | bars : mHiddenBars & ~bars;
+        int hidden = hide ? mHiddenBars | bars : mHiddenBars & ~bars;
+        if (hidden == mHiddenBars) return;
+        mHiddenBars = hidden;
         requestApplyInsets();
     }
-    public void meglerSetAppearance(int a, int mask) { mAppearance = (mAppearance & ~mask) | (a & mask); requestApplyInsets(); }
+    public void meglerSetAppearance(int a, int mask) {
+        int appearance = (mAppearance & ~mask) | (a & mask);
+        if (appearance == mAppearance) return;
+        mAppearance = appearance;
+        requestApplyInsets();
+    }
     public void setCloseOnTouchOutside(boolean c) { mCloseOnTouchOutside = c; }
     public boolean closeOnTouchOutside() { return mCloseOnTouchOutside; }
     /** The window background; its padding (a Material dialog's InsetDrawable: the card inset from the window's edges) keeps the
@@ -328,6 +343,14 @@ public final class DecorView extends FrameLayout {
         return mFallback;
     }
     @Override public void draw(Canvas c) {
+        // A window whose surface the app has taken (Window.takeSurface, NativeActivity's): Android draws none of its views --
+        // "the app owns the surface, we won't draw" (ViewRootImpl.draw) --, its background, title bar and bars' colours
+        // included; the surface, the SurfaceView that stands for it here, is all there is to see.
+        View taken = mWindow.meglerTakenSurfaceView();
+        if (taken != null && taken.getParent() == this) {
+            drawChild(c, taken, getDrawingTime());
+            return;
+        }
         if (mBackground != null) {
             mBackground.setBounds(0, 0, getWidth(), getHeight());
             mBackground.draw(c);
@@ -352,6 +375,7 @@ public final class DecorView extends FrameLayout {
     // ---- events
     @Override public boolean dispatchTouchEvent(MotionEvent e) {
         Window.Callback cb = mWindow.getCallback();
+        if (e.getActionMasked() != MotionEvent.ACTION_OUTSIDE && mWindow.meglerTakenInput(e)) return true;
         if (e.getActionMasked() == MotionEvent.ACTION_OUTSIDE || (mCloseOnTouchOutside && e.getActionMasked() == MotionEvent.ACTION_DOWN && outside(e))) {
             if (cb != null && !mWindow.isDestroyed()) cb.dispatchTouchEvent(e);
             return true;
@@ -360,6 +384,7 @@ public final class DecorView extends FrameLayout {
     }
     private boolean outside(MotionEvent e) { return e.getX() < 0 || e.getY() < 0 || e.getX() >= getWidth() || e.getY() >= getHeight(); }
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
+        if (mWindow.meglerTakenInput(e)) return true;
         Window.Callback cb = mWindow.getCallback();
         return cb != null && !mWindow.isDestroyed() ? cb.dispatchKeyEvent(e) : super.dispatchKeyEvent(e);
     }
@@ -374,8 +399,18 @@ public final class DecorView extends FrameLayout {
     }
     public boolean superDispatchGenericMotionEvent(MotionEvent e) { return super.dispatchGenericMotionEvent(e); }
     @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); Window.Callback cb = mWindow.getCallback(); if (cb != null && !mWindow.isDestroyed()) cb.onWindowFocusChanged(f); }
-    @Override protected void onAttachedToWindow() { super.onAttachedToWindow(); Window.Callback cb = mWindow.getCallback(); if (cb != null && !mWindow.isDestroyed()) cb.onAttachedToWindow(); }
-    @Override protected void onDetachedFromWindow() { super.onDetachedFromWindow(); Window.Callback cb = mWindow.getCallback(); if (cb != null) cb.onDetachedFromWindow(); }
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        mWindow.meglerAttached();
+        Window.Callback cb = mWindow.getCallback();
+        if (cb != null && !mWindow.isDestroyed()) cb.onAttachedToWindow();
+    }
+    @Override protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        Window.Callback cb = mWindow.getCallback();
+        if (cb != null) cb.onDetachedFromWindow();
+        mWindow.meglerDetached();
+    }
     public Window getWindowMegler() { return mWindow; }
     /** The window's background it draws (the theme's windowBackground, or what the app set), for trace-views. */
     public Drawable meglerWindowBackground() { return mBackground; }

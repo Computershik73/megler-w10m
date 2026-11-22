@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A check of Mesa's freedreno drawing in GMEM tiles on the phone (tools/build-test-app.sh; drivers/mesa-arm32/src/ISSUES.md,
+     1): an OpenGL ES 2 window the whole screen, at the phone's own resolution, drawn as dEQP's color_clear draws (scissored
+     and masked clears, read back pixel by pixel) and as a game draws, without end. Its lines in the log say how many frames
+     went by and whether one of them waited on the GPU for seconds. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.gmem" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28" />
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <application android:label="@string/app_name">
+        <activity android:name=".Main" android:label="@string/app_name" android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

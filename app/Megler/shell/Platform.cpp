@@ -5,6 +5,7 @@
 #include "player/StorageHost.h"
 #include "shell/AppPackage.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/PackageVersions.h"
 #include "shell/Placement.h"
 #include "shell/ShellLog.h"
@@ -46,6 +47,7 @@ uint64_t memoryUsage() { return gMemoryUsage.load(std::memory_order_relaxed); }
 #if defined(MG_ELF_HOST)
 const wchar_t* const angleFiles[] = {L"libGLESv2.dll", L"libEGL.dll"};
 #else
+// (Mesa's freedreno beside them, in Windows 10 Mobile's package, has names of its own: shell/Graphics.h.)
 const wchar_t* const angleFiles[] = {L"vcruntime140.dll", L"msvcp140.dll", L"mozglue.dll", L"libGLESv2.dll", L"libEGL.dll"};
 #endif
 
@@ -218,6 +220,15 @@ void initializeCore() {
     shellLog::write("phone: " + deviceSummary());
     shellLog::write("disk: " + diskSummary());
     shellLog::write("ANGLE: " + angle().summary);
+    // And Mesa's freedreno beside it, which an app set to it draws with (shell/Graphics.h): Windows 10 Mobile's package has it,
+    // an app's own package only while the app goes by it. (Said on a phone, where it may be; a PC's package never has it.)
+    {
+        std::string missing;
+        const bool mesa = graphics::hasMesaFiles(installDirectory(), &missing);
+        if (mesa || isMobile())
+            shellLog::write(std::string("Mesa (freedreno): ") + (mesa ? "in the package" : "not in the package (" + missing + ")") +
+                            "; the default where nothing is set: " + graphics::packageDefault(installDirectory()));
+    }
     // The phone's folders for an app's storage are looked for now, on a thread of their own: by the time an app is started they are known.
     StorageHost::shared().start();
 

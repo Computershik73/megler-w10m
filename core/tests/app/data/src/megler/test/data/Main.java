@@ -410,6 +410,7 @@ public class Main extends Activity {
         step("keybox-attestation", () -> { detail = AttestationChecks.run(this, run); return true; });
         keystoreForeignKey();
         keystoreHosted();
+        keystoreTink(run);
         pathOps();
         textPath();
         base64Streams();
@@ -1150,6 +1151,24 @@ public class Main extends Activity {
                     + " other=" + (other == null ? null : other.activityInfo.name);
             return homes == 0 && launcher != null && Main.class.getName().equals(launcher.activityInfo.name) && plain != null && other == null;
         });
+        // The filter that took an implicit intent, which Android's resolver gives with GET_RESOLVED_FILTER (and only then), and
+        // none for an intent that names its component: the Google app's receivers check a broadcast against it, and ended the
+        // app on a push when it was null.
+        step("resolved-filter", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent relay = new android.content.Intent("megler.test.RELAY").setPackage(getPackageName());
+            android.content.pm.ResolveInfo asked = null, plain = null;
+            for (android.content.pm.ResolveInfo r : pm.queryBroadcastReceivers(relay, android.content.pm.PackageManager.GET_RESOLVED_FILTER))
+                if (r.activityInfo.name.endsWith("$Relay")) asked = r;
+            for (android.content.pm.ResolveInfo r : pm.queryBroadcastReceivers(relay, 0))
+                if (r.activityInfo.name.endsWith("$Relay")) plain = r;
+            java.util.List<android.content.pm.ResolveInfo> named = pm.queryBroadcastReceivers(
+                    new android.content.Intent().setClassName(getPackageName(), Main.class.getName() + "$Relay"), android.content.pm.PackageManager.GET_RESOLVED_FILTER);
+            detail = "asked=" + (asked == null ? "none" : String.valueOf(asked.filter)) + " plain=" + (plain == null ? "none" : String.valueOf(plain.filter))
+                    + " named=" + named.size() + "/" + (named.isEmpty() ? "-" : String.valueOf(named.get(0).filter));
+            return asked != null && asked.filter != null && asked.filter.matchAction("megler.test.RELAY") && plain != null && plain.filter == null
+                    && named.size() == 1 && named.get(0).filter == null;
+        });
         // Who sent a broadcast, as Android 14 tells its receivers (getSentFromUid, getSentFromPackage, the receiver's and its
         // PendingResult's): the app itself where the options it sent with share its identity (BroadcastOptions
         // .setShareIdentityEnabled, through the options' bundle, which gives them back), no one where they do not or there are
@@ -1368,7 +1387,10 @@ public class Main extends Activity {
             return builder && "Ann has 10 ^ points".equals(out.toString()) && kept && refused;
         });
         // A ListFragment as Android's: a list of its own when it makes no view of its own (getListView, an adapter set on it, a
-        // row's click to onListItemClick), and the android.R.id.list of a view it makes itself (Gmail's folder list).
+        // row's click to onListItemClick), and the android.R.id.list of a view it makes itself (Gmail's folder list). Added in the
+        // activity's onCreate, where the steps run, they are created at once but have their views only after that onCreate, as
+        // on Android (Android's Settings finds its switch bar after adding its fragment, which reads it in onViewCreated): the
+        // lists are looked at then (the line list-fragment-views).
         step("list-fragment", () -> {
             final int[] clicked = { -1 };
             final android.widget.BaseAdapter rows = new android.widget.BaseAdapter() {
@@ -1396,20 +1418,33 @@ public class Main extends Activity {
             android.app.FragmentManager fm = getFragmentManager();
             fm.beginTransaction().add(own, "own-list").add(made, "made-list").commit();
             fm.executePendingTransactions();
-            android.widget.ListView a = own.getListView(), b = made.getListView();
-            own.setListAdapter(rows);
-            boolean adapter = a != null && a.getAdapter() == rows && own.getListAdapter() == rows;
-            if (a != null) a.performItemClick(null, 1, 1);
-            boolean found = b != null && b.getId() == android.R.id.list && b.getParent() instanceof android.widget.LinearLayout;
-            fm.beginTransaction().remove(own).remove(made).commit();
-            fm.executePendingTransactions();
-            detail = "own=" + (a != null) + " adapter=" + adapter + " clicked=" + clicked[0] + " made=" + found;
-            return a != null && adapter && clicked[0] == 1 && found;
+            boolean waiting = own.isAdded() && made.isAdded() && own.getView() == null && made.getView() == null;
+            new android.os.Handler().post(() -> {
+                android.widget.ListView a = null, b = null;
+                String failure = null;
+                try {
+                    a = own.getListView();
+                    b = made.getListView();
+                } catch (RuntimeException e) {
+                    failure = e.toString();
+                }
+                own.setListAdapter(rows);
+                boolean adapter = a != null && a.getAdapter() == rows && own.getListAdapter() == rows;
+                if (a != null) a.performItemClick(null, 1, 1);
+                boolean found = b != null && b.getId() == android.R.id.list && b.getParent() instanceof android.widget.LinearLayout;
+                fm.beginTransaction().remove(own).remove(made).commit();
+                fm.executePendingTransactions();
+                Log.i("DataTest", "list-fragment-views " + (a != null && adapter && clicked[0] == 1 && found ? "ok" : "FAILED") + " own=" + (a != null) + " adapter="
+                        + adapter + " clicked=" + clicked[0] + " made=" + found + (failure == null ? "" : " " + failure));
+            });
+            detail = "added=" + own.isAdded() + "," + made.isAdded() + " views=" + own.getView() + "," + made.getView();
+            return waiting;
         });
         // A platform fragment's saved state as Android has it: none (null) for a new fragment, whatever its arguments, and what
-        // saveFragmentInstanceState kept of one, through a parcel, for another made with setInitialSavedState (onCreate and
-        // onCreateView; onActivityCreated comes after the activity's onCreate, where the steps run). Gmail's conversation view was
-        // given its arguments as its saved state and found no view state there.
+        // saveFragmentInstanceState kept of one, through a parcel, for another made with setInitialSavedState (onCreate here;
+        // onCreateView and onActivityCreated come after the activity's onCreate, where the steps run: the line
+        // fragment-saved-state-view). Gmail's conversation view was given its arguments as its saved state and found no view
+        // state there.
         step("fragment-saved-state", () -> {
             final Bundle[] seen = new Bundle[3];
             final boolean[] firstCreated = new boolean[1];
@@ -1441,12 +1476,16 @@ public class Main extends Activity {
             second.setInitialSavedState(back);
             fm.beginTransaction().add(second, "saved-second").commit();
             fm.executePendingTransactions();
-            fm.beginTransaction().remove(second).commit();
-            fm.executePendingTransactions();
             boolean fresh = firstCreated[0] && seen[0] == null && first.getArguments() == args;
-            boolean restored = back != null && seen[1] != null && "by the first".equals(seen[1].getString("kept")) && seen[2] == seen[1];
+            boolean restored = back != null && seen[1] != null && "by the first".equals(seen[1].getString("kept")) && seen[2] == null;
+            new android.os.Handler().post(() -> {
+                boolean view = seen[2] != null && seen[2] == seen[1];
+                fm.beginTransaction().remove(second).commit();
+                fm.executePendingTransactions();
+                Log.i("DataTest", "fragment-saved-state-view " + (view ? "ok" : "FAILED") + " view=" + (seen[2] == null ? "null" : seen[2].getString("kept")));
+            });
             detail = "fresh=" + fresh + " first=" + seen[0] + " kept=" + (kept != null) + " parcelled=" + (back != null) + " second="
-                     + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view=" + (seen[2] == seen[1]);
+                     + (seen[1] == null ? "null" : seen[1].getString("kept")) + " view yet=" + (seen[2] != null);
             return fresh && restored;
         });
         // A framework method that is its signature alone, called on purpose: the runtime says its first call, with this caller
@@ -2316,8 +2355,11 @@ public class Main extends Activity {
         });
         step("package-installer", () -> {
             android.content.pm.PackageInstaller installer = getPackageManager().getPackageInstaller();
-            return installer != null && installer == getPackageManager().getPackageInstaller()
-                    && installer.getMySessions() != null && installer.getMySessions().isEmpty();
+            if (installer == null || installer != getPackageManager().getPackageInstaller() || installer.getMySessions() == null) return false;
+            // none but the one the step install-kept leaves open for the next run, which finds it again
+            for (Object o : installer.getMySessions())
+                if (!"com.example.kept".equals(((android.content.pm.PackageInstaller.SessionInfo) o).getAppPackageName())) return false;
+            return true;
         });
         batchOperations();
         wifi();
@@ -2444,6 +2486,16 @@ public class Main extends Activity {
         network();
         httpEngine();
         renderNodes();
+        links();
+        preferenceImageView();
+        bluetoothListen();
+        attachPairs();
+        lineHeight();
+        ringtonePicker();
+        contextClassLoader();
+        systemUiSame();
+        secondPass();
+        visibleRectTransformed();
         Log.i("DataTest", "done ok=" + ok + " failed=" + failed);
         doneLogged = true;
         mediaSession();
@@ -4793,6 +4845,141 @@ public class Main extends Activity {
         });
     }
 
+    /**
+     * Android's key store as Tink's AndroidKeystoreKmsClient and AndroidKeysetManager use it for an app's encrypted storage
+     * (androidx's EncryptedSharedPreferences, and Google Play services' mobstore, whose "Keystore cannot load the key with ID:
+     * mobstore_encrypt" and "Failed to initialize encryption" are issue #21), in its order: a KeyStore loaded, containsAlias
+     * (hasKey), an AES key of 256 bits for GCM made under the alias where there is none, a KeyStore loaded again and getKey,
+     * where Tink says that message when it answers null; the key checked by sealing ten bytes and opening them again as
+     * Tink's AndroidKeystoreAesGcm does (the IV the provider chose, before the ciphertext); getEntry. The key set it encrypts
+     * is kept in the app's preferences by the first run and opened by the second with the key found again.
+     *
+     * keystore-tink-hosted: the same as Google Play services' in an app's process (megler.KeyStoreProvider.hostedForTests:
+     * their data folder in this app's files, begun with the shared store), their key set in their folder, made by the first
+     * run and opened by the second. And data of before the shared store, with a key set in their preferences under an alias
+     * whose key is in no store (made by an app's process before 734): getKey answers null and the key set is removed, so
+     * that the next start makes the key again, and the key set; a key set of another name stays.
+     */
+    private void keystoreTink(final long run) {
+        final String text = "megler key set: one key of the keyset, as Tink keeps it encrypted";
+        step("keystore-tink", () -> {
+            android.content.SharedPreferences prefs = getSharedPreferences("megler_tink_keyset", MODE_PRIVATE);
+            String kept = prefs.getString("keyset", null);
+            boolean[] had = new boolean[1];
+            javax.crypto.SecretKey key = tinkMasterKey("megler-tink-master", had);
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            java.security.KeyStore.Entry entry = store.getEntry("megler-tink-master", null);
+            boolean entryOk = entry instanceof java.security.KeyStore.SecretKeyEntry
+                    && Arrays.equals(key.getEncoded(), ((java.security.KeyStore.SecretKeyEntry) entry).getSecretKey().getEncoded());
+            String opened = null;
+            if (kept == null) prefs.edit().putString("keyset", hex(tinkSeal(key, text.getBytes("UTF-8")))).commit();
+            else opened = new String(tinkOpen(key, unhex(kept)), "UTF-8");
+            detail = "had=" + had[0] + " kept=" + (kept != null) + " opened=" + opened + " entry=" + entryOk + " run=" + run;
+            return entryOk && had[0] == (run > 1) && (run > 1 ? text.equals(opened) : kept == null && prefs.getString("keyset", null) != null);
+        });
+        step("keystore-tink-hosted", () -> {
+            final java.lang.reflect.Method hosted = Class.forName("megler.KeyStoreProvider").getMethod("hostedForTests", String.class);
+            final File root = new File(getFilesDir(), "keystore-tink-hosted"), data = new File(root, "com.google.android.gms");
+            final File keySet = new File(data, "shared_prefs/megler-tink-mobstore.xml");
+            final File old = new File(getFilesDir(), "keystore-tink-old"), oldData = new File(old, "com.google.android.gms");
+            final File oldSet = new File(oldData, "shared_prefs/megler-tink-lost.xml"), otherSet = new File(oldData, "shared_prefs/megler-tink-other.xml");
+            if (run == 1) {
+                deleteAll(root);
+                data.mkdirs();
+                new File(root, ".megler-keystore-shared").createNewFile();
+            }
+            deleteAll(old);
+            oldSet.getParentFile().mkdirs();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(oldSet)) { out.write("a key set of a key in no store".getBytes("UTF-8")); }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(otherSet)) { out.write("another key set".getBytes("UTF-8")); }
+            java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            try {
+                hosted.invoke(null, root.getPath());
+                boolean[] had = new boolean[1];
+                javax.crypto.SecretKey key = tinkMasterKey("megler-tink-mobstore", had);
+                String opened = null;
+                if (run == 1) {
+                    keySet.getParentFile().mkdirs();
+                    try (java.io.FileOutputStream out = new java.io.FileOutputStream(keySet)) { out.write(hex(tinkSeal(key, text.getBytes("UTF-8"))).getBytes("UTF-8")); }
+                } else {
+                    byte[] b = new byte[(int) keySet.length()];
+                    try (java.io.RandomAccessFile in = new java.io.RandomAccessFile(keySet, "r")) { in.readFully(b); }
+                    opened = new String(tinkOpen(key, unhex(new String(b, "UTF-8"))), "UTF-8");
+                }
+                boolean theirs = new File(data, ".megler_keystore2").isFile();
+                hosted.invoke(null, (Object) null);
+                boolean notApps = !store.containsAlias("megler-tink-mobstore");
+                // Their data of before the shared store, a key set whose key is in no store.
+                hosted.invoke(null, old.getPath());
+                boolean missing = !store.containsAlias("megler-tink-lost") && store.getKey("megler-tink-lost", null) == null;
+                boolean removed = !oldSet.exists() && otherSet.isFile();
+                boolean[] again = new boolean[1];
+                javax.crypto.SecretKey fresh = tinkMasterKey("megler-tink-lost", again);
+                boolean remade = !again[0] && fresh != null && new File(oldData, ".megler_keystore2").isFile() && store.getKey("megler-tink-lost", null) != null;
+                detail = "had=" + had[0] + " opened=" + opened + " theirs=" + theirs + " not-the-app's=" + notApps + " missing=" + missing + " removed=" + removed
+                        + " remade=" + remade + " run=" + run;
+                return had[0] == (run > 1) && (run == 1 || text.equals(opened)) && theirs && notApps && missing && removed && remade;
+            } finally {
+                hosted.invoke(null, (Object) null);
+                deleteAll(old);
+            }
+        });
+    }
+
+    /*
+     * Tink's master key in Android's key store (AndroidKeystoreKmsClient): hasKey, generateNewAeadKey where there is none,
+     * getAead -- a KeyStore of its own, getKey, null being "Keystore cannot load the key with ID" -- and validateAead.
+     */
+    private static javax.crypto.SecretKey tinkMasterKey(String alias, boolean[] had) throws Exception {
+        java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+        store.load(null);
+        had[0] = store.containsAlias(alias);
+        if (!had[0]) keystoreAes(alias);
+        java.security.KeyStore again = java.security.KeyStore.getInstance("AndroidKeyStore");
+        again.load(null);
+        javax.crypto.SecretKey key = (javax.crypto.SecretKey) again.getKey(alias, null);
+        if (key == null) throw new java.security.InvalidKeyException("Keystore cannot load the key with ID: " + alias);
+        byte[] message = new byte[10];
+        new java.security.SecureRandom().nextBytes(message);
+        if (!Arrays.equals(message, tinkOpen(key, tinkSeal(key, message)))) throw new java.security.KeyStoreException("cannot use Android Keystore");
+        return key;
+    }
+
+    /* AndroidKeystoreAesGcm's encrypt: the IV the cipher chose, then the ciphertext and its tag; no associated data. */
+    private static byte[] tinkSeal(javax.crypto.SecretKey key, byte[] plain) throws Exception {
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, key);
+        c.updateAAD(new byte[0]);
+        byte[] out = new byte[12 + plain.length + 16];
+        int n = c.doFinal(plain, 0, plain.length, out, 12);
+        byte[] iv = c.getIV();
+        if (n != plain.length + 16 || iv == null || iv.length != 12) throw new java.security.GeneralSecurityException("encryption failed: " + n + " bytes, IV " + (iv == null ? null : iv.length));
+        System.arraycopy(iv, 0, out, 0, 12);
+        return out;
+    }
+
+    /* AndroidKeystoreAesGcm's decrypt. */
+    private static byte[] tinkOpen(javax.crypto.SecretKey key, byte[] sealed) throws Exception {
+        javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        c.init(javax.crypto.Cipher.DECRYPT_MODE, key, new javax.crypto.spec.GCMParameterSpec(128, sealed, 0, 12));
+        c.updateAAD(new byte[0]);
+        return c.doFinal(sealed, 12, sealed.length - 12);
+    }
+
+    private static String hex(byte[] b) {
+        StringBuilder s = new StringBuilder();
+        for (byte x : b) s.append(String.format("%02x", x & 255));
+        return s.toString();
+    }
+
+    private static byte[] unhex(String s) {
+        byte[] b = new byte[s.length() / 2];
+        for (int i = 0; i < b.length; i++) b[i] = (byte) Integer.parseInt(s.substring(2 * i, 2 * i + 2), 16);
+        return b;
+    }
+
     private static void keystoreAes(String alias) throws Exception {
         javax.crypto.KeyGenerator aes = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore");
         aes.init(new android.security.keystore.KeyGenParameterSpec.Builder(alias, android.security.keystore.KeyProperties.PURPOSE_ENCRYPT
@@ -4806,6 +4993,105 @@ public class Main extends Activity {
         File[] in = f.listFiles();
         if (in != null) for (File c : in) deleteAll(c);
         f.delete();
+    }
+
+    /**
+     * Android's hidden PackageParser as LibChecker's library index uses it, where its own manifest reader fails (issue #18: the
+     * class was not there, NoClassDefFoundError): SDK_VERSION set by reflection, as LibChecker does at its start; this app's
+     * own APK parsed with flags 7 into its package -- the application and its SDKs, the activities with their filters
+     * (actions, categories, schemes, the default category) exported as Android decides it, the receivers, the services with
+     * their processes and permissions, the provider -- read through the fields and IntentFilter's methods LibChecker reads;
+     * and Android's errors for another app's APK that is no zip and for a file that is not there.
+     */
+    private void packageParser() {
+        step("package-parser", () -> {
+            Class<?> parserClass = Class.forName("android.content.pm.PackageParser");
+            java.lang.reflect.Field sdk = parserClass.getDeclaredField("SDK_VERSION");
+            sdk.setAccessible(true);
+            int sdkWas = sdk.getInt(null);
+            sdk.set(null, Integer.MAX_VALUE);
+            boolean bypassed = sdk.getInt(null) == Integer.MAX_VALUE;
+            sdk.set(null, sdkWas);
+            Object parser = parserClass.getConstructor().newInstance();
+            java.lang.reflect.Method parse = parserClass.getMethod("parsePackage", File.class, int.class);
+            Object pkg = parse.invoke(parser, new File(getPackageCodePath()), 7);
+            Class<?> pkgClass = pkg.getClass();
+            android.content.pm.ApplicationInfo app = (android.content.pm.ApplicationInfo) pkgClass.getField("applicationInfo").get(pkg);
+            boolean application = "megler.test.data".equals(pkgClass.getField("packageName").get(pkg)) && "megler.test.data.DataApplication".equals(app.className)
+                    && app.minSdkVersion == 21 && app.targetSdkVersion == 28 && getPackageCodePath().equals(app.sourceDir)
+                    && Integer.valueOf(1).equals(pkgClass.getField("mVersionCode").get(pkg)) && "1.0".equals(pkgClass.getField("mVersionName").get(pkg));
+            Object main = parsedComponent(pkg, "activities", "megler.test.data.Main"), linked = parsedComponent(pkg, "activities", "megler.test.data.Main$Linked");
+            Object answer = parsedComponent(pkg, "activities", "megler.test.data.Main$Answer"), clear = parsedComponent(pkg, "activities", "megler.test.data.Main$Clear");
+            Object relay = parsedComponent(pkg, "receivers", "megler.test.data.Main$Relay"), off = parsedComponent(pkg, "receivers", "megler.test.data.Main$Off");
+            Object elsewhere = parsedComponent(pkg, "services", "megler.test.data.Main$Elsewhere"), work = parsedComponent(pkg, "services", "megler.test.data.Main$Work");
+            Object sync = parsedComponent(pkg, "services", "megler.test.data.Main$SyncService"), synced = parsedComponent(pkg, "providers", "megler.test.data.Main$Synced");
+            if (main == null || linked == null || answer == null || clear == null || relay == null || off == null || elsewhere == null || work == null || sync == null
+                    || synced == null) {
+                detail = "a component not found: main=" + main + " linked=" + linked + " answer=" + answer + " clear=" + clear + " relay=" + relay + " off=" + off
+                        + " elsewhere=" + elsewhere + " work=" + work + " sync=" + sync + " synced=" + synced;
+                return false;
+            }
+            // The launcher's filter as LibChecker reads one: its actions, its categories, its schemes.
+            android.content.IntentFilter launcher = parsedIntents(main).get(0);
+            java.util.ArrayList<String> actions = new java.util.ArrayList<>(), categories = new java.util.ArrayList<>();
+            for (java.util.Iterator<String> i = launcher.actionsIterator(); i.hasNext();) actions.add(i.next());
+            for (java.util.Iterator<String> i = launcher.categoriesIterator(); i != null && i.hasNext();) categories.add(i.next());
+            boolean filters = parsedIntents(main).size() == 1 && actions.equals(Arrays.asList("android.intent.action.MAIN"))
+                    && categories.equals(Arrays.asList("android.intent.category.LAUNCHER")) && launcher.countDataSchemes() == 0
+                    && !launcher.getClass().getField("hasDefault").getBoolean(launcher);
+            android.content.IntentFilter web = parsedIntents(linked).get(0);
+            boolean data = parsedIntents(linked).size() == 5 && web.countDataSchemes() == 1 && "https".equals(web.getDataScheme(0))
+                    && web.hasCategory("android.intent.category.BROWSABLE") && web.getClass().getField("hasDefault").getBoolean(web)
+                    && "megler-port".equals(parsedIntents(linked).get(3).getDataScheme(0));
+            boolean exported = parsedInfo(main).exported && parsedInfo(answer).exported && !parsedInfo(clear).exported && !parsedInfo(relay).exported;
+            // (Flags 7 have PARSE_IGNORE_PROCESSES: every component in the package's process, as Android's buildProcessName gives it;
+            // without them the service's own.)
+            Object apart = parsedComponent(parse.invoke(parser, new File(getPackageCodePath()), 0), "services", "megler.test.data.Main$Elsewhere");
+            String processes = parsedInfo(elsewhere).processName + "," + (apart == null ? null : parsedInfo(apart).processName) + "," + parsedInfo(main).processName;
+            Object component = main.getClass().getMethod("getComponentName").invoke(main);
+            boolean others = !parsedInfo(off).enabled && "megler.test.data,megler.test.data:elsewhere,megler.test.data".equals(processes)
+                    && "android.permission.BIND_JOB_SERVICE".equals(((android.content.pm.ServiceInfo) parsedInfo(work)).permission)
+                    && parsedIntents(sync).size() == 1 && "android.content.SyncAdapter".equals(parsedIntents(sync).get(0).getAction(0))
+                    && "megler.test.sync".equals(((android.content.pm.ProviderInfo) parsedInfo(synced)).authority)
+                    && new android.content.ComponentName("megler.test.data", "megler.test.data.Main").equals(component);
+            // Android's errors: an APK that is no zip (the other app's, as the suite writes it) and one that is not there.
+            int notZip = parsedError(parser, parse, new File("/data/app/com.example.other-1/base.apk")), missing = parsedError(parser, parse, new File(getFilesDir(), "none.apk"));
+            detail = "bypassed=" + bypassed + " application=" + application + " (" + app.className + " " + app.minSdkVersion + "/" + app.targetSdkVersion + ") filters=" + filters
+                    + " (" + actions + " " + categories + ") data=" + data + " exported=" + exported + " others=" + others + " (off " + parsedInfo(off).enabled + ", processes " + processes + ", "
+                    + ((android.content.pm.ServiceInfo) parsedInfo(work)).permission + ", " + parsedIntents(sync).size() + ", "
+                    + ((android.content.pm.ProviderInfo) parsedInfo(synced)).authority + ", " + component + ") errors=" + notZip + "," + missing
+                    + " components=" + ((java.util.List<?>) pkgClass.getField("activities").get(pkg)).size() + "/" + ((java.util.List<?>) pkgClass.getField("receivers").get(pkg)).size()
+                    + "/" + ((java.util.List<?>) pkgClass.getField("services").get(pkg)).size() + "/" + ((java.util.List<?>) pkgClass.getField("providers").get(pkg)).size();
+            return bypassed && application && filters && data && exported && others
+                    && notZip == -100 && missing == -100;  // INSTALL_PARSE_FAILED_NOT_APK, hidden API
+        });
+    }
+
+    /* The component of a parsed package's list (activities, receivers, services, providers) of that class, or null. */
+    private static Object parsedComponent(Object pkg, String list, String className) throws Exception {
+        for (Object c : (java.util.List<?>) pkg.getClass().getField(list).get(pkg))
+            if (className.equals(c.getClass().getField("className").get(c))) return c;
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<android.content.IntentFilter> parsedIntents(Object component) throws Exception {
+        return (java.util.List<android.content.IntentFilter>) component.getClass().getField("intents").get(component);
+    }
+
+    private static android.content.pm.ComponentInfo parsedInfo(Object component) throws Exception {
+        return (android.content.pm.ComponentInfo) component.getClass().getField("info").get(component);
+    }
+
+    /* The error of PackageParserException that parsing the file ends in; 0 when it is parsed. */
+    private static int parsedError(Object parser, java.lang.reflect.Method parse, File file) throws Exception {
+        try {
+            parse.invoke(parser, file, 7);
+            return 0;
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable t = e.getCause();
+            return t != null && t.getClass().getName().equals("android.content.pm.PackageParser$PackageParserException") ? t.getClass().getField("error").getInt(t) : 1;
+        }
     }
 
     /**
@@ -5935,6 +6221,22 @@ public class Main extends Activity {
             detail = "duration " + duration + " ms";
             return duration >= 450 && duration <= 550;
         });
+        // A MediaPlayer given a file's descriptor keeps its own copy of it, as Android's setDataSource dups it: cocos2d-x's
+        // Cocos2dxMusic closes its FileInputStream right after, before prepare (Metal Slug 3's music: "unsupported or damaged
+        // media source"). Prepared after the stream is closed, and released.
+        step("media-player-closed-fd", () -> {
+            java.io.File wav = new java.io.File(getCacheDir(), "tone-fd.wav");
+            writeWav(wav, 22050, 11025);
+            android.media.MediaPlayer mp = new android.media.MediaPlayer();
+            try (java.io.FileInputStream in = new java.io.FileInputStream(wav)) {
+                mp.setDataSource(in.getFD());
+            }
+            mp.prepare();
+            int duration = mp.getDuration();
+            mp.release();
+            detail = "duration " + duration + " ms";
+            return duration >= 450 && duration <= 550;
+        });
         step("sound-pool", () -> {
             android.media.SoundPool pool = new android.media.SoundPool(4, android.media.AudioManager.STREAM_MUSIC, 0);
             pool.setOnLoadCompleteListener((p, id, status) -> {
@@ -6329,6 +6631,13 @@ public class Main extends Activity {
 
     @Override
     protected void onActivityResult(int request, int result, android.content.Intent data) {
+        // (the sound picker's answers, which the step "ringtone-picker" reads)
+        if (request == 91) {
+            sPickedResult = result;
+            sPickedHad = data != null && data.hasExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            sPicked = data == null ? null : data.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            return;
+        }
         Log.i("DataTest", "app-results answered request=" + request + " result=" + result + " authAccount=" + (data == null ? null : data.getStringExtra("authAccount"))
                 + " n=" + (data == null ? -1 : data.getIntExtra("n", -1)) + " skipped=" + (data != null && data.hasExtra("skipped")));
         // Then Android's Settings screens that Megler has (megler.SystemScreens), as this activity is in front again: this app's
@@ -6378,6 +6687,19 @@ public class Main extends Activity {
             if (other == null) { detail = "not among the installed applications"; return false; }
             String apk = "/data/app/com.example.other-1/base.apk";
             java.io.File file = new java.io.File(String.valueOf(other.sourceDir));
+            // Found before anything opens it: by stat, by access and in its folder's list, as LibChecker's NativeLibraryAnalyzer
+            // asks File.exists before it reads another app's APK ("File not exists", issue #18), and readable, not writable.
+            boolean exists = file.exists() && file.isFile() && file.canRead() && !file.canWrite();
+            String[] names = file.getParentFile().list();
+            boolean listed = names != null && Arrays.asList(names).contains("base.apk");
+            boolean statted, accessible;
+            try {
+                android.system.StructStat st = android.system.Os.stat(apk);
+                statted = android.system.OsConstants.S_ISREG(st.st_mode) && st.st_size == 24;
+                accessible = android.system.Os.access(apk, android.system.OsConstants.R_OK);
+            } catch (android.system.ErrnoException e) {
+                statted = accessible = false;
+            }
             String head = null;
             boolean written = false;
             try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
@@ -6389,11 +6711,14 @@ public class Main extends Activity {
             boolean none = new java.io.File("/data/app/com.example.none-1/base.apk").exists() || new java.io.File("/data/app/com.example.none-1").exists();
             boolean folder = file.getParentFile().isDirectory();
             detail = "sourceDir=" + other.sourceDir + " publicSourceDir=" + other.publicSourceDir + " nativeLibraryDir=" + other.nativeLibraryDir
-                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none;
-            return apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
+                    + " dataDir=" + other.dataDir + " length=" + file.length() + " head=" + head + " written=" + written + " folder=" + folder + " none=" + none
+                    + " before-open: exists=" + exists + " listed=" + listed + " (" + (names == null ? null : Arrays.toString(names)) + ") stat=" + statted + " access=" + accessible;
+            return exists && listed && statted && accessible
+                && apk.equals(other.sourceDir) && apk.equals(other.publicSourceDir) && other.nativeLibraryDir != null
                 && other.nativeLibraryDir.startsWith("/data/app/com.example.other-1/lib/") && "/data/data/com.example.other".equals(other.dataDir)
                 && file.isFile() && file.length() == 24 && "PK the other app's APK".equals(head) && !written && folder && !none;
         });
+        packageParser();
         // Its activities, every one, as the shell described them (the apps folder's com.example.other/activities.json), as a
         // shortcut maker lists them: each with whether it is exported; both launcher entries, the alias's too; the one that
         // makes shortcuts, with its own label and icon (3 x 3, the app's is 2 x 2); not for a link. Then two are started by
@@ -6550,6 +6875,30 @@ public class Main extends Activity {
                     + " again=" + again + " deleted=" + deleted;
             return wasWritable && made && readOnly && refused && writable && again && deleted;
         });
+        /*
+         * And its execute bit, which Facebook asks about too: a module it loads must be !canWrite && !canExecute && canRead
+         * (Messenger 586 said "Downloaded module file must be read only: ... read only:false" though setReadOnly had worked:
+         * canExecute said yes of every file). None for a file the app made, nor for one made read-only, stat's mode says the
+         * same; setExecutable gives it and takes it away, a rename keeps it, a folder may be searched, and a library of the
+         * app's own library folder is executable, as Android's package manager makes them (0755).
+         */
+        step("file-execute", () -> {
+            File f = new File(getFilesDir(), "module-x.zip"), moved = new File(getFilesDir(), "module-y.zip");
+            moved.delete();
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(f)) { out.write(new byte[] { 'P', 'K' }); }
+            boolean plain = !f.canExecute() && (android.system.Os.stat(f.getPath()).st_mode & 0111) == 0;
+            boolean made = f.setReadOnly(), facebook = !f.canWrite() && !f.canExecute() && f.canRead();
+            boolean exec = f.setExecutable(true) && f.canExecute() && !f.canWrite() && (android.system.Os.stat(f.getPath()).st_mode & 0100) != 0;
+            boolean renamed = f.renameTo(moved) && moved.canExecute() && !f.exists();
+            boolean off = moved.setExecutable(false) && !moved.canExecute();
+            boolean folder = getFilesDir().canExecute();
+            boolean deleted = moved.delete() && !moved.exists();
+            File[] libs = new File(getApplicationInfo().nativeLibraryDir).listFiles();
+            boolean library = libs == null || libs.length == 0 || libs[0].canExecute();
+            detail = "plain=" + plain + " made=" + made + " facebook=" + facebook + " exec=" + exec + " renamed=" + renamed + " off=" + off
+                    + " folder=" + folder + " deleted=" + deleted + " library=" + library + " (" + (libs == null ? "no folder" : libs.length + " libraries") + ")";
+            return plain && made && facebook && exec && renamed && off && folder && deleted && library;
+        });
     }
 
     /**
@@ -6602,6 +6951,32 @@ public class Main extends Activity {
                     && "Unknown component: ComponentInfo{com.facebook.appmanager/com.facebook.oxygen.appmanager.firstparty.tos.ShouldAcceptTos}".equals(component)
                     && "Unknown package: com.facebook.appmanager".equals(application);
         });
+        // An implicit intent reaches the app's activities that are on, as on Android: not one its manifest has off, literally or by
+        // a boolean resource, until the app turns it on; not one the app turned off; all of them with MATCH_DISABLED_COMPONENTS.
+        // Android's Settings lists its own screens so, and showed those its manifest has off (a second About, Developer options).
+        step("disabled-activities", () -> {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.Intent tile = new android.content.Intent("megler.test.TILE").setPackage(getPackageName());
+            android.content.ComponentName off = new android.content.ComponentName(this, "megler.test.data.Main$TileOff");
+            android.content.ComponentName on = new android.content.ComponentName(this, "megler.test.data.Main$TileOn");
+            String first = tiles(pm.queryIntentActivities(tile, 0));
+            pm.setComponentEnabledSetting(off, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP);
+            pm.setComponentEnabledSetting(on, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP);
+            String turned = tiles(pm.queryIntentActivities(tile, 0));
+            String all = tiles(pm.queryIntentActivities(tile, android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS));
+            pm.setComponentEnabledSetting(off, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, 0);
+            pm.setComponentEnabledSetting(on, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, 0);
+            String back = tiles(pm.queryIntentActivities(tile, 0));
+            detail = "first=" + first + " turned=" + turned + " all=" + all + " back=" + back;
+            return "TileOn".equals(first) && "TileOff".equals(turned) && "TileConfigured TileOff TileOn".equals(all) && "TileOn".equals(back);
+        });
+    }
+
+    /** The simple names of the activities of those answers, sorted. */
+    private static String tiles(java.util.List<android.content.pm.ResolveInfo> l) {
+        java.util.TreeSet<String> names = new java.util.TreeSet<>();
+        for (android.content.pm.ResolveInfo r : l) names.add(r.activityInfo.name.substring(r.activityInfo.name.indexOf('$') + 1));
+        return String.join(" ", names);
     }
 
     /**
@@ -7365,6 +7740,40 @@ public class Main extends Activity {
             detail = "range=" + range + " plain=" + plain + " duration=" + duration;
             return back == f && range != null && range.startsWith("at ") && range.contains("14:53") && range.contains("15:38")
                     && plain != null && !plain.isEmpty() && duration != null && duration.toString().length() > 0;
+        });
+        // A size as Android 9's Formatter words it, as LibChecker's app details lay it out: formatFileSize with SI or IEC units
+        // (with flags it said null, and the details ended on SpannableStringBuilder.append of it, issue #17), its rounding (two
+        // decimals up to 100, one with FLAG_SHORTER below 10, 900 still of the unit below), "" without a context; and a time
+        // rounded up to minutes (null too). The decimal separator is the run's locale's, as String.format's on Android.
+        step("format-file-size", () -> {
+            char point = java.text.DecimalFormatSymbols.getInstance().getDecimalSeparator();
+            // (The flags and the forms that take them are hidden API, which LibChecker compiles against: reached by reflection.)
+            Class<?> f = android.text.format.Formatter.class;
+            java.lang.reflect.Method flagged = f.getMethod("formatFileSize", Context.class, long.class, int.class);
+            int iecUnits = f.getField("FLAG_IEC_UNITS").getInt(null);
+            String si = android.text.format.Formatter.formatFileSize(this, 1234567L), two = android.text.format.Formatter.formatFileSize(this, 12345678L),
+                    iec = (String) flagged.invoke(null, this, 1536L, iecUnits), zero = (String) flagged.invoke(null, this, 0L, iecUnits),
+                    bytes = android.text.format.Formatter.formatFileSize(this, 900L),
+                    shorter = android.text.format.Formatter.formatShortFileSize(this, 12345678L),
+                    none = android.text.format.Formatter.formatFileSize(null, 5L),
+                    minutes = (String) f.getMethod("formatShortElapsedTimeRoundingUpToMinutes", Context.class, long.class).invoke(null, this, 30000L);
+            CharSequence shown = new android.text.SpannableStringBuilder("Size: ").append(two);
+            detail = "si=" + si + " two=" + two + " iec=" + iec + " zero=" + zero + " bytes=" + bytes + " shorter=" + shorter + " none=[" + none + "] minutes=" + minutes + " shown=" + shown;
+            return ("1" + point + "23 MB").equals(si) && ("12" + point + "35 MB").equals(two) && ("1" + point + "50 kB").equals(iec) && "0 B".equals(zero)
+                    && "900 B".equals(bytes) && "12 MB".equals(shorter) && "".equals(none) && "1 min".equals(minutes) && shown.toString().equals("Size: " + two);
+        });
+        // Android's FloatMath, gone from the SDK since API 23 and still in Android 9's framework, where cocos2d-x 2.x sizes its
+        // labels' bitmaps with its ceil (Metal Slug 3's buttons had no text: the stub answered 0). By reflection, as the SDK
+        // this app is built with has no such class.
+        step("float-math", () -> {
+            Class<?> m = Class.forName("android.util.FloatMath");
+            float ceil = (Float) m.getMethod("ceil", float.class).invoke(null, 1.25f);
+            float floor = (Float) m.getMethod("floor", float.class).invoke(null, -1.25f);
+            float sqrt = (Float) m.getMethod("sqrt", float.class).invoke(null, 2.25f);
+            float hypot = (Float) m.getMethod("hypot", float.class, float.class).invoke(null, 3f, 4f);
+            float pow = (Float) m.getMethod("pow", float.class, float.class).invoke(null, 2f, 10f);
+            detail = "ceil " + ceil + " floor " + floor + " sqrt " + sqrt + " hypot " + hypot + " pow " + pow;
+            return ceil == 2f && floor == -2f && sqrt == 1.5f && hypot == 5f && pow == 1024f;
         });
     }
 
@@ -8417,11 +8826,496 @@ public class Main extends Activity {
                 + ", Color objects " + objects + ", Android 14's " + later;
             return named && curved && xyz && wide && connected && adapted && other && packed && objects && later;
         });
+        /*
+         * A paint with a RuntimeShader fills nothing: its AGSL program is not run here, and the paint's own colour (opaque black, as
+         * the paint is new) is not what it draws. YouTube lights the buttons under a video so, drawPaint clipped to each button by a
+         * view of its own: they were black pills over their 5% black wash (issue #24). Into a bitmap and into a RenderNode's list,
+         * shapes and text alike; a bitmap drawn with such a paint is drawn, as on Android. And the wash itself, a translucent black
+         * of Display P3 as a long colour, keeps its alpha through Paint.setColor(long) and Canvas.drawColor(long).
+         */
+        step("runtime-shader", () -> {
+            android.graphics.ColorSpace p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3);
+            long washLong = android.graphics.Color.pack(0f, 0f, 0f, 0.05f, p3);
+            android.graphics.Paint wash = new android.graphics.Paint();
+            wash.setColor(washLong);
+            android.graphics.Shader agsl = (android.graphics.Shader) Class.forName("android.graphics.RuntimeShader").getConstructor(String.class)
+                .newInstance("half4 main(float2 p) { return half4(1.0, 0.0, 0.0, 1.0); }");
+            android.graphics.Paint light = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            light.setShader(agsl);
+            light.setTextSize(16);
+            android.graphics.Paint copied = new android.graphics.Paint(light), cleared = new android.graphics.Paint(light);
+            cleared.setShader(null);
+            android.graphics.Bitmap red = bitmap(4, 4);
+            red.eraseColor(0xFFFF0000);
+            // Straight into a bitmap: the wash on the left, then the light over all of it, a round rectangle, a path and text.
+            android.graphics.Bitmap bm = bitmap(60, 20);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRect(0, 0, 20, 20, wash);
+            c.drawColor(android.graphics.Color.pack(0f, 0f, 0f, 0.05f, p3));
+            c.save();
+            android.graphics.Path pill = new android.graphics.Path();
+            pill.addRoundRect(new android.graphics.RectF(0, 0, 40, 20), 8, 8, android.graphics.Path.Direction.CW);
+            c.clipPath(pill);
+            c.drawPaint(light);
+            c.restore();
+            c.drawRoundRect(new android.graphics.RectF(0, 0, 60, 20), 8, 8, copied);
+            c.drawPath(pill, light);
+            c.drawText("Like", 2, 16, light);
+            c.drawBitmap(red, 50, 0, light);
+            // And through a RenderNode's list, as a view's onDraw is recorded.
+            android.graphics.RenderNode node = new android.graphics.RenderNode("neon");
+            node.setPosition(0, 0, 60, 20);
+            android.graphics.RecordingCanvas rc = node.beginRecording(60, 20);
+            rc.drawColor(0xFFFFFFFF);
+            rc.drawRect(0, 0, 20, 20, wash);
+            rc.drawPaint(light);
+            rc.drawText("Like", 2, 16, light);
+            rc.drawRect(40, 0, 60, 20, cleared);
+            node.endRecording();
+            android.graphics.Bitmap listed = drawn(node, 60, 20);
+            int both = bm.getPixel(10, 10), once = bm.getPixel(30, 10), redOver = bm.getPixel(51, 1);
+            int listedWash = listed.getPixel(10, 10), listedWhite = listed.getPixel(30, 10), listedCleared = listed.getPixel(50, 10);
+            int argb = wash.getColor();
+            // 5% of 1023, rounded, is 51: alpha 0x0d once more as an int; white under it once is 0xf2, twice 0xe6.
+            boolean longs = argb == 0x0d000000 && Math.abs(android.graphics.Color.alpha(washLong) - 51 / 1023f) < 1e-6f
+                && android.graphics.Color.toArgb(washLong) == 0x0d000000;
+            boolean direct = pixelNear(both, 0xFFE6E6E6, 1) && pixelNear(once, 0xFFF2F2F2, 1) && redOver == 0xFFFF0000;
+            boolean recorded = pixelNear(listedWash, 0xFFF2F2F2, 1) && listedWhite == 0xFFFFFFFF && listedCleared == 0xFF000000;
+            boolean flags = light.getShader() == agsl && copied.getShader() == agsl && cleared.getShader() == null;
+            detail = String.format("wash %08x (long alpha %.4f), direct %08x %08x red %08x, listed %08x %08x %08x, shaders kept %b",
+                    argb, android.graphics.Color.alpha(washLong), both, once, redOver, listedWash, listedWhite, listedCleared, flags);
+            return longs && direct && recorded && flags;
+        });
+        /* Canvas.drawColor(long, BlendMode) draws the colour, of any space, by the mode: into a bitmap and into a RenderNode's list.
+           It was a signature that drew nothing in both. */
+        step("draw-color-long-blend", () -> {
+            android.graphics.ColorSpace p3 = android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.DISPLAY_P3);
+            android.graphics.Bitmap over = bitmap(4, 4), replaced = bitmap(4, 4);
+            android.graphics.Canvas c = new android.graphics.Canvas(over);
+            c.drawColor(0xFFFFFFFF);
+            c.drawColor(android.graphics.Color.pack(0f, 0f, 0f, 0.5f, p3), android.graphics.BlendMode.SRC_OVER);
+            c = new android.graphics.Canvas(replaced);
+            c.drawColor(0xFFFFFFFF);
+            c.drawColor(android.graphics.Color.pack(0x400000FF), android.graphics.BlendMode.SRC);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("color");
+            node.setPosition(0, 0, 4, 4);
+            android.graphics.RecordingCanvas rc = node.beginRecording(4, 4);
+            rc.drawColor(android.graphics.Color.pack(0xFF00FF00), android.graphics.BlendMode.SRC_OVER);
+            node.endRecording();
+            int half = over.getPixel(1, 1), src = replaced.getPixel(1, 1), listed = drawn(node, 4, 4).getPixel(1, 1);
+            detail = String.format("half black over white %08x, SRC %08x, listed %08x", half, src, listed);
+            return pixelNear(half, 0xFF7F7F7F, 1) && pixelNear(src, 0x400000FF, 1) && listed == 0xFF00FF00;
+        });
+        /* BlendMode.MULTIPLY is S*(1-Da) + D*(1-Sa) + S*D, which keeps what is under a translucent colour: half red on white is
+           pink, a 5% black wash on white is a light grey. It was PorterDuff.Mode.MULTIPLY's S*D, whose alpha is Sa*Da: the
+           wash punched the white through to a 5% black, which an opaque window shows black. By a paint, drawColor and a node. */
+        step("blend-multiply", () -> {
+            android.graphics.Bitmap bm = bitmap(8, 4);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawColor(0xFFFFFFFF);
+            android.graphics.Paint red = new android.graphics.Paint(), wash = new android.graphics.Paint();
+            red.setColor(0x80FF0000);
+            red.setBlendMode(android.graphics.BlendMode.MULTIPLY);
+            wash.setColor(0x0D000000);
+            wash.setBlendMode(android.graphics.BlendMode.MULTIPLY);
+            c.drawRect(0, 0, 4, 4, red);
+            c.drawRect(4, 0, 8, 4, wash);
+            android.graphics.Bitmap colored = bitmap(4, 4);
+            c = new android.graphics.Canvas(colored);
+            c.drawColor(0xFFFFFFFF);
+            c.drawColor(0x80FF0000, android.graphics.BlendMode.MULTIPLY);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("multiply");
+            node.setPosition(0, 0, 4, 4);
+            android.graphics.RecordingCanvas rc = node.beginRecording(4, 4);
+            rc.drawColor(0xFFFFFFFF);
+            rc.drawRect(0, 0, 4, 4, wash);
+            node.endRecording();
+            int pink = bm.getPixel(1, 1), grey = bm.getPixel(5, 1), byColor = colored.getPixel(1, 1), listed = drawn(node, 4, 4).getPixel(1, 1);
+            detail = String.format("half red %08x, wash %08x, drawColor %08x, listed %08x", pink, grey, byColor, listed);
+            return pixelNear(pink, 0xFFFF8080, 1) && pixelNear(grey, 0xFFF2F2F2, 1) && pixelNear(byColor, 0xFFFF8080, 1) && pixelNear(listed, 0xFFF2F2F2, 1);
+        });
+        /*
+         * A paint with a BlurMaskFilter fills blurred: a red bar 20 x 10 on white, blurred by a radius of 4 (a standard deviation
+         * of 2.8 pixels), is red in its middle, pink just outside its edge, its colour fading on to white three deviations away;
+         * through a RenderNode's list the same. The same paint without the filter leaves the white outside the bar white. The
+         * filter was a constructor that kept nothing, and the Google app draws its Gemini glows with it: Gemini's first screen
+         * had solid purple ovals and a solid pill on the phone.
+         */
+        step("blur-mask-filter", () -> {
+            android.graphics.BlurMaskFilter filter = new android.graphics.BlurMaskFilter(4, android.graphics.BlurMaskFilter.Blur.NORMAL);
+            android.graphics.Paint glow = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG), plain = new android.graphics.Paint();
+            glow.setColor(0xFFFF0000);
+            plain.setColor(0xFFFF0000);
+            glow.setMaskFilter(filter);
+            android.graphics.Paint copied = new android.graphics.Paint(glow);
+            android.graphics.Bitmap bm = bitmap(60, 30), sharp = bitmap(60, 30);
+            android.graphics.Canvas c = new android.graphics.Canvas(bm);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRect(20, 10, 40, 20, copied);
+            c = new android.graphics.Canvas(sharp);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRect(20, 10, 40, 20, plain);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("glow");
+            node.setPosition(0, 0, 60, 30);
+            android.graphics.RecordingCanvas rc = node.beginRecording(60, 30);
+            rc.drawColor(0xFFFFFFFF);
+            android.graphics.Path bar = new android.graphics.Path();
+            bar.addRect(20, 10, 40, 20, android.graphics.Path.Direction.CW);
+            rc.drawPath(bar, glow);
+            node.endRecording();
+            android.graphics.Bitmap listed = drawn(node, 60, 30);
+            int middle = bm.getPixel(30, 15), edge = bm.getPixel(30, 8), far = bm.getPixel(30, 1), side = bm.getPixel(16, 15);
+            int sharpEdge = sharp.getPixel(30, 8), listedMiddle = listed.getPixel(30, 15), listedEdge = listed.getPixel(30, 8), listedFar = listed.getPixel(3, 3);
+            // Red with little of the white mixed in, in the middle; just outside the edge a pink: neither white nor red.
+            boolean blurred = (middle >>> 16 & 0xff) >= 0xf0 && (middle >>> 8 & 0xff) <= 0x50 && (edge >>> 16 & 0xff) >= 0xf0
+                && (edge >>> 8 & 0xff) >= 0x60 && (edge >>> 8 & 0xff) <= 0xe8 && (side >>> 8 & 0xff) < 0xf8 && pixelNear(far, 0xFFFFFFFF, 2);
+            boolean recorded = pixelNear(listedMiddle, middle, 3) && pixelNear(listedEdge, edge, 3) && pixelNear(listedFar, 0xFFFFFFFF, 2);
+            boolean kept = copied.getMaskFilter() == filter && glow.getMaskFilter() == filter && plain.getMaskFilter() == null;
+            detail = String.format("middle %08x, just outside %08x (sharp %08x), beside %08x, far %08x; listed %08x %08x %08x; filter kept %b",
+                    middle, edge, sharpEdge, side, far, listedMiddle, listedEdge, listedFar, kept);
+            return blurred && recorded && kept && sharpEdge == 0xFFFFFFFF;
+        });
+        /*
+         * Radii too large for a rounded rectangle are scaled down together, as Android's Skia does (SkRRect): a rectangle
+         * 40 wide and 120 high with radii of 1000 is a capsule, round ends of radius 20, and not an ellipse -- each radius was
+         * cut to half its own side. So drawRoundRect, a path's addRoundRect of eight radii (here the top corners round, the
+         * bottom ones square), a GradientDrawable's corner radii and a node's list draw it. The Google app's Gemini screen
+         * (17.6.63) has capsules of its emphasis colour beside its suggestions, and an HP Elite x3 showed ellipses there.
+         * (5, 10) is inside the capsule's round end and outside the ellipse; (1, 1) is outside both; (1, 118) is inside the
+         * path's square bottom corner alone.
+         */
+        step("round-rect-radii", () -> {
+            android.graphics.Paint red = new android.graphics.Paint();
+            red.setColor(0xFFFF0000);
+            android.graphics.RectF box = new android.graphics.RectF(0, 0, 40, 120);
+            android.graphics.Bitmap round = bitmap(40, 120), path = bitmap(40, 120), radii = bitmap(40, 120);
+            android.graphics.Canvas c = new android.graphics.Canvas(round);
+            c.drawColor(0xFFFFFFFF);
+            c.drawRoundRect(box, 1000, 1000, red);
+            c = new android.graphics.Canvas(path);
+            c.drawColor(0xFFFFFFFF);
+            android.graphics.Path top = new android.graphics.Path();
+            top.addRoundRect(box, new float[] { 1000, 1000, 1000, 1000, 0, 0, 0, 0 }, android.graphics.Path.Direction.CW);
+            c.drawPath(top, red);
+            c = new android.graphics.Canvas(radii);
+            c.drawColor(0xFFFFFFFF);
+            android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+            g.setColor(0xFFFF0000);
+            g.setCornerRadii(new float[] { 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000 });
+            g.setBounds(0, 0, 40, 120);
+            g.draw(c);
+            android.graphics.RenderNode node = new android.graphics.RenderNode("capsule");
+            node.setPosition(0, 0, 40, 120);
+            android.graphics.RecordingCanvas rc = node.beginRecording(40, 120);
+            rc.drawColor(0xFFFFFFFF);
+            rc.drawRoundRect(box, 1000, 1000, red);
+            node.endRecording();
+            android.graphics.Bitmap listed = drawn(node, 40, 120);
+            android.graphics.Bitmap[] all = { round, path, radii, listed };
+            String[] names = { "drawRoundRect", "addRoundRect", "GradientDrawable", "node" };
+            boolean ok = true;
+            StringBuilder d = new StringBuilder();
+            for (int i = 0; i < all.length; i++) {
+                int end = all[i].getPixel(5, 10), corner = all[i].getPixel(1, 1), middle = all[i].getPixel(20, 60), low = all[i].getPixel(1, 118);
+                d.append(i > 0 ? "; " : "").append(names[i]).append(String.format(" end %08x corner %08x middle %08x low %08x", end, corner, middle, low));
+                ok &= end == 0xFFFF0000 && corner == 0xFFFFFFFF && middle == 0xFFFF0000 && low == (i == 1 ? 0xFFFF0000 : 0xFFFFFFFF);
+            }
+            detail = d.toString();
+            return ok;
+        });
+        /*
+         * An edit tells the span watchers of the spans it moved, as Android's SpannableStringBuilder does: text typed into an
+         * EditText through its input connection (as megler.InputMethods types the keyboard's text) moves the cursor, and the
+         * field's onSelectionChanged hears where to, after each character; a style after the edit is told its new place. Nothing
+         * was told. A field that keeps its cursor as onSelectionChanged says and sets its text back with that cursor after each
+         * change -- as the Google app's Gemini field keeps it (RobinTextInputEditText) -- had the cursor put back at the start
+         * every time, and the next character typed went in before the others: "cba".
+         */
+        step("selection-follows-typing", () -> {
+            final java.util.List<String> told = new java.util.ArrayList<>();
+            final int[] kept = new int[2];
+            android.widget.EditText field = new android.widget.EditText(this) {
+                @Override protected void onSelectionChanged(int start, int end) {
+                    super.onSelectionChanged(start, end);
+                    if (told == null) return;
+                    told.add(start + "," + end);
+                    kept[0] = start;
+                    kept[1] = end;
+                }
+            };
+            field.setText("");
+            told.clear();
+            android.view.inputmethod.InputConnection ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            for (String typed : new String[] { "a", "b", "c" }) ic.commitText(typed, 1);
+            String plain = field.getText().toString() + " cursor " + field.getSelectionStart() + ", told " + told;
+            boolean followed = field.getText().toString().equals("abc") && field.getSelectionStart() == 3 && told.contains("1,1") && told.contains("2,2")
+                && told.size() > 0 && told.get(told.size() - 1).equals("3,3");
+            // The field whose text is set back after each character, with the cursor it was told.
+            field.setText("");
+            for (String typed : new String[] { "a", "b", "c" }) {
+                ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+                ic.commitText(typed, 1);
+                int start = kept[0], end = kept[1];
+                field.setText(field.getText().toString());
+                field.setSelection(start, end);
+            }
+            String setBack = field.getText().toString();
+            // A style after the place typed into, told its new place; and one before it, told nothing.
+            android.text.SpannableStringBuilder t = new android.text.SpannableStringBuilder("hello world");
+            final java.util.List<String> spans = new java.util.ArrayList<>();
+            Object bold = new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), first = new android.text.style.UnderlineSpan();
+            t.setSpan(bold, 6, 11, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            t.setSpan(first, 0, 2, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            t.setSpan(new android.text.SpanWatcher() {
+                public void onSpanAdded(android.text.Spannable s, Object what, int st, int en) {}
+                public void onSpanRemoved(android.text.Spannable s, Object what, int st, int en) {}
+                public void onSpanChanged(android.text.Spannable s, Object what, int os, int oe, int ns, int ne) {
+                    if (what == bold || what == first) spans.add((what == bold ? "bold " : "first ") + os + "-" + oe + " to " + ns + "-" + ne);
+                }
+            }, 0, t.length(), android.text.Spanned.SPAN_INCLUSIVE_INCLUSIVE);
+            t.insert(5, ",");
+            boolean watchers = spans.equals(java.util.Collections.singletonList("bold 6-11 to 7-12"));
+            detail = "typed: " + plain + "; set back after each: \"" + setBack + "\"; span watchers: " + spans;
+            return followed && setBack.equals("abc") && watchers;
+        });
+        /*
+         * A text appearance set on a field keeps its text and cursor, as on Android: setAllCaps sets the text again only when
+         * the transformation changes, and an appearance's textAllCaps="false" changes nothing. The Google app's Gemini field
+         * (RobinTextInputEditText, 17.6.63) has its input controller apply its state after every character typed (arlw.u):
+         * the text set back with the cursor it was told only where the field is not on screen (getGlobalVisibleRect) or its
+         * text is not the controller's, and its text appearance always. The appearance set the text again with the cursor at
+         * its start, and the next character went in before the others: "cba" on an HP Elite x3 (0.1.0.741). And a text set
+         * on a field tells onSelectionChanged where its movement method put the cursor, as Android's spanChange tells of the
+         * selection's spans put on a text (it told nothing).
+         */
+        step("text-appearance-keeps-cursor", () -> {
+            final java.util.List<String> told = new java.util.ArrayList<>();
+            final int[] kept = new int[2];
+            final android.widget.EditText field = new android.widget.EditText(this) {
+                @Override protected void onSelectionChanged(int start, int end) {
+                    super.onSelectionChanged(start, end);
+                    if (told == null) return;
+                    told.add(start + "," + end);
+                    kept[0] = start;
+                    kept[1] = end;
+                }
+            };
+            // The field 200 down a scrolled group 100 high, as Gemini's is in its NestedScrollView: on screen once scrolled.
+            android.widget.FrameLayout group = new android.widget.FrameLayout(this), scrolled = new android.widget.FrameLayout(this);
+            group.addView(scrolled, new android.widget.FrameLayout.LayoutParams(300, 100));
+            android.widget.FrameLayout.LayoutParams at = new android.widget.FrameLayout.LayoutParams(300, 100);
+            at.topMargin = 200;
+            scrolled.addView(field, at);
+            android.view.View none = new android.view.View(this);
+            group.addView(none, new android.widget.FrameLayout.LayoutParams(0, 0));
+            int exactly300 = android.view.View.MeasureSpec.makeMeasureSpec(300, android.view.View.MeasureSpec.EXACTLY);
+            group.measure(exactly300, exactly300);
+            group.layout(0, 0, 300, 300);
+            android.graphics.Rect seen = new android.graphics.Rect();
+            boolean below = field.getGlobalVisibleRect(new android.graphics.Rect());
+            scrolled.scrollTo(0, 200);
+            boolean onScreen = field.getGlobalVisibleRect(seen);
+            boolean noSize = none.getGlobalVisibleRect(new android.graphics.Rect());
+            told.clear();
+            field.setText("xy");
+            boolean toldSet = told.contains("0,0") && field.getSelectionStart() == 0;
+            field.setText("");
+            told.clear();
+            for (String typed : new String[] { "a", "b", "c" }) {
+                android.view.inputmethod.InputConnection ic = field.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+                ic.commitText(typed, 1);
+                String controllers = field.getText().toString();   // as the controller's text watcher has it
+                if (!field.getGlobalVisibleRect(new android.graphics.Rect()) || !controllers.equals(field.getText().toString())) {
+                    field.setText(controllers);
+                    field.setSelection(kept[0], kept[1]);
+                }
+                field.setTextAppearance(R.style.InputTextAppearance);
+            }
+            String typed = field.getText().toString() + " cursor " + field.getSelectionStart() + ", told " + told;
+            boolean typedInOrder = field.getText().toString().equals("abc") && field.getSelectionStart() == 3 && told.size() > 0
+                && told.get(told.size() - 1).equals("3,3");
+            // setAllCaps(false), as AppCompat's setTextAppearance calls it: the same text, the cursor where it was.
+            android.text.Editable before = field.getText();
+            field.setAllCaps(false);
+            boolean same = field.getText() == before && field.getSelectionStart() == 3;
+            // An appearance turns all caps on, one with textAllCaps="false" leaves them on, setAllCaps(false) turns them off.
+            android.widget.TextView caps = new android.widget.TextView(this);
+            caps.setText("caps");
+            caps.setTextAppearance(R.style.CapsTextAppearance);
+            boolean on = caps.isAllCaps() && caps.getTransformationMethod() != null;
+            caps.setTextAppearance(R.style.InputTextAppearance);
+            boolean stays = caps.getTransformationMethod() != null;
+            caps.setAllCaps(false);
+            boolean off = caps.getTransformationMethod() == null && !caps.isAllCaps() && caps.getText().toString().equals("caps");
+            detail = "below " + below + ", scrolled to " + onScreen + " " + seen.toShortString() + ", no size " + noSize + "; told on setText " + toldSet
+                + "; typed: " + typed + "; setAllCaps(false) kept the text " + same + "; caps on " + on + ", kept " + stays + ", off " + off;
+            return !below && onScreen && seen.equals(new android.graphics.Rect(0, 0, 300, 100)) && !noSize && toldSet && typedInOrder && same && on && stays && off;
+        });
+        /*
+         * What a field's watchers see of what the keyboard types, as on Android: its listener (addTextChangedListener) told by
+         * the field, before the field's own onTextChanged, with the text already changed, the cursor already moved, and the
+         * layout already the new text's (Android's DynamicLayout reflows within the edit). Typed as megler.InputMethods types
+         * the keyboard's text and Backspaces (commitText, deleteSurroundingText, a Delete key, a selection committed empty),
+         * a frame between each two. YouTube's comment field (21.13.164) works out what its first line shows in its listener's
+         * onTextChanged, text.substring(0, getLayout().getLineVisibleEnd(0)): the layout was the text's before the edit until
+         * the next measure, and a Backspace at the end of a one-line comment ended YouTube ("length=1; index=2", an HP Elite
+         * x3 on 0.1.0.734). And the listener is no span of the text, and a text set from this field's into another brings the
+         * edits of the other to it not; and a text set is laid out when asked, before a measure.
+         */
+        step("watchers-see-the-edit", () -> {
+            final TypedField f = new TypedField(this);
+            f.setText("");
+            f.frame();
+            String typed = f.did(() -> f.ic.commitText("ab", 1));
+            String back = f.did(() -> f.ic.deleteSurroundingText(1, 0));
+            String more = f.did(() -> f.ic.commitText("bc", 1));
+            String key = f.did(() -> {
+                long t = android.os.SystemClock.uptimeMillis();
+                f.ic.sendKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL, 0));
+                f.ic.sendKeyEvent(new android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL, 0));
+            });
+            f.ic.setSelection(0, 2);
+            String selection = f.did(() -> f.ic.commitText("", 1));
+            boolean told = typed.equals("before(0,0,2) on(0,0,2)=ab@2 view after") && back.equals("before(1,1,0) on(1,1,0)=a@1 view after")
+                && more.equals("before(1,0,2) on(1,0,2)=abc@3 view after") && key.equals("before(2,1,0) on(2,1,0)=ab@2 view after")
+                && selection.equals("before(0,2,0) on(0,2,0)=@0 view after");
+            boolean noSpan = !java.util.Arrays.asList(f.getText().getSpans(0, f.length(), android.text.TextWatcher.class)).contains(f.listener);
+            // Another field given this one's text: its edits are its own.
+            f.setText("shared");
+            TypedField other = new TypedField(this);
+            other.setText(f.getText());
+            String crossed = f.did(() -> other.getText().append("!"));
+            // A text set, asked for its lines before any measure: three lines of it.
+            f.setText("one\ntwo\nthree");
+            int lines = f.getLineCount();
+            detail = "commitText: " + typed + "; Backspace: " + back + "; again: " + more + "; Delete key: " + key + "; a selection: " + selection
+                + "; wrong: " + (f.wrong.length() == 0 ? "nothing" : f.wrong) + "; a span " + !noSpan + "; the other field's edit: \"" + crossed
+                + "\"; lines of a text set " + lines;
+            return told && f.wrong.length() == 0 && noSpan && crossed.isEmpty() && lines == 3;
+        });
+        /*
+         * The other ways an input method edits a field, as Android's BaseInputConnection makes them: deleteSurroundingText
+         * before the cursor first and after it then, around a selection, around the composing text (which it keeps); the
+         * composing text marked by a span that moves with the field's own edits, replaced by setComposingText, let go by
+         * finishComposingText; commitText over a selection, the cursor after the text, or before it (newCursorPosition 0).
+         * The composing text was two numbers that stayed where they were, and deleteSurroundingText deleted after the cursor
+         * first, around the selection alone, and forgot the composing text.
+         */
+        step("input-connection-edits", () -> {
+            final TypedField f = new TypedField(this);
+            f.setText("abcd");
+            f.frame();
+            f.ic.setSelection(2, 2);
+            String around = f.did(() -> f.ic.deleteSurroundingText(1, 1)) + " " + f.getText();
+            f.setText("hello world");
+            f.frame();
+            f.ic.setSelection(6, 11);
+            String selected = f.did(() -> f.ic.deleteSurroundingText(1, 0)) + " " + f.getSelectionStart() + "-" + f.getSelectionEnd();
+            f.setText("hello world");
+            f.frame();
+            f.ic.setSelection(11, 11);
+            f.ic.setComposingRegion(6, 11);
+            String composing = f.did(() -> f.ic.deleteSurroundingText(1, 0)) + " " + f.composing();
+            String recomposed = f.did(() -> f.ic.setComposingText("earth", 1)) + " " + f.composing();
+            f.ic.finishComposingText();
+            String finished = f.composing();
+            f.ic.setSelection(0, 5);
+            String over = f.did(() -> f.ic.commitText("HI", 1));
+            f.ic.setSelection(2, 7);
+            String before = f.did(() -> f.ic.commitText("ok", 0)) + " " + f.getSelectionStart();
+            // The field's own edit before the composing text: what is composed next replaces it where it went.
+            f.setText("ab");
+            f.frame();
+            f.ic.setSelection(2, 2);
+            f.ic.setComposingText("cd", 1);
+            f.getText().insert(0, "X");
+            String moved = f.composing();
+            f.ic.setComposingText("ef", 1);
+            String followed = f.getText() + " " + f.composing();
+            detail = "around a cursor: " + around + "; a selection: " + selected + "; composing text: " + composing + "; composed again: " + recomposed
+                + "; finished: " + finished + "; over a selection: " + over + "; with the cursor before: " + before + "; composing text moved to " + moved
+                + ", then " + followed + "; wrong: " + (f.wrong.length() == 0 ? "nothing" : f.wrong);
+            return around.equals("before(1,1,0) on(1,1,0)=acd@1 view after before(1,1,0) on(1,1,0)=ad@1 view after ad")
+                && selected.equals("before(5,1,0) on(5,1,0)=helloworld@5 view after 5-10")
+                && composing.equals("before(5,1,0) on(5,1,0)=helloworld@10 view after 5-10")
+                && recomposed.equals("before(5,5,5) on(5,5,5)=helloearth@10 view after 5-10") && finished.equals("none")
+                && over.equals("before(0,5,2) on(0,5,2)=HIearth@2 view after") && before.equals("before(2,5,2) on(2,5,2)=HIok@2 view after 2")
+                && moved.equals("3-5") && followed.equals("Xabef 3-5") && f.wrong.length() == 0;
+        });
     }
 
     /** Whether the first three numbers are these, each to within eps. */
     private static boolean colorNear(float[] v, float a, float b, float c, float eps) {
         return Math.abs(v[0] - a) <= eps && Math.abs(v[1] - b) <= eps && Math.abs(v[2] - c) <= eps;
+    }
+
+    /** Whether two pixels are the same but for at most eps in each of the four channels. */
+    private static boolean pixelNear(int got, int want, int eps) {
+        for (int shift = 0; shift < 32; shift += 8)
+            if (Math.abs(((got >>> shift) & 0xff) - ((want >>> shift) & 0xff)) > eps) return false;
+        return true;
+    }
+
+    /**
+     * A text field as an input method types into it (its input connection), and what its watchers see of each edit: its
+     * listener's beforeTextChanged, onTextChanged (with the text and the cursor) and afterTextChanged, and the field's own
+     * onTextChanged ("view"), in the order told. And what was wrong in the listener's onTextChanged: another text than the
+     * field's, a layout of another text, or what YouTube's comment field does there failing,
+     * text.substring(0, getLayout().getLineVisibleEnd(0)).
+     */
+    static class TypedField extends android.widget.EditText {
+        final StringBuilder seen = new StringBuilder(), wrong = new StringBuilder();
+        final android.text.TextWatcher listener;
+        final android.view.inputmethod.InputConnection ic;
+        TypedField(Context c) {
+            super(c);
+            setLayoutParams(new android.view.ViewGroup.LayoutParams(480, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            listener = new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                    seen.append(" before(").append(start).append(',').append(count).append(',').append(after).append(')');
+                }
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    seen.append(" on(").append(start).append(',').append(before).append(',').append(count).append(")=").append(s).append('@').append(getSelectionStart());
+                    if (s != getText()) wrong.append(" not the field's text;");
+                    android.text.Layout l = getLayout();
+                    int laid = l == null ? -1 : l.getLineEnd(l.getLineCount() - 1);
+                    if (laid != s.length()) wrong.append(" a layout of ").append(laid).append(" characters for ").append(s.length()).append(';');
+                    try {
+                        s.toString().substring(0, l.getLineVisibleEnd(0));
+                    } catch (RuntimeException e) {
+                        wrong.append(' ').append(e).append(';');
+                    }
+                }
+                @Override public void afterTextChanged(android.text.Editable s) { seen.append(" after"); }
+            };
+            setSingleLine(false);   // a comment box's lines
+            ic = onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            frame();
+            addTextChangedListener(listener);
+        }
+        @Override protected void onTextChanged(CharSequence s, int start, int before, int count) {
+            super.onTextChanged(s, start, before, count);
+            if (seen != null) seen.append(" view");   // (null while EditText's constructor sets its text)
+        }
+        /** Measured and laid out 480 wide, as a frame between two keys does it. */
+        void frame() {
+            measure(MeasureSpec.makeMeasureSpec(480, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            layout(0, 0, 480, getMeasuredHeight());
+        }
+        /** What the watchers saw of an edit, the field framed after it. */
+        String did(Runnable edit) {
+            seen.setLength(0);
+            edit.run();
+            String s = seen.toString().trim();
+            frame();
+            return s;
+        }
+        /** Where the composing text is, as Android's BaseInputConnection marks it, or "none". */
+        String composing() {
+            int s = android.view.inputmethod.BaseInputConnection.getComposingSpanStart(getText()), e = android.view.inputmethod.BaseInputConnection.getComposingSpanEnd(getText());
+            return s < 0 ? "none" : s + "-" + e;
+        }
     }
 
     /** A group as Compose's AndroidViewsHandler is one: its requestLayout does not go on to View's -- it counts the request
@@ -9782,6 +10676,46 @@ public class Main extends Activity {
             detail = "id=" + id + " names=" + java.util.Arrays.toString(names);
             return id > 0 && names.length == 3;
         });
+        // A session left open when the process ends is the app's again at its next run, as Android keeps one: Google Play goes
+        // on with its session when it starts anew (TikTok Lite's feature module failed when it found none, issue #6). The first
+        // run makes one and writes into it; the second finds it -- listed, told of, its file there -- and abandons it. (The test
+        // has the app's cache cleared between the two, as Megler's Clear cache does: Android keeps sessions apart from it.)
+        step("install-kept", () -> {
+            android.content.pm.PackageInstaller pi = getPackageManager().getPackageInstaller();
+            java.io.File marker = new java.io.File(getFilesDir(), "install-kept");
+            if (!marker.exists()) {
+                android.content.pm.PackageInstaller.SessionParams params =
+                        new android.content.pm.PackageInstaller.SessionParams(android.content.pm.PackageInstaller.SessionParams.MODE_INHERIT_EXISTING);
+                params.setAppPackageName("com.example.kept");
+                int id = pi.createSession(params);
+                try (android.content.pm.PackageInstaller.Session s = pi.openSession(id)) {
+                    try (java.io.OutputStream o = s.openWrite("config.xxhdpi", 0, 4)) { o.write(new byte[] { 'P', 'K', 3, 4 }); }
+                }
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(marker)) { o.write(Integer.toString(id).getBytes()); }
+                Log.i("DataTest", "install-kept made session " + id);
+                detail = "made " + id;
+                return id > 0;
+            }
+            int id = Integer.parseInt(new String(java.nio.file.Files.readAllBytes(marker.toPath())).trim());
+            boolean listed = false;
+            for (android.content.pm.PackageInstaller.SessionInfo i : pi.getMySessions()) listed |= i.getSessionId() == id;
+            android.content.pm.PackageInstaller.SessionInfo info = pi.getSessionInfo(id);
+            String[] names;
+            byte[] back = new byte[4];
+            int read = -1;
+            try (android.content.pm.PackageInstaller.Session s = pi.openSession(id)) {
+                names = s.getNames();
+                try (java.io.InputStream in = s.openRead("config.xxhdpi")) { if (in != null) read = in.read(back); }
+                s.abandon();
+            }
+            boolean gone = pi.getSessionInfo(id) == null;
+            marker.delete();
+            Log.i("DataTest", "install-kept found session " + id + " again");
+            detail = "id=" + id + " listed=" + listed + " info=" + (info == null ? null : info.getAppPackageName() + " mode " + info.getMode() + " active " + info.isActive())
+                     + " names=" + java.util.Arrays.toString(names) + " read=" + read + " gone=" + gone;
+            return listed && info != null && "com.example.kept".equals(info.getAppPackageName()) && info.getMode() == 2 && info.isActive()
+                   && names.length == 1 && "config.xxhdpi".equals(names[0]) && read == 4 && back[0] == 'P' && back[3] == 4 && gone;
+        });
     }
 
     /** As Material's BaseProgressIndicator: its indeterminate drawable is its own kind, cast from the ProgressBar's. */
@@ -10984,6 +11918,55 @@ public class Main extends Activity {
         step("http-engine-stream-flow", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamFlow())));
         step("http-engine-stream-cancel", () -> !conscrypt || offMain(() -> said(h[0], h[0].streamCancel())));
         step("http-engine-hpack", () -> !conscrypt || offMain(() -> said(h[0], h[0].hpack())));
+        sdkExtensions();
+    }
+
+    /**
+     * Android 14's SDK extensions, as an app asks them: 7 of R, S, T and U alike, what Android 14 came with (the stub said 0),
+     * none of the AdServices', 0 of a later version, and a version before R refused as Android refuses it. The Google Play Store
+     * for Android 14 (54.3.08-34) carries no Cronet of its own and takes HttpEngine only where the S extension is 7 or more: here
+     * it said "Cronet native library failed to load; Possible ABI mismatch" and fell back to OkHttp. The engine is then built
+     * with what the Play Store's wrapper sets (its stale DNS, QUIC and connection migration options among them): Megler's own.
+     */
+    private void sdkExtensions() {
+        step("sdk-extensions", () -> {
+            int r = android.os.ext.SdkExtensions.getExtensionVersion(30), s = android.os.ext.SdkExtensions.getExtensionVersion(31);
+            int t = android.os.ext.SdkExtensions.getExtensionVersion(33), u = android.os.ext.SdkExtensions.getExtensionVersion(34);
+            int ads = android.os.ext.SdkExtensions.getExtensionVersion(android.os.ext.SdkExtensions.AD_SERVICES);
+            int later = android.os.ext.SdkExtensions.getExtensionVersion(35);
+            String early;
+            try {
+                early = "accepted " + android.os.ext.SdkExtensions.getExtensionVersion(29);
+            } catch (IllegalArgumentException e) {
+                early = "refused";
+            }
+            java.util.Map<Integer, Integer> all = android.os.ext.SdkExtensions.getAllExtensionVersions();
+            boolean playStore = s >= 7;
+            java.time.Duration minutes = java.time.Duration.ofMinutes(5);
+            android.net.http.HttpEngine.Builder b = new android.net.http.HttpEngine.Builder(this);
+            b.setUserAgent("megler-test/1").setStoragePath(getCacheDir().getPath()).setEnableQuic(true)
+                    .addQuicHint("play-fe.googleapis.com", 443, 443).setEnableBrotli(true)
+                    .setQuicOptions(new android.net.http.QuicOptions.Builder().addAllowedQuicHost("play-fe.googleapis.com")
+                            .setInMemoryServerConfigsCacheSize(20).setIdleConnectionTimeout(java.time.Duration.ofSeconds(300))
+                            .setHandshakeUserAgent("megler-test/1").build())
+                    .setDnsOptions(new android.net.http.DnsOptions.Builder().setUseHttpStackDnsResolver(android.net.http.DnsOptions.DNS_OPTION_ENABLED)
+                            .setStaleDns(android.net.http.DnsOptions.DNS_OPTION_ENABLED).setPersistHostCache(android.net.http.DnsOptions.DNS_OPTION_ENABLED)
+                            .setPersistHostCachePeriod(minutes).setPreestablishConnectionsToStaleDnsResults(android.net.http.DnsOptions.DNS_OPTION_ENABLED)
+                            .setStaleDnsOptions(new android.net.http.DnsOptions.StaleDnsOptions.Builder().setFreshLookupTimeout(java.time.Duration.ofMillis(500))
+                                    .setMaxExpiredDelay(minutes).setAllowCrossNetworkUsage(android.net.http.DnsOptions.DNS_OPTION_DISABLED)
+                                    .setUseStaleOnNameNotResolved(android.net.http.DnsOptions.DNS_OPTION_ENABLED).build()).build())
+                    .setConnectionMigrationOptions(new android.net.http.ConnectionMigrationOptions.Builder()
+                            .setDefaultNetworkMigration(android.net.http.ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
+                            .setPathDegradationMigration(android.net.http.ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
+                            .setAllowNonDefaultNetworkUsage(android.net.http.ConnectionMigrationOptions.MIGRATION_OPTION_DISABLED).build());
+            android.net.http.HttpEngine e = b.build();
+            String engine = e == null ? null : e.getClass().getName();
+            if (e != null) e.shutdown();
+            detail = "R=" + r + " S=" + s + " T=" + t + " U=" + u + " ads=" + ads + " later=" + later + " early=" + early + " all=" + all
+                    + " playStore=" + playStore + " engine=" + engine;
+            return r == 7 && s == 7 && t == 7 && u == 7 && ads == 0 && later == 0 && "refused".equals(early) && all.size() == 5
+                    && Integer.valueOf(7).equals(all.get(31)) && playStore && engine != null && engine.startsWith("megler.http.");
+        });
     }
 
     /** A check of HttpEngineSteps' result, what it saw made the step's detail and said in the log. */
@@ -11437,6 +12420,575 @@ public class Main extends Activity {
             Log.i("DataTest", "render-node-memory nodes=" + many.size() + " bytes=" + bytes + " ms=" + ms + (error == null ? "" : " " + error));
             return error == null && many.size() == 200 && bytes < 200 * 2048 && shown;
         });
+    }
+
+    /** Opened by a link the steps of links() resolve to it; none of them starts it, so that Main is not paused under them. */
+    public static class Linked extends Activity {
+        @Override
+        protected void onCreate(Bundle state) {
+            super.onCreate(state);
+            Log.i("DataTest", "linked " + getIntent().getData());
+            finish();
+        }
+    }
+
+    private static void defaults(String key, String value) throws Exception {
+        Class.forName("megler.Defaults").getMethod("set", String.class, String.class).invoke(null, key, value);
+    }
+
+    private static String first(java.util.List<android.content.pm.ResolveInfo> l) {
+        return l.isEmpty() ? "none" : l.get(0).activityInfo.packageName + "/" + l.get(0).activityInfo.name;
+    }
+
+    /*
+     * What an implicit intent with data opens, as Android resolves it (megler.Resolver, megler.IntentMatch): the paths, ports,
+     * types and CATEGORY_DEFAULT of the filters; web links to the apps approved for their domains, else to the default browser
+     * (Windows' own, "com.android.browser" to the package manager, or the one chosen); "Always"; and "Open with". The apps
+     * folder (phone_apps_fixture) has a browser, com.example.browser, and a maps app, com.example.maps, whose filter for
+     * https://maps.example.org/place/ asks to be verified. Where a link goes when started is the log's and the phone's to say
+     * (the test's C side, links_requests).
+     */
+    /**
+     * A preference's row as the platform's own layout makes it (preference_material, which apps inflate through AndroidX's
+     * preferences: EhViewer ended at every sub-screen of its settings, issue #15): its icon is Android's hidden
+     * com.android.internal.widget.PreferenceImageView, found by its full name, and held to its 48 dp even where its parent
+     * leaves it free (measured UNSPECIFIED with a picture of 200 x 200), as Android's is.
+     */
+    private void preferenceImageView() {
+        step("preference-image-view", () -> {
+            int layout = getResources().getIdentifier("preference_material", "layout", "android");
+            android.view.View row = getLayoutInflater().inflate(layout, new android.widget.FrameLayout(this), false);
+            android.view.View icon = row.findViewById(android.R.id.icon);
+            if (!(icon instanceof android.widget.ImageView)) {
+                detail = "layout " + Integer.toHexString(layout) + ", the icon " + icon;
+                return false;
+            }
+            android.widget.ImageView image = (android.widget.ImageView) icon;
+            image.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(),
+                    android.graphics.Bitmap.createBitmap(200, 200, android.graphics.Bitmap.Config.ARGB_8888)));
+            int free = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+            image.measure(free, free);
+            int max = Math.round(48 * getResources().getDisplayMetrics().density);
+            detail = icon.getClass().getName() + " max " + image.getMaxWidth() + "x" + image.getMaxHeight() + ", measured "
+                     + image.getMeasuredWidth() + "x" + image.getMeasuredHeight() + ", 48 dp " + max;
+            return "com.android.internal.widget.PreferenceImageView".equals(icon.getClass().getName())
+                   && image.getMaxWidth() == max && image.getMaxHeight() == max
+                   && image.getMeasuredWidth() == max && image.getMeasuredHeight() == max;
+        });
+    }
+
+    /**
+     * Listening for Bluetooth connections, which Megler has not (classic Bluetooth): each of the adapter's listen methods throws
+     * the IOException Android's does when its Bluetooth service is not there, as the SDK declares, and none says null. Google
+     * Play services' Nearby sync called accept() on the null at each tick, and a thread of theirs ended each time (issue #19).
+     * The hidden ones too, by reflection: an encrypted RFCOMM service record and Android 9's channel form.
+     */
+    private void bluetoothListen() {
+        step("bluetooth-listen", () -> {
+            final android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            final java.util.UUID uuid = java.util.UUID.fromString("a2b0c0de-0000-1000-8000-00805f9b34fb");
+            StringBuilder said = new StringBuilder();
+            Step[] calls = {
+                () -> adapter.listenUsingRfcommWithServiceRecord("megler", uuid) == null,
+                () -> adapter.listenUsingInsecureRfcommWithServiceRecord("megler", uuid) == null,
+                () -> adapter.listenUsingL2capChannel() == null,
+                () -> adapter.listenUsingInsecureL2capChannel() == null,
+                () -> adapter.getClass().getMethod("listenUsingEncryptedRfcommWithServiceRecord", String.class, java.util.UUID.class)
+                             .invoke(adapter, "megler", uuid) == null,
+                () -> adapter.getClass().getMethod("listenUsingRfcommOn", int.class).invoke(adapter, 3) == null,
+            };
+            boolean all = true;
+            for (Step call : calls) {
+                Throwable thrown = null;
+                boolean isNull = false;
+                try {
+                    isNull = call.run();
+                } catch (Throwable t) {
+                    thrown = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
+                }
+                said.append(thrown != null ? thrown.getClass().getSimpleName() + "(" + thrown.getMessage() + ")" : isNull ? "null" : "a socket").append(' ');
+                all &= thrown instanceof java.io.IOException;
+            }
+            detail = said.toString().trim();
+            return all;
+        });
+    }
+
+    /**
+     * A group that writes down its attach (+) and detach (x) as HeardRow does, and runs what it is given in its own
+     * onAttachedToWindow and onDetachedFromWindow; a child of one sees whether its parent's onAttachedToWindow has returned
+     * ("early" if not). react-native-screens' ScreenStack commits its fragments in its onAttachedToWindow, adding its screens
+     * to itself there.
+     */
+    static class PairRow extends android.widget.FrameLayout {
+        final String name;
+        final StringBuilder heard;
+        Runnable onAttach, onDetach;
+        boolean attachReturned;
+        PairRow(Context c, String name, StringBuilder heard) { super(c); this.name = name; this.heard = heard; }
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            boolean early = getParent() instanceof PairRow && !((PairRow) getParent()).attachReturned;
+            heard.append(name).append('+').append(early ? "early" : "").append(' ');
+            if (onAttach != null) onAttach.run();
+            attachReturned = true;
+        }
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            attachReturned = false;
+            if (onDetach != null) onDetach.run();
+            heard.append(name).append('x').append(' ');
+        }
+        void out(android.view.View row) { detachViewFromParent(row); }
+        void back(android.view.View row, int index) { attachViewToParent(row, index, row.getLayoutParams()); }
+        void drop(android.view.View row) { removeDetachedView(row, false); }
+    }
+
+    /**
+     * Attach and detach in pairs, as Android's views hear them: each view's onAttachedToWindow once as it joins the window and its
+     * onDetachedFromWindow once as it leaves, never two attaches without a detach between, whatever adds or removes it. Said
+     * once the window is there (the line attach-pairs):
+     *  - stack: a group that adds a child in its own onAttachedToWindow, as ScreenStack adds its screens: the child attached
+     *    once, after the group's onAttachedToWindow returned, as Android's FLAG_PREVENT_DISPATCH_ATTACHED_TO_WINDOW has it (it
+     *    was attached twice, and BBPlayer's tabs threw at the second setup, issue #22); taken out and put in again, the same;
+     *  - sibling: a child that adds a sibling in its onAttachedToWindow: the sibling attached once;
+     *  - removes: a child that takes an earlier sibling out in its onDetachedFromWindow: the children after it detached all
+     *    the same (one was left attached), and attached once when the group is put back;
+     *  - scrap: a child taken out of its group for a layout and put back hears nothing; removed so, its detach;
+     *  - transition: a child removed while it is in a transition stays attached until the transition ends;
+     *  - all: removeAllViews detaches each child once; moved: a child taken from one group and added to another, its detach,
+     *    then its attach; gone: the whole taken out of the window, each view still in it detached once.
+     */
+    private void attachPairs() {
+        step("attach-pairs", () -> {
+            final StringBuilder heard = new StringBuilder();
+            final android.widget.FrameLayout host = new android.widget.FrameLayout(this);
+            host.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    host.removeOnAttachStateChangeListener(this);
+                    host.post(() -> {
+                        StringBuilder said = new StringBuilder();
+                        // stack
+                        final PairRow stack = new PairRow(Main.this, "s", heard), screen = new PairRow(Main.this, "c", heard);
+                        stack.onAttach = () -> { if (screen.getParent() == null) stack.addView(screen); };
+                        host.addView(stack);
+                        said.append("stack=").append(taken(heard));
+                        host.removeView(stack);
+                        said.append(" removed=").append(taken(heard));
+                        host.addView(stack);
+                        said.append(" again=").append(taken(heard));
+                        host.removeView(stack);
+                        said.append(" removed=").append(taken(heard));
+                        // sibling
+                        final PairRow group = new PairRow(Main.this, "g", heard), a = new PairRow(Main.this, "a", heard), b = new PairRow(Main.this, "b", heard);
+                        a.onAttach = () -> { if (b.getParent() == null) group.addView(b); };
+                        group.addView(a);
+                        host.addView(group);
+                        said.append(" sibling=").append(taken(heard));
+                        host.removeView(group);
+                        taken(heard);
+                        // removes
+                        final PairRow outer = new PairRow(Main.this, "o", heard), p = new PairRow(Main.this, "p", heard), q = new PairRow(Main.this, "q", heard),
+                                      r = new PairRow(Main.this, "r", heard);
+                        q.onDetach = () -> { if (p.getParent() == outer) outer.removeView(p); };
+                        outer.addView(p);
+                        outer.addView(q);
+                        outer.addView(r);
+                        host.addView(outer);
+                        taken(heard);
+                        host.removeView(outer);
+                        said.append(" removes=").append(taken(heard)).append(" r-attached=").append(r.isAttachedToWindow());
+                        host.addView(outer);
+                        said.append(" back=").append(taken(heard));
+                        host.removeView(outer);
+                        taken(heard);
+                        // scrap
+                        final PairRow list = new PairRow(Main.this, "l", heard), row = new PairRow(Main.this, "w", heard);
+                        list.addView(row);
+                        host.addView(list);
+                        taken(heard);
+                        list.out(row);
+                        list.back(row, 0);
+                        said.append(" scrap=").append(taken(heard));
+                        list.out(row);
+                        list.drop(row);
+                        said.append(" dropped=").append(taken(heard));
+                        // transition
+                        final PairRow leaving = new PairRow(Main.this, "t", heard);
+                        list.addView(leaving);
+                        taken(heard);
+                        list.startViewTransition(leaving);
+                        list.removeView(leaving);
+                        said.append(" transition=").append(taken(heard)).append(leaving.isAttachedToWindow());
+                        list.endViewTransition(leaving);
+                        said.append(" ended=").append(taken(heard));
+                        // all
+                        list.addView(new PairRow(Main.this, "1", heard));
+                        list.addView(new PairRow(Main.this, "2", heard));
+                        taken(heard);
+                        list.removeAllViews();
+                        said.append(" all=").append(taken(heard));
+                        // moved
+                        final PairRow from = new PairRow(Main.this, "f", heard), to = new PairRow(Main.this, "n", heard), moved = new PairRow(Main.this, "m", heard);
+                        from.addView(moved);
+                        host.addView(from);
+                        host.addView(to);
+                        taken(heard);
+                        from.removeView(moved);
+                        to.addView(moved);
+                        said.append(" moved=").append(taken(heard));
+                        ((android.view.ViewGroup) host.getParent()).removeView(host);
+                        said.append(" gone=").append(taken(heard));
+                        Log.i("DataTest", "attach-pairs " + said);
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(host, new android.view.ViewGroup.LayoutParams(10, 10));
+            return true;
+        });
+    }
+
+    /**
+     * A text view's lineHeight as Android's StaticLayout spaces lines: between them, not after the last. One line is as high as
+     * its font whatever the lineHeight, its baseline where the font puts it -- Breezy Weather's temperature, 140sp in a style
+     * whose text appearance says lineHeight 28sp, was 28 pixels high with its baseline above its top, and nothing of it was
+     * seen (issue #14); two lines are lineHeight apart, one font's height after the second's top, whether the lineHeight is
+     * more than the font's height or less.
+     */
+    private void lineHeight() {
+        step("line-height", () -> {
+            int free = android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED);
+            android.widget.TextView big = new android.widget.TextView(this);
+            big.setIncludeFontPadding(false);
+            big.setSingleLine(true);
+            big.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 140);
+            big.setLineHeight(28);
+            big.setText("40");
+            big.measure(free, free);
+            big.layout(0, 0, big.getMeasuredWidth(), big.getMeasuredHeight());
+            android.graphics.Paint.FontMetricsInt fm = big.getPaint().getFontMetricsInt();
+            int bigFont = fm.descent - fm.ascent;
+            StringBuilder said = new StringBuilder("one line: ").append(big.getMeasuredHeight()).append(" high, its baseline at ")
+                .append(big.getBaseline()).append(", the font ").append(bigFont).append(" from ").append(fm.ascent);
+            boolean held = big.getMeasuredHeight() == bigFont && big.getBaseline() == -fm.ascent;
+            for (int lh : new int[] { 40, 10 }) {
+                android.widget.TextView two = new android.widget.TextView(this);
+                two.setIncludeFontPadding(false);
+                two.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 20);
+                two.setLineHeight(lh);
+                two.setText("a\nb");
+                two.measure(free, free);
+                android.text.Layout l = two.getLayout();
+                android.graphics.Paint.FontMetricsInt f = two.getPaint().getFontMetricsInt();
+                // (lineHeight is the font's interline spacing, getFontMetricsInt, and the spacing's extra; a font with a leading
+                // has the lines that much closer, as on Android.)
+                int font = f.descent - f.ascent, spacing = two.getPaint().getFontMetricsInt(null), apart = l.getLineBaseline(1) - l.getLineBaseline(0);
+                said.append("; lineHeight ").append(lh).append(": lines ").append(apart).append(" apart, ").append(two.getMeasuredHeight())
+                    .append(" high, the first's baseline at ").append(l.getLineBaseline(0)).append(", the font ").append(font).append(" spaced ").append(spacing);
+                int want = lh - spacing + font;
+                held &= apart == want && two.getMeasuredHeight() == want + font && l.getLineBaseline(0) == -f.ascent;
+            }
+            detail = said.toString();
+            return held;
+        });
+    }
+
+    /*
+     * Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER), which WhatsApp's "Notification tone" starts through
+     * Intent.createChooser: Megler's (megler.RingtonePicker), a dialog over this activity, where startActivity threw
+     * ActivityNotFoundException and the app ended. A notification picker whose sound is the default: "Default notification
+     * sound" and "None", the default checked, OK giving the default's address; one with no sound, "None" checked, OK giving
+     * null; one closed, RESULT_CANCELED.
+     */
+    private void ringtonePicker() {
+        step("ringtone-picker", () -> {
+            android.content.Intent pick = new android.content.Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_NOTIFICATION)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true);
+            java.lang.reflect.Field f = Class.forName("megler.RingtonePicker").getDeclaredField("sShown");
+            f.setAccessible(true);
+            StringBuilder said = new StringBuilder();
+            boolean held = true;
+            for (int k = 0; k < 3; k++) {
+                android.content.Intent i = new android.content.Intent(pick);
+                if (k == 0) i.putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI);
+                sPickedResult = 99;
+                sPicked = null;
+                startActivityForResult(k == 0 ? android.content.Intent.createChooser(i, "Notification tone") : i, 91);
+                android.app.AlertDialog d = (android.app.AlertDialog) f.get(null);
+                if (d == null || !d.isShowing()) {
+                    detail = said.append(" picker ").append(k).append(": none shown").toString();
+                    return false;
+                }
+                android.widget.ListView list = d.getListView();
+                int checked = list.getCheckedItemPosition(), n = list.getAdapter().getCount();
+                String first = String.valueOf(list.getAdapter().getItem(0)), second = String.valueOf(list.getAdapter().getItem(1));
+                if (k < 2) d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+                else d.cancel();
+                said.append(" picker ").append(k).append(": ").append(n).append(" choices, ").append(first).append(" / ").append(second).append(", checked ").append(checked)
+                    .append(" -> result ").append(sPickedResult).append(" ").append(sPicked);
+                held &= n >= 2 && "Default notification sound".equals(first) && "None".equals(second) && f.get(null) == null;
+                if (k == 0) held &= checked == 0 && sPickedResult == RESULT_OK && android.provider.Settings.System.DEFAULT_NOTIFICATION_URI.equals(sPicked);
+                if (k == 1) held &= checked == 1 && sPickedResult == RESULT_OK && sPicked == null && sPickedHad;
+                if (k == 2) held &= sPickedResult == RESULT_CANCELED;
+            }
+            detail = said.toString();
+            return held;
+        });
+    }
+    private static int sPickedResult;
+    private static android.net.Uri sPicked;
+    private static boolean sPickedHad;
+
+    /*
+     * The base context's class loader in Android's field, mClassLoader, which Chromium's BundleUtils sets by reflection on the
+     * context under the wrappers (Chrome 101 ended at its start without it): set, it is the context's class loader and that of
+     * a context made from it; the app's classes come through it; null again, the app's own.
+     */
+    private void contextClassLoader() {
+        step("context-class-loader", () -> {
+            android.content.Context base = getBaseContext();
+            while (base instanceof android.content.ContextWrapper) base = ((android.content.ContextWrapper) base).getBaseContext();
+            ClassLoader app = Main.class.getClassLoader(), split = new dalvik.system.PathClassLoader(getApplicationInfo().sourceDir, app);
+            java.lang.reflect.Field f = base.getClass().getDeclaredField("mClassLoader");
+            f.setAccessible(true);
+            Object before = f.get(base);
+            boolean was = base.getClassLoader() == app && getClassLoader() == app;
+            f.set(base, split);
+            boolean set = base.getClassLoader() == split && getClassLoader() == split;
+            boolean kept = base.createConfigurationContext(new android.content.res.Configuration()).getClassLoader() == split;
+            boolean loads = split.loadClass(Main.class.getName()) == Main.class;
+            f.set(base, before);
+            boolean back = base.getClassLoader() == app;
+            detail = base.getClass().getName() + " before=" + before + " was=" + was + " set=" + set + " kept=" + kept + " loads=" + loads + " back=" + back;
+            return before == null && was && set && kept && loads && back;
+        });
+    }
+
+    /*
+     * A view's visible rectangle in the window under a transformed parent, as Android's ViewGroup.getChildVisibleRect makes it:
+     * a leaf of 40 x 40 at 10,10 in a group at 20,30 scaled by a half about its corner and moved down 5 is at 25,40 to 45,60 of
+     * its outer group, and so is its offset; local, it is its own 0,0 to 20,20; a leaf moved out of the group is not visible.
+     * The line "visible-rect-transformed".
+     */
+    private void visibleRectTransformed() {
+        step("visible-rect-transformed", () -> {
+            final android.widget.FrameLayout outer = new android.widget.FrameLayout(this), inner = new android.widget.FrameLayout(this);
+            final android.view.View leaf = new android.view.View(this), away = new android.view.View(this);
+            android.widget.FrameLayout.LayoutParams at = new android.widget.FrameLayout.LayoutParams(100, 100);
+            at.leftMargin = 20;
+            at.topMargin = 30;
+            outer.addView(inner, at);
+            android.widget.FrameLayout.LayoutParams leafAt = new android.widget.FrameLayout.LayoutParams(40, 40);
+            leafAt.leftMargin = 10;
+            leafAt.topMargin = 10;
+            inner.addView(leaf, leafAt);
+            android.widget.FrameLayout.LayoutParams awayAt = new android.widget.FrameLayout.LayoutParams(10, 10);
+            awayAt.leftMargin = 300;
+            inner.addView(away, awayAt);
+            inner.setPivotX(0);
+            inner.setPivotY(0);
+            inner.setScaleX(0.5f);
+            inner.setScaleY(0.5f);
+            inner.setTranslationY(5);
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener[] heard = new android.view.ViewTreeObserver.OnGlobalLayoutListener[1];
+            heard[0] = () -> {
+                if (leaf.getWidth() == 0) return;
+                outer.getViewTreeObserver().removeOnGlobalLayoutListener(heard[0]);
+                android.graphics.Rect o = new android.graphics.Rect(), r = new android.graphics.Rect(), local = new android.graphics.Rect();
+                android.graphics.Point off = new android.graphics.Point();
+                outer.getGlobalVisibleRect(o);
+                boolean seen = leaf.getGlobalVisibleRect(r, off);
+                leaf.getLocalVisibleRect(local);
+                boolean awaySeen = away.getGlobalVisibleRect(new android.graphics.Rect());
+                r.offset(-o.left, -o.top);
+                off.offset(-o.left, -o.top);
+                ((android.view.ViewGroup) outer.getParent()).removeView(outer);
+                Log.i("DataTest", "visible-rect-transformed seen=" + seen + " " + r.toShortString() + " offset=" + off.x + "," + off.y + " local=" + local.toShortString()
+                      + " away=" + awaySeen);
+            };
+            outer.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    outer.removeOnAttachStateChangeListener(this);
+                    outer.getViewTreeObserver().addOnGlobalLayoutListener(heard[0]);
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) findViewById(android.R.id.content)).addView(outer, new android.view.ViewGroup.LayoutParams(200, 200));
+            return true;
+        });
+    }
+
+    /*
+     * A group that asks its child for layout once from its own onLayout, after laying the child out: the window makes a second
+     * pass at once, and after it asks nothing more, as Android's ViewRootImpl leaves the requests made for that pass (the
+     * window was laid out once more at the next frame, its global layout listeners told again). The line "second-pass".
+     */
+    private static final class AskingGroup extends android.widget.FrameLayout {
+        int layouts;
+        boolean asked;
+        AskingGroup(android.content.Context c) { super(c); }
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            super.onLayout(changed, l, t, r, b);
+            layouts++;
+            if (!asked && getChildCount() > 0) {
+                asked = true;
+                getChildAt(0).requestLayout();
+            }
+        }
+    }
+    private void secondPass() {
+        step("second-pass", () -> {
+            final AskingGroup group = new AskingGroup(this);
+            group.addView(new android.view.View(this), new android.view.ViewGroup.LayoutParams(2, 2));
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener[] heard = new android.view.ViewTreeObserver.OnGlobalLayoutListener[1];
+            heard[0] = () -> {
+                if (!group.asked) return;
+                group.getViewTreeObserver().removeOnGlobalLayoutListener(heard[0]);
+                android.view.ViewParent root = group.getRootView().getParent();
+                boolean pending = root != null && root.isLayoutRequested();
+                int layouts = group.layouts;
+                ((android.view.ViewGroup) group.getParent()).removeView(group);
+                Log.i("DataTest", "second-pass layouts=" + layouts + " pending=" + pending);
+            };
+            group.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    group.removeOnAttachStateChangeListener(this);
+                    group.getViewTreeObserver().addOnGlobalLayoutListener(heard[0]);
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(group, new android.view.ViewGroup.LayoutParams(6, 6));
+            return true;
+        });
+    }
+
+    /*
+     * The window's system UI flags and its bars' appearance given again as they are, from a view's own insets listener, as
+     * YouTube's full-screen controller gives its flags again as the insets come: nothing changes, as on Android, so the
+     * insets come once and not at every frame (the window was laid out at every frame, ReVanced Extended's watch page). The
+     * line "system-ui-same" after 30 frames: how many times the insets came and the window was laid out.
+     */
+    private void systemUiSame() {
+        step("system-ui-same", () -> {
+            final int[] insets = { 0 }, layouts = { 0 }, frames = { 0 };
+            final android.view.View probe = new android.view.View(this);
+            probe.setOnApplyWindowInsetsListener((v, i) -> {
+                insets[0]++;
+                v.setSystemUiVisibility(v.getWindowSystemUiVisibility());
+                try {
+                    Object c = android.view.View.class.getMethod("getWindowInsetsController").invoke(v);
+                    Class<?> k = Class.forName("android.view.WindowInsetsController");
+                    int now = (Integer) k.getMethod("getSystemBarsAppearance").invoke(c);
+                    k.getMethod("setSystemBarsAppearance", int.class, int.class).invoke(c, now, 8 /* APPEARANCE_LIGHT_STATUS_BARS */);
+                } catch (Exception e) {
+                    Log.i("DataTest", "system-ui-same FAILED: " + e);
+                }
+                return i;
+            });
+            final android.view.ViewTreeObserver.OnGlobalLayoutListener counted = () -> layouts[0]++;
+            probe.addOnAttachStateChangeListener(new android.view.View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(android.view.View v) {
+                    probe.removeOnAttachStateChangeListener(this);
+                    probe.getViewTreeObserver().addOnGlobalLayoutListener(counted);
+                    probe.requestApplyInsets();
+                    android.view.Choreographer.getInstance().postFrameCallback(new android.view.Choreographer.FrameCallback() {
+                        @Override public void doFrame(long at) {
+                            if (++frames[0] < 30) {
+                                android.view.Choreographer.getInstance().postFrameCallback(this);
+                                return;
+                            }
+                            probe.getViewTreeObserver().removeOnGlobalLayoutListener(counted);
+                            ((android.view.ViewGroup) probe.getParent()).removeView(probe);
+                            /* (A few from the app's other steps, the bars shown and hidden among them; the loop was one at every frame.) */
+                            boolean held = insets[0] >= 1 && insets[0] <= 10 && layouts[0] <= 15;
+                            Log.i("DataTest", "system-ui-same " + (held ? "held" : "FAILED") + " insets=" + insets[0] + " layouts=" + layouts[0] + " frames=" + frames[0]);
+                        }
+                    });
+                }
+                @Override public void onViewDetachedFromWindow(android.view.View v) {}
+            });
+            ((android.view.ViewGroup) text.getParent()).addView(probe, new android.view.ViewGroup.LayoutParams(4, 4));
+            return true;
+        });
+    }
+
+    private void links() {
+        final android.content.pm.PackageManager pm = getPackageManager();
+        final int DEFAULT_ONLY = android.content.pm.PackageManager.MATCH_DEFAULT_ONLY, ALL = 0x00020000;
+        final String linked = Linked.class.getName();
+        step("intent-filter-data", () -> {
+            String item = first(pm.queryIntentActivities(view("megler-data://open/item/5"), DEFAULT_ONLY));
+            String otherPath = first(pm.queryIntentActivities(view("megler-data://open/other"), DEFAULT_ONLY));
+            String port = first(pm.queryIntentActivities(view("megler-port://here:8080/x"), DEFAULT_ONLY));
+            String wrongPort = first(pm.queryIntentActivities(view("megler-port://here:9090/x"), DEFAULT_ONLY));
+            String noPort = first(pm.queryIntentActivities(view("megler-port://here/x"), DEFAULT_ONLY));
+            int noDefault = pm.queryIntentActivities(view("megler-nodefault:x"), DEFAULT_ONLY).size(), anyCategory = pm.queryIntentActivities(view("megler-nodefault:x"), 0).size();
+            StringBuilder geo = new StringBuilder();
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(view("geo:1,2"), DEFAULT_ONLY)) geo.append(r.activityInfo.packageName).append(',');
+            String own = getPackageName();
+            detail = "item=" + item + " otherPath=" + otherPath + " port=" + port + " wrongPort=" + wrongPort + " noPort=" + noPort + " noDefault=" + noDefault + "/" + anyCategory
+                    + " geo=" + geo;
+            return item.equals(own + "/" + linked) && otherPath.equals("none") && port.equals(own + "/" + linked) && wrongPort.equals("none") && noPort.equals("none")
+                    && noDefault == 0 && anyCategory == 1 && geo.toString().contains(own + ",") && geo.toString().contains("com.example.maps,");
+        });
+        // A filter of the app's own for a site that is not verified for it takes none of that site's links: they go to the browser,
+        // unless the user allowed the app those links (links.<package>=all) -- and then only those its filter takes.
+        step("link-unverified", () -> {
+            String asked = first(pm.queryIntentActivities(view("https://github.example/login/device?user_code=AB-CD"), DEFAULT_ONLY));
+            boolean listed = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(view("https://github.example/login/device"), ALL)) if (linked.equals(r.activityInfo.name)) listed = true;
+            startActivity(view("https://github.example/login/device?user_code=AB-CD"));
+            defaults("links." + getPackageName(), "all");
+            String allowed = first(pm.queryIntentActivities(view("https://github.example/a/b"), DEFAULT_ONLY));
+            String root = first(pm.queryIntentActivities(view("https://github.example/"), DEFAULT_ONLY));
+            defaults("links." + getPackageName(), null);
+            detail = "asked=" + asked + " listed=" + listed + " allowed=" + allowed + " root=" + root;
+            return asked.equals("com.android.browser/com.android.browser.Browser") && listed && allowed.equals(getPackageName() + "/" + linked)
+                    && root.equals("com.android.browser/com.android.browser.Browser");
+        });
+        // The browser the user chose: web links go to it, and the package manager says so; Windows' own again once it is taken back.
+        step("link-default-browser", () -> {
+            defaults("browser", "com.example.browser/com.example.browser.Main");
+            String chosen = first(pm.queryIntentActivities(view("https://example.net/page"), DEFAULT_ONLY));
+            startActivity(view("https://example.net/page"));
+            defaults("browser", null);
+            String windows = first(pm.queryIntentActivities(view("https://example.net/page"), DEFAULT_ONLY));
+            boolean both = false;
+            for (android.content.pm.ResolveInfo r : pm.queryIntentActivities(view("https://example.net/page"), ALL)) if ("com.example.browser".equals(r.activityInfo.packageName)) both = true;
+            detail = "chosen=" + chosen + " windows=" + windows + " all=" + both;
+            return chosen.equals("com.example.browser/com.example.browser.Main") && windows.equals("com.android.browser/com.android.browser.Browser") && both;
+        });
+        // "Always" for geo: (this app and the maps app take it): it goes to the one chosen, with no question.
+        step("link-always", () -> {
+            defaults("always.android.intent.action.VIEW|geo|", "com.example.maps/com.example.maps.Main");
+            startActivity(view("geo:1,2"));
+            defaults("always.android.intent.action.VIEW|geo|", null);
+            return true;
+        });
+        // Without it, "Open with": the two, here closed again with nothing opened.
+        step("link-chooser", () -> {
+            startActivity(view("geo:3,4"));
+            java.lang.reflect.Field f = Class.forName("megler.Chooser").getDeclaredField("sShown");
+            f.setAccessible(true);
+            android.app.Dialog d = (android.app.Dialog) f.get(null);
+            boolean showing = d != null && d.isShowing();
+            if (d != null) d.cancel();
+            detail = "dialog=" + d + " showing=" + showing;
+            return showing;
+        });
+        // A filter that asks to be verified (the maps app's for maps.example.org): its site is asked, off the main thread; the link
+        // goes to the browser when the site does not say the app is its.
+        step("link-verified-unknown", () -> {
+            startActivity(view("https://maps.example.org/place/x"));
+            return true;
+        });
+    }
+
+    private static android.content.Intent view(String uri) {
+        return new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri));
     }
 
     private static String describe(android.content.Intent battery) {

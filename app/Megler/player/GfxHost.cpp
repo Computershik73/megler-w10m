@@ -17,7 +17,7 @@
 //     Windows 10): as wide as a pixel is under the matrix's mean scale,
 //     which is not one pixel under a matrix that stretches one way.
 //   - A transfer mode or a colour filter's mode whose number is not one of
-//     the eighteen: drawn as SRC_OVER, the filter left out. A coordinate
+//     the nineteen: drawn as SRC_OVER, the filter left out. A coordinate
 //     that is no number, or beyond a thousand million: the call draws
 //     nothing.
 //
@@ -122,7 +122,7 @@
 //     picture itself has a sharp edge.
 //   - Blending and effects work in floating point and round to whole 255ths
 //     at the end of each step, where this file's arithmetic rounds every
-//     product: the eighteen modes, as drawing calls, layers, drawColor and
+//     product: the nineteen modes, as drawing calls, layers, drawColor and
 //     colour filters, are within a step of megler.h's table (the scenes' check
 //     allows two). OVERLAY's choice between its two formulas can fall the
 //     other way on a pixel where 2*D is Da to within rounding.
@@ -300,8 +300,27 @@ struct State {
     std::string gpuName;                 // the adapter's, for the log
     bool videoSupport = false;           // made with D3D11_CREATE_DEVICE_VIDEO_SUPPORT (decoders and the video processor on it)
     bool videoUnder = true;              // a TextureView's video drawn on the window's canvas goes under the views (setVideoUnder)
-    std::atomic<uint64_t> videosPlaced{0}, videosComposed{0}; // places taken (drawTexture), pictures composed with no views drawn
-    uint64_t videosPlacedSaid = 0, videosComposedSaid = 0;    // as the last line about them had them (statsMutex)
+    // The videos under the views, for the line about them every 5 s (sayStats), each counted as it happens and said as the
+    // last line had it (videoSaid, statsMutex): what a flicker of a video comes from shows there, without a line a picture.
+    enum VideoCount {
+        videoPlaced,      // places taken as the views were drawn (drawTexture)
+        videoComposed,    // pictures composed with the views as last shown, nothing of them drawn (showVideoFrame)
+        videoAhead,       // ... of them while a drawing of the views under way had the video elsewhere (composed where the views shown have it)
+        videoMoved,       // places moved or grown when the drawing that took them was shown (takePlaces)
+        videoGone,        // videos given up when a drawing was shown: the views drawn where they were, without them
+        videoForgotten,   // videos let go with their textures (texture_frame's NULL: the view's surface gone)
+        videoLeft,        // pictures of a video not under the views: left to its view to draw (showVideoFrame's 1)
+        videoEmpty,       // holes composed with no picture of the video in them (composeWindow): shown empty
+        videoAmongOther,  // a decoder's pictures drawn among the views (drawTexture): on another canvas than the window's,
+        videoAmongLayer,  // ... into a layer of the window's,
+        videoAmongAlpha,  // ... translucent,
+        videoAmongShape,  // ... through a clip of a shape,
+        videoAmongTurned, // ... turned or mirrored,
+        videoAmongFlag,   // ... as the flag that keeps videos among the views asks (setVideoUnder)
+        videoCounts
+    };
+    std::atomic<uint64_t> videoCount[videoCounts] = {};
+    uint64_t videoSaid[videoCounts] = {};
     // Contexts and target bitmaps of canvases that are gone, for the next ones (gpuMutex).
     std::mutex gpuMutex;
     std::vector<GpuContext*> freeContexts;
@@ -356,6 +375,9 @@ struct State {
     std::atomic<uint64_t> roundClips{0}, roundUses[3] = {};
     std::atomic<uint64_t> canvasSerial{1};
     std::atomic<uint64_t> glFrames{0}, glWaitTicks{0}; // OpenGL ES frames taken (gl_frame), and the waits for their copies
+    // ... of them, frames in turn from a surface's textures (Mesa's ring) whose copy of the frame before was waited for, and of
+    // those, the copies not done by then: the texture would have been drawn into while it was being copied.
+    std::atomic<uint64_t> glTurnWaited{0}, glTurnLate{0};
     Ref<ID2D1Factory> d2d;
     Ref<ID2D1Factory1> d2d1;
     Ref<IDWriteFactory> dwrite;
@@ -425,7 +447,7 @@ struct State {
     enum EffectsWhy { whyInkMode, whyInkShaderFilter, whyInkSweep, whyInkFillStroke, whyBitmapMode, whyColour, whyShadowPath,
                       whyShadowText, whyShadowShape, whyShadowLarge, whyShadowMode, whyRestore, whyBlurRestore, whyCanvas, whyOther,
                       effectsWhys };
-    enum { blendModes = 18 };
+    enum { blendModes = 19 };
     std::atomic<uint64_t> effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     std::mutex statsMutex;
     uint64_t statsAt = 0; // when the last line was written (ticks); 0: never
@@ -433,7 +455,7 @@ struct State {
         uint64_t sessions = 0, direct = 0, composed = 0, layers = 0, layerBlurs = 0, layerPixels = 0, partTargets = 0, targetsMade = 0, makeTicks = 0, endTicks = 0, composeTicks = 0,
                  composedPixels = 0, sessionPixels = 0, uploads = 0, uploadPixels = 0, uploadTicks = 0, readBacks = 0, readBackPixels = 0,
                  readBackTicks = 0, byEffects = 0, throughMemory = 0, keptMade = 0, keptReused = 0, shown = 0, showTicks = 0, windowReadBacks = 0,
-                 windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0;
+                 windowReadBackPixels = 0, windowReadBackTicks = 0, glFrames = 0, glWaitTicks = 0, glTurnWaited = 0, glTurnLate = 0;
         uint64_t endsBy[endWhys] = {}, endTicksBy[endWhys] = {};
         uint64_t effectsBy[effectsWhys] = {}, effectsMode[blendModes] = {};
     } statsLast;
@@ -608,12 +630,13 @@ inline uint32_t blendChannel(int mode, uint32_t s, uint32_t d, uint32_t sa, uint
     }
     case MEGLER_GFX_BLEND_DARKEN: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + std::min(mul255(s, da), mul255(d, sa)); break;
     case MEGLER_GFX_BLEND_LIGHTEN: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + std::max(mul255(s, da), mul255(d, sa)); break;
+    case MEGLER_GFX_BLEND_MULTIPLY: v = mul255(s, 255 - da) + mul255(d, 255 - sa) + mul255(s, d); break;
     default: v = s + mul255(d, 255 - sa); break;
     }
     return v > 255 ? 255 : v;
 }
 
-/// S put on D by one of megler.h's eighteen numbers; both premultiplied.
+/// S put on D by one of megler.h's nineteen numbers; both premultiplied.
 inline uint32_t blended(int mode, uint32_t s, uint32_t d) {
     const uint32_t sa = s >> 24, da = d >> 24;
     if (mode == MEGLER_GFX_BLEND_SRC_OVER) {
@@ -2466,16 +2489,17 @@ bool compositeOf(int blend, D2D1_COMPOSITE_MODE* mode, bool* bounded) {
     }
 }
 
-/// Direct2D's Blend effect's mode for the four of megler.h's that are blends
-/// (its formula, W3C's, is megler.h's for these four: S*(1-Da) + D*(1-Sa) +
-/// Sa*Da*B(S/Sa, D/Da)); false for the others. Its MULTIPLY is not
-/// MODULATE, whose alpha is Sa*Da.
+/// Direct2D's Blend effect's mode for the five of megler.h's that are blends
+/// (its formula, W3C's, is megler.h's for these five: S*(1-Da) + D*(1-Sa) +
+/// Sa*Da*B(S/Sa, D/Da)); false for the others. Its MULTIPLY is megler.h's
+/// MULTIPLY (Android's BlendMode.MULTIPLY), not MODULATE, whose alpha is Sa*Da.
 bool blendOf(int blend, D2D1_BLEND_MODE* mode) {
     switch (blend) {
     case MEGLER_GFX_BLEND_SCREEN: *mode = D2D1_BLEND_MODE_SCREEN; return true;
     case MEGLER_GFX_BLEND_OVERLAY: *mode = D2D1_BLEND_MODE_OVERLAY; return true;
     case MEGLER_GFX_BLEND_DARKEN: *mode = D2D1_BLEND_MODE_DARKEN; return true;
     case MEGLER_GFX_BLEND_LIGHTEN: *mode = D2D1_BLEND_MODE_LIGHTEN; return true;
+    case MEGLER_GFX_BLEND_MULTIPLY: *mode = D2D1_BLEND_MODE_MULTIPLY; return true;
     default: return false;
     }
 }
@@ -2493,9 +2517,9 @@ inline D2D1_VECTOR_4F vectorOf(uint32_t premultipliedColour) {
 
 /// A colour filter (megler.h, THE PAINT) over `colours`: each colour C becomes
 /// the blend of S = the filter's colour and D = C. With S fixed, fifteen of
-/// the eighteen are a sum of C, C's alpha and S, which the ColorMatrix effect
-/// works out as it stands (premultiplied, clamped to 0..1); OVERLAY, DARKEN
-/// and LIGHTEN are the Blend effect with the colour as a Flood.
+/// the nineteen are a sum of C, C's alpha and S, which the ColorMatrix effect
+/// works out as it stands (premultiplied, clamped to 0..1); OVERLAY, DARKEN,
+/// LIGHTEN and MULTIPLY are the Blend effect with the colour as a Flood.
 Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t filterColour) {
     Ref<ID2D1Image> out;
     const uint32_t f = premultiplied(filterColour);
@@ -2562,7 +2586,7 @@ Ref<ID2D1Image> filtered(GpuContext& g, ID2D1Image* colours, int mode, uint32_t 
 /// that take colour away where a pixel is partly covered. As GfxHost.cpp's
 /// top says: a bounded composite mode by DrawImage; the rest worked out over
 /// a copy of the box, D, and copied into it:
-///     the four blends               Blend(D, A)
+///     the five blends               Blend(D, A)
 ///     the seven that take colour    D * (1 - C) + mode(A, D), the mode a
 ///     away                          Composite (SRC_IN, DST_IN, SRC_OUT,
 ///                                   DST_ATOP), A itself (SRC), an
@@ -3433,8 +3457,8 @@ inline bool sane(float a, float b, float c, float d) { return sane(a) && sane(b)
 
 /// A transfer mode's number as megler.h has it; any other is drawn as SRC_OVER, and the log says so once.
 int knownBlend(int blend) {
-    if (blend >= MEGLER_GFX_BLEND_CLEAR && blend <= MEGLER_GFX_BLEND_LIGHTEN) return blend;
-    note("blend-number", "a transfer mode numbered %d is not one of megler.h's eighteen: it is drawn as SRC_OVER (said once)", blend);
+    if (blend >= MEGLER_GFX_BLEND_CLEAR && blend <= MEGLER_GFX_BLEND_MULTIPLY) return blend;
+    note("blend-number", "a transfer mode numbered %d is not one of megler.h's nineteen: it is drawn as SRC_OVER (said once)", blend);
     return MEGLER_GFX_BLEND_SRC_OVER;
 }
 
@@ -3455,8 +3479,8 @@ megler_gfx_paint checked(const megler_gfx_paint& given) {
     if (!std::isfinite(p.text_skew_x)) p.text_skew_x = 0;
     if (!std::isfinite(p.letter_spacing)) p.letter_spacing = 0;
     if (p.text_align < MEGLER_GFX_ALIGN_LEFT || p.text_align > MEGLER_GFX_ALIGN_RIGHT) p.text_align = MEGLER_GFX_ALIGN_LEFT;
-    if (p.filter_mode > MEGLER_GFX_BLEND_LIGHTEN) {
-        note("filter-number", "a colour filter by a mode numbered %d, which is not one of megler.h's eighteen, is left out (said once)", p.filter_mode);
+    if (p.filter_mode > MEGLER_GFX_BLEND_MULTIPLY) {
+        note("filter-number", "a colour filter by a mode numbered %d, which is not one of megler.h's nineteen, is left out (said once)", p.filter_mode);
         p.filter_mode = -1;
     }
     if (p.filter_mode < 0) p.filter_mode = -1;
@@ -3616,6 +3640,8 @@ void noteDrawing() {
     t.windowReadBackTicks = s.windowReadBackTicks;
     t.glFrames = s.glFrames;
     t.glWaitTicks = s.glWaitTicks;
+    t.glTurnWaited = s.glTurnWaited;
+    t.glTurnLate = s.glTurnLate;
     for (int k = 0; k < State::endWhys; k++) {
         t.endsBy[k] = s.endsBy[k];
         t.endTicksBy[k] = s.endTicksBy[k];
@@ -3644,13 +3670,14 @@ void noteDrawing() {
         const uint64_t windowBacks = t.windowReadBacks - l.windowReadBacks;
         say("%.1f s (graphics processor): %llu drawings begun and ended (%.1f ms ending them), %llu calls drawn by Direct2D, %llu by its effects, %llu "
             "through memory (%.1f ms), %llu layers of %.1f Mpx (%llu of them blurred); %llu pictures shown without the memory (%.1f ms), %llu OpenGL ES frames composed under them (%.1f "
-            "ms waiting for their copies); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
+            "ms waiting for their copies; %llu in turn from Mesa's textures, the copy of the frame before waited for, %llu of those not done by then); %llu uploads of %.2f Mpx (%.1f ms); read-backs "
             "(the wait for the processor in them): %llu of other canvases, %.2f Mpx (%.1f ms), %llu of the shown window's, %.2f Mpx (%.1f ms); bitmaps: "
             "%llu uploaded, %llu drawn from those kept, %zu kept in %.1f MB; canvases' bitmaps there now: %lld in %.1f MB (%.1f MB of them spare)",
             seconds, ull(t.sessions - l.sessions), ticksToMs(t.endTicks - l.endTicks), ull(t.direct - l.direct), ull(t.byEffects - l.byEffects),
             ull(t.throughMemory - l.throughMemory), ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
             double(t.layerPixels - l.layerPixels) / 1e6, ull(t.layerBlurs - l.layerBlurs), ull(t.shown - l.shown),
-            ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks), ull(t.uploads - l.uploads),
+            ticksToMs(t.showTicks - l.showTicks), ull(t.glFrames - l.glFrames), ticksToMs(t.glWaitTicks - l.glWaitTicks),
+            ull(t.glTurnWaited - l.glTurnWaited), ull(t.glTurnLate - l.glTurnLate), ull(t.uploads - l.uploads),
             double(t.uploadPixels - l.uploadPixels) / 1e6,
             ticksToMs(t.uploadTicks - l.uploadTicks), ull(t.readBacks - l.readBacks - windowBacks),
             double((t.readBackPixels - l.readBackPixels) - (t.windowReadBackPixels - l.windowReadBackPixels)) / 1e6,
@@ -3679,7 +3706,7 @@ void noteDrawing() {
                                                                    "a blurred layer", "a canvas in another mode", "other"};
         static const char* const modes[State::blendModes] = {"CLEAR", "SRC", "DST", "SRC_OVER", "DST_OVER", "SRC_IN", "DST_IN",
                                                             "SRC_OUT", "DST_OUT", "SRC_ATOP", "DST_ATOP", "XOR", "PLUS", "MODULATE",
-                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN"};
+                                                            "SCREEN", "OVERLAY", "DARKEN", "LIGHTEN", "MULTIPLY"};
         char why[700];
         used = 0;
         for (int k = 0; k < State::effectsWhys && used + 100 < sizeof(why); k++) {
@@ -3710,14 +3737,28 @@ void noteDrawing() {
             ull(t.composed - l.composed), double(t.composedPixels - l.composedPixels) / 1e6, ticksToMs(t.composeTicks - l.composeTicks), ull(t.layers - l.layers),
             ull(t.targetsMade - l.targetsMade), ticksToMs(t.makeTicks - l.makeTicks), ull(t.partTargets - l.partTargets));
     }
-    // And the videos laid under the views (drawTexture, GfxHost::showVideoFrame): a picture composed so cost no drawing.
-    const uint64_t placed = s.videosPlaced.load(), videos = s.videosComposed.load();
-    if (s.statsAt && (placed != s.videosPlacedSaid || videos != s.videosComposedSaid))
+    // And the videos laid under the views (drawTexture, GfxHost::showVideoFrame): a picture composed so cost no drawing. And
+    // what else became of them, which is where a picture of a video shown wrong would come from: composed while a drawing of
+    // the views had the video elsewhere, moved, given up, shown with no picture, or drawn among the views, and why.
+    uint64_t v[State::videoCounts];
+    bool changed = false;
+    for (int k = 0; k < State::videoCounts; k++) {
+        const uint64_t count = s.videoCount[k].load();
+        v[k] = count - s.videoSaid[k];
+        s.videoSaid[k] = count;
+        changed = changed || v[k];
+    }
+    if (s.statsAt && changed)
         say("%.1f s: videos under the views: %llu places taken as the views were drawn, %llu pictures composed with the views as they were last shown and "
-            "shown, nothing of the views drawn for them",
-            ticksToMs(now - s.statsAt) / 1000.0, ull(placed - s.videosPlacedSaid), ull(videos - s.videosComposedSaid));
-    s.videosPlacedSaid = placed;
-    s.videosComposedSaid = videos;
+            "shown, nothing of the views drawn for them (%llu of them while a drawing of the views had the video elsewhere, composed where the views "
+            "shown had it); as drawings were shown %llu places moved or grew and %llu videos were given up, the views drawn where they were without "
+            "them; %llu let go with their textures; %llu pictures of videos not under the views, left to their views; %llu holes composed with no "
+            "picture in them; a decoder's pictures drawn among the views: %llu on another canvas, %llu in a layer, %llu translucent, %llu through a "
+            "shaped clip, %llu turned, %llu by the flag",
+            ticksToMs(now - s.statsAt) / 1000.0, ull(v[State::videoPlaced]), ull(v[State::videoComposed]), ull(v[State::videoAhead]),
+            ull(v[State::videoMoved]), ull(v[State::videoGone]), ull(v[State::videoForgotten]), ull(v[State::videoLeft]), ull(v[State::videoEmpty]),
+            ull(v[State::videoAmongOther]), ull(v[State::videoAmongLayer]), ull(v[State::videoAmongAlpha]), ull(v[State::videoAmongShape]),
+            ull(v[State::videoAmongTurned]), ull(v[State::videoAmongFlag]));
     s.statsLast = t;
     s.statsAt = now;
 }
@@ -3821,6 +3862,7 @@ void releaseBack() {
 struct KeptTextures {
     struct Texture {
         void* handle = nullptr;      // the shared handle ANGLE's texture was opened by
+        int width = 0, height = 0;   // the frames' size as the core said it then (sameTexture)
         Ref<ID3D11Texture2D> shared; // ANGLE's texture, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
@@ -3844,11 +3886,22 @@ struct Composition {
         Box rect;                    // where its frames go, in the window's (the views') pixels; empty: nowhere
         int flags = 0;               // gl_place's MEGLER_GL_*: over the views, translucent, a media overlay
         void* handle = nullptr;      // the shared handle its surface's texture was opened by
+        int width = 0, height = 0;   // the frames' size as the core said it then (sameTexture)
         Ref<ID3D11Texture2D> shared; // ANGLE's texture of the surface, opened on this device
         Ref<IDXGIKeyedMutex> mutex;  // its keyed mutex, where ANGLE shares it with one (gecko-w10m's does)
         Ref<ID3D11Texture2D> copy;   // its last frame, copied out of it
         Ref<ID2D1Bitmap1> frame;     // the copy as Direct2D draws it: rows bottom first, alpha ignored (a frame is opaque)
         Ref<ID2D1Bitmap1> translucent; // the same copy with its alpha, premultiplied, for a layer over the views that keeps it
+        /// The textures of a surface whose frames come in turn from several (the core's ring, on Mesa): each opened once, by its
+        /// handle. Such a texture is drawn into again one frame after it came: mg_java_gl.c's ring of three hands the frame in
+        /// texture k over at swap k+1 and has the app draw into texture k again right after swap k+2. So its copy is not waited
+        /// for as it is made but at the layer's next frame (turnCopied), before the core gives the texture back to the app.
+        std::vector<std::pair<void*, Ref<ID3D11Texture2D>>> opened;
+        /// The queries that end the copies out of the ring's textures in turn, taken in turn; turnPending: the other one
+        /// (turnCopied[turnNext ^ 1]) ends a copy not waited for yet.
+        Ref<ID3D11Query> turnCopied[2];
+        int turnNext = 0;
+        bool turnPending = false;
     };
     /// A layer started again for another texture: its place and flags kept, all else let go.
     static void reset(Layer& l) {
@@ -3858,20 +3911,23 @@ struct Composition {
         l.rect = rect;
         l.flags = flags;
     }
-    /// A TextureView's video under the views (drawTexture on the window's canvas): its picture is the id's newest in
-    /// KeptTextures, rows top first, scaled to `rect`, shown where the views left `clip` open for it.
+    /// A TextureView's or a SurfaceView's video under the views (drawTexture on the window's canvas): its picture is the id's
+    /// newest in KeptTextures, rows top first, scaled to `rect`, shown where the views left `clip` open for it.
     struct Video {
         int id = 0;
         Box rect, clip;              // in the window's (the views') pixels
         uint64_t order = 0;          // later ones over earlier ones: the order the views last drew them in
-        uint64_t seen = 0;           // the drawing of the views (cycle) that last drew it
     };
     std::mutex mutex;
     bool layered = false;            // frames or places have come: present keeps the views and composes the window here
     Layer layers[8];
+    /// The videos as the views were last shown (present): where `views` has their holes, and what the window is composed of.
     std::vector<Video> videos;
+    /// The places the drawing of the views going on now took (drawTexture), the videos' from that drawing's present on. Not
+    /// before: a picture that comes meanwhile (showVideoFrame) is composed with the views as they were last shown, which have
+    /// the holes where `videos` has the places.
+    std::vector<Video> placing;
     uint64_t videoOrder = 0;
-    uint64_t cycle = 1;              // the drawing of the views going on now: one more at each present
     Ref<ID2D1Bitmap1> views;         // the views' picture as present last showed it, rows top first
     int width = 0, height = 0;
     bool haveViews = false;
@@ -3886,8 +3942,7 @@ Composition& composition() {
     return *c;
 }
 
-/// A video no longer under the views (its view draws it among them now, or its texture is gone): what it covered is
-/// composed again at the next showing.
+/// A video no longer under the views (its texture is gone): what it covered is composed again at the next showing.
 void forgetVideo(int id) {
     Composition& c = composition();
     std::lock_guard<std::mutex> lock(c.mutex);
@@ -3895,7 +3950,62 @@ void forgetVideo(int id) {
         if (c.videos[i].id != id) continue;
         c.pending.include(c.videos[i].clip);
         c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
+        ++G().videoCount[State::videoForgotten];
     }
+    for (size_t i = c.placing.size(); i-- > 0;)
+        if (c.placing[i].id == id) c.placing.erase(c.placing.begin() + std::ptrdiff_t(i));
+}
+
+/// With the composition's lock held, as present shows a drawing of the views that changed `part`: the places that drawing
+/// took (drawTexture) are the videos' from now on, and what they covered and cover now is composed again. Drawn again where
+/// it was, a place keeps what the views left open for it before too: a drawing of a part of the window (a small view's
+/// animation over the video) clips the list to that part, and what it did not draw keeps the hole it had. Drawn elsewhere
+/// (moved), it is where it is now. And a video the drawing did not place where it drew is no longer under the views (its
+/// view scrolled away, was hidden, or draws it among them now): every view in a part drawn again is drawn again, the video's
+/// view too. It no longer goes under them, nor over another video put there since.
+/// Only here, with the views that have the holes. Taken at once, a picture that came while the views were being drawn with
+/// the video moved was composed with the views as last shown and the video at its new place, where they have no hole yet:
+/// the video hidden, and its old hole shown empty, black -- for a picture, whenever one came so while the video moved or
+/// grew (suspected of the flicker of YouTube's Shorts, swiped from one to the next, on an HP Elite x3, 748).
+void takePlaces(Composition& c, const Box& part) {
+    for (size_t i = c.videos.size(); i-- > 0;) {
+        const Composition::Video& v = c.videos[i];
+        bool placed = false;
+        for (const Composition::Video& p : c.placing) placed = placed || p.id == v.id;
+        Box both = v.clip;
+        both.intersect(part);
+        if (placed || both.empty()) continue;
+        c.pending.include(v.clip);
+        c.videos.erase(c.videos.begin() + std::ptrdiff_t(i));
+        ++G().videoCount[State::videoGone];
+    }
+    for (Composition::Video& p : c.placing) {
+        bool known = false;
+        for (Composition::Video& w : c.videos) {
+            if (w.id != p.id) continue;
+            if (w.rect.l == p.rect.l && w.rect.t == p.rect.t && w.rect.r == p.rect.r && w.rect.b == p.rect.b) {
+                p.clip.include(w.clip);
+            } else {
+                c.pending.include(w.clip);
+                ++G().videoCount[State::videoMoved];
+            }
+            w = p;
+            known = true;
+        }
+        if (!known) c.videos.push_back(p);
+        c.pending.include(p.clip);
+    }
+    c.placing.clear();
+}
+
+/// Whether the OpenGL ES frames' shared textures hold their rows top first: Mesa's (freedreno over D3DKMT), which renders into
+/// the D3D11 texture as Direct3D lays it out, where ANGLE's keep OpenGL's order, the bottom row first, which the composing
+/// here is made for. GTA: Vice City's frames came out upside down on Mesa. Which of the two the app draws with is its setting
+/// Graphics, or ANGLE where Mesa could not be had: the core says which it came to (megler_gles) once the app has used EGL,
+/// before any frame comes. (Not whether Mesa's DLLs are in the package: a phone's package carries both.)
+bool glFramesTopFirst() {
+    const char* gles = megler_gles();
+    return gles && strcmp(gles, "mesa") == 0;
 }
 
 /// The premultiplied picture of a translucent layer's last frame (the same
@@ -3965,6 +4075,7 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
             dc->SetTransform(Matrix3x2F::Identity());
             dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
             const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+            if (glFramesTopFirst()) dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, at.top + at.bottom));
             dc->DrawBitmap(layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
             dc->PopAxisAlignedClip();
             dc->SetTransform(turned);
@@ -3991,7 +4102,10 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
                 const auto found = k.byId.find(v.id);
                 if (found != k.byId.end() && found->second.have && found->second.topFirst) frame = found->second.frame;
             }
-            if (!frame) continue;
+            if (!frame) {
+                ++s.videoCount[State::videoEmpty];
+                continue;
+            }
             dc->SetTransform(turned);
             const D2D1_RECT_F open = D2D1::RectF(float(b.l), float(b.t), float(b.r), float(b.b));
             dc->PushAxisAlignedClip(open, D2D1_ANTIALIAS_MODE_ALIASED);
@@ -4014,6 +4128,7 @@ bool composeWindow(ID2D1Bitmap1* onto, Box part) {
         dc->SetPrimitiveBlend(frame ? D2D1_PRIMITIVE_BLEND_SOURCE_OVER : D2D1_PRIMITIVE_BLEND_COPY);
         dc->PushAxisAlignedClip(D2D1::RectF(float(b.l), h - float(b.b), float(b.r), h - float(b.t)), D2D1_ANTIALIAS_MODE_ALIASED);
         const D2D1_RECT_F at = D2D1::RectF(float(layer.rect.l), h - float(layer.rect.b), float(layer.rect.r), h - float(layer.rect.t));
+        if (glFramesTopFirst()) dc->SetTransform(Matrix3x2F(1, 0, 0, -1, 0, at.top + at.bottom));
         dc->DrawBitmap(frame ? frame : layer.frame.get(), &at, 1.0f, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, nullptr, nullptr);
         dc->PopAxisAlignedClip();
         dc->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
@@ -4057,6 +4172,30 @@ bool showComposed(Box part, bool fresh) {
     return true;
 }
 
+/// Whether a frame handed over by `handle` at width x height is in the texture
+/// opened for the last one, so that the copy made for that one takes it: the
+/// same handle, and the same size. A texture's size never changes, so a frame
+/// of another size under a handle opened before is in another texture, which
+/// the handle names now; and CopyResource between textures that differ in size
+/// or format does nothing at all, so a copy of the old size would keep the
+/// frame before for good (issue #26 suspected it of a libGDX game whose
+/// surface grew after its first frames). Opened again, its copy is made after
+/// its own size and format. The handles Megler is given are ANGLE's
+/// pbuffers', and a pbuffer has one size, so a surface of another size comes
+/// with another handle (mg_java_gl.c makes a new pbuffer); this is the guard
+/// for a handle given again.
+bool sameTexture(void* had, int hadWidth, int hadHeight, void* handle, int width, int height) {
+    return had == handle && hadWidth == width && hadHeight == height;
+}
+
+/// A texture opened by its shared handle for frames said to be width x height: said once in the log when it is of another
+/// size, which the copy then follows (the frame is scaled to its place in any case).
+void noteOtherSize(const char* what, const D3D11_TEXTURE2D_DESC& desc, int width, int height) {
+    if (int(desc.Width) != width || int(desc.Height) != height)
+        note("gl-size", "%s's frames said to be %dx%d come in a texture of %ux%u: the copies are of the texture's size (said once)", what, width, height,
+             unsigned(desc.Width), unsigned(desc.Height));
+}
+
 /// megler_gfx_host.gl_frame: a GL view's new frame, in ANGLE's texture of its
 /// surface, opened here by its shared handle and copied into a texture of
 /// the layer's own. The copy is waited for (an event query: this is the GL
@@ -4070,6 +4209,9 @@ bool showComposed(Box part, bool fresh) {
 /// back before it draws the next frame, which therefore lands after this
 /// copy on the graphics processor; so the copy is not waited for then (nor
 /// has the core finished the frame: it only flushed it).
+/// A frame of a texture that comes again in turn (the core's ring of Mesa's
+/// textures, which have no mutex) has its copy waited for at the layer's next
+/// frame instead, before the core lets the app draw into that texture again.
 /// The first frame may come before any view has been drawn: Direct2D and the
 /// graphics processor are started for it then, as for a canvas (refused, the
 /// core composes the window for good, the frames read back).
@@ -4082,7 +4224,38 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
         std::lock_guard<std::mutex> lock(c.mutex);
         c.layered = true;
         Composition::Layer& l = c.layers[layer];
-        if (l.handle != handle || !l.shared || !l.frame) {
+        // Whether this frame's texture is one of the surface's that came before and comes again, in turn (the core's ring):
+        // only then is its copy not waited for. A texture new to the layer is waited for as ever -- ANGLE's of a surface made
+        // again at the same size among them, which ANGLE's device draws into again as soon as this returns.
+        bool inTurn = false;
+        if (l.handle != handle && l.shared && l.frame && l.copy && l.width == width && l.height == height) {
+            // Another of the same surface's textures, in turn: the one opened before, or opened now if it is of the same size.
+            Ref<ID3D11Texture2D> other;
+            for (auto& o : l.opened)
+                if (o.first == handle) other = o.second;
+            inTurn = bool(other);
+            if (!other) {
+                D3D11_TEXTURE2D_DESC have = {}, desc = {};
+                l.copy->GetDesc(&have);
+                if (SUCCEEDED(s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(other.put())))) {
+                    other->GetDesc(&desc);
+                    // (Of the copy's format too, a typeless one taken as the copy was made of it: CopyResource between formats
+                    // does nothing.)
+                    if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                    if (desc.Format == DXGI_FORMAT_B8G8R8A8_TYPELESS) desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+                    if (desc.Width != have.Width || desc.Height != have.Height || desc.Format != have.Format ||
+                        (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX) || l.mutex || l.opened.size() >= 4)
+                        other.reset();
+                    else
+                        l.opened.emplace_back(handle, other);
+                }
+            }
+            if (other) {
+                l.shared = other;
+                l.handle = handle;
+            }
+        }
+        if (!sameTexture(l.handle, l.width, l.height, handle, width, height) || !l.shared || !l.frame) {
             Composition::reset(l);
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(l.shared.put()));
             if (FAILED(hr)) {
@@ -4093,6 +4266,7 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             l.shared->GetDesc(&desc);
+            noteOtherSize("an OpenGL ES surface", desc, width, height);
             if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
                 l.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(l.mutex.put()));
             // (A texture made typeless, to be seen in more than one format, is copied into one of the format it is drawn in.)
@@ -4118,10 +4292,25 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
                 return;
             }
             l.handle = handle;
+            l.width = width;
+            l.height = height;
+            l.opened.emplace_back(handle, l.shared);
         }
         if (!c.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
             if (FAILED(s.d3d->CreateQuery(&query, c.copied.put()))) c.copied.reset();
+        }
+        // The query that ends this copy: the composition's, waited for below; for a texture of the ring in turn, the layer's
+        // own of the two in turn, waited for at its next frame. (Without one to be had, waited for at once as any other.)
+        ID3D11Query* copied = c.copied.get();
+        if (inTurn) {
+            Ref<ID3D11Query>& q = l.turnCopied[l.turnNext];
+            if (!q) {
+                D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
+                if (FAILED(s.d3d->CreateQuery(&query, q.put()))) q.reset();
+            }
+            if (q) copied = q.get();
+            else inTurn = false;
         }
         Ref<ID3D11DeviceContext> context;
         s.d3d->GetImmediateContext(context.put());
@@ -4138,22 +4327,49 @@ bool glFrame(void*, int layer, void* handle, int width, int height) {
             }
         }
         context->CopyResource(l.copy.get(), l.shared.get());
-        if (c.copied) context->End(c.copied.get());
+        if (copied) context->End(copied);
         if (l.mutex) l.mutex->ReleaseSync(0);
         context->Flush();
         host.unlockDevice();
-        // Without a mutex, the copy waited for, half a second at the most: ANGLE's device may draw into its texture as soon as
-        // this returns.
-        while (c.copied && !l.mutex) {
-            host.lockDevice();
-            const HRESULT hr = context->GetData(c.copied.get(), nullptr, 0, 0);
-            host.unlockDevice();
-            if (hr != S_FALSE) break;
-            if (ticksToMs(ticksNow() - from) > 500.0) {
-                note("gl-wait", "a copy of an OpenGL ES frame was not done after half a second: not waited for any longer (said once)");
-                break;
+        // A query waited for, half a second at the most; whether it was done when first asked.
+        const auto wait = [&](ID3D11Query* query) {
+            bool first = true, done = false;
+            while (query) {
+                host.lockDevice();
+                const HRESULT hr = context->GetData(query, nullptr, 0, 0);
+                host.unlockDevice();
+                if (hr != S_FALSE) {
+                    done = first;
+                    break;
+                }
+                first = false;
+                if (ticksToMs(ticksNow() - from) > 500.0) {
+                    note("gl-wait", "a copy of an OpenGL ES frame was not done after half a second: not waited for any longer (said once)");
+                    break;
+                }
+                SwitchToThread();
             }
-            SwitchToThread();
+            return done;
+        };
+        // Without a mutex, the copy waited for: ANGLE's device may draw into its texture as soon as this returns. Not for a
+        // texture of the core's ring that came again (inTurn), drawn into again only one frame from now; but the copy out of
+        // the ring's texture of the frame before, which the core makes the one its GL thread draws into next as this returns
+        // (ring_frame). Mesa's device and this one share no keyed mutex nor fence, and a copy queued behind this device's busy
+        // context -- the graphics processor not done with the picture before at most of the HP Elite x3's showings -- could
+        // read a texture Mesa was already drawing the next frame into. Done by then as a rule, when the wait costs nothing; how
+        // often it was not, the gfx line says (glTurnLate).
+        if (!l.mutex && !inTurn) wait(copied);
+        if (l.turnPending) {
+            // (After a copy waited for at once, the one before it on the same context is done too.)
+            if (inTurn) {
+                ++s.glTurnWaited;
+                if (!wait(l.turnCopied[l.turnNext ^ 1].get())) ++s.glTurnLate;
+            }
+            l.turnPending = false;
+        }
+        if (inTurn) {
+            l.turnPending = true;
+            l.turnNext ^= 1;
         }
         s.glWaitTicks += ticksNow() - from;
         ++s.glFrames;
@@ -4188,7 +4404,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
     guarded("texture_frame", [&] {
         std::lock_guard<std::mutex> lock(k.mutex);
         KeptTextures::Texture& t = k.byId[id];
-        if (t.handle != handle || !t.shared || !t.frame || t.topFirst) {
+        if (!sameTexture(t.handle, t.width, t.height, handle, width, height) || !t.shared || !t.frame || t.topFirst) {
             t = KeptTextures::Texture{};
             HRESULT hr = s.d3d->OpenSharedResource(handle, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(t.shared.put()));
             if (FAILED(hr)) {
@@ -4199,6 +4415,7 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
             }
             D3D11_TEXTURE2D_DESC desc = {};
             t.shared->GetDesc(&desc);
+            noteOtherSize("a TextureView", desc, width, height);
             if (desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX)
                 t.shared->QueryInterface(__uuidof(IDXGIKeyedMutex), reinterpret_cast<void**>(t.mutex.put()));
             if (desc.Format == DXGI_FORMAT_R8G8B8A8_TYPELESS) desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -4223,6 +4440,8 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
                 return;
             }
             t.handle = handle;
+            t.width = width;
+            t.height = height;
         }
         if (!t.mutex && !k.copied) {
             D3D11_QUERY_DESC query = {D3D11_QUERY_EVENT, 0};
@@ -4262,7 +4481,8 @@ bool textureFrame(void*, int id, void* handle, int width, int height) {
 }
 
 /// megler_gfx_host.draw_texture: the id's last frame drawn into the canvas, into (l, t, r, b) under its matrix and clip, the
-/// right way up (its rows are bottom first), smoothly, at `alpha`. On a canvas drawn in memory nothing is drawn (said once).
+/// right way up (its rows are bottom first; top first for a video's and for Mesa's), smoothly, at `alpha`. On a canvas drawn
+/// in memory nothing is drawn (said once).
 void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b, int alpha) {
     Canvas* cv = canvasOf(canvas);
     if (!cv || id <= 0 || !sane(l, t, r, b) || !(r > l) || !(b > t)) return;
@@ -4297,9 +4517,10 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
         // no turn): the window is composed of the picture and the views over it, as of an OpenGL ES view's frames, and here
         // the views get a hole where it shows. A new picture then needs the views neither drawn again nor shown from them,
         // only the composition (GfxHost::showVideoFrame), as a SurfaceView's surface on Android or a video's layer in
-        // Chromium. Its place is taken as the list is drawn, so it follows the view through a scroll that only moves it.
-        if (topFirst && alpha >= 255 && s.videoUnder && windowCanvas && target == &cv->base && !cv->clip().g && m._12 == 0.0f && m._21 == 0.0f &&
-            m._11 > 0.0f && m._22 > 0.0f) {
+        // Chromium. Its place is taken as the list is drawn, so it follows the view through a scroll that only moves it; it is
+        // the window's once this drawing of the views is shown (present), whose hole it is.
+        const bool straight = m._12 == 0.0f && m._21 == 0.0f && m._11 > 0.0f && m._22 > 0.0f;
+        if (topFirst && alpha >= 255 && s.videoUnder && windowCanvas && target == &cv->base && !cv->clip().g && straight) {
             Composition::Video v;
             v.id = id;
             v.rect.l = int(std::lround(l * m._11 + m._31));
@@ -4322,31 +4543,33 @@ void drawTexture(void*, void* canvas, int id, float l, float t, float r, float b
             Composition& c = composition();
             std::lock_guard<std::mutex> lock(c.mutex);
             c.layered = true;
-            // Drawn again where it was, the place keeps what the views left open for it before too: a drawing of a part of the
-            // window (a small view's animation over the video) clips the list to that part, and what it did not draw keeps the
-            // hole it had. Drawn elsewhere (moved), it is where it is now. Either way it is over what the views drew before it.
-            v.seen = c.cycle;
+            // Taken for this drawing; present makes it the window's (takePlaces). Drawn twice in it, the place keeps what both
+            // left open where they are the same; else the later one's. Either way it is over what the views drew before it.
             v.order = ++c.videoOrder;
             bool known = false;
-            for (Composition::Video& w : c.videos) {
+            for (Composition::Video& w : c.placing) {
                 if (w.id != id) continue;
-                if (w.rect.l == v.rect.l && w.rect.t == v.rect.t && w.rect.r == v.rect.r && w.rect.b == v.rect.b) {
-                    v.clip.include(w.clip);
-                } else {
-                    c.pending.include(w.clip);
-                }
+                if (w.rect.l == v.rect.l && w.rect.t == v.rect.t && w.rect.r == v.rect.r && w.rect.b == v.rect.b) v.clip.include(w.clip);
                 w = v;
                 known = true;
             }
-            if (!known) c.videos.push_back(v);
-            c.pending.include(v.clip);
-            ++s.videosPlaced;
+            if (!known) c.placing.push_back(v);
+            ++s.videoCount[State::videoPlaced];
             return;
         }
-        // (Drawn among the views: no longer under them, if it was.)
-        if (topFirst) forgetVideo(id);
+        // Drawn among the views. On the window's canvas the video is no longer under them once this drawing is shown: present
+        // gives up a video the drawing did not place where it drew. Not before, as the views shown until then have its hole.
+        // On another canvas nothing of the window changes: a bitmap an app draws a view into (a snapshot for an animation,
+        // TextureView.getBitmap's) while the view itself draws the video under the window's views. That drawing once took
+        // the video from under them at once, and the window composed before its view drew it again showed the hole empty.
+        if (topFirst)
+            ++s.videoCount[!s.videoUnder ? State::videoAmongFlag : !windowCanvas ? State::videoAmongOther : target != &cv->base ? State::videoAmongLayer
+                           : alpha < 255 ? State::videoAmongAlpha : cv->clip().g ? State::videoAmongShape : State::videoAmongTurned];
         target->useClip(cv->clip());
-        const Matrix3x2F turned = topFirst ? cv->matrix : Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
+        // An OpenGL ES picture is turned over, its rows bottom first -- but Mesa's, whose rows come top first as a video's do
+        // (glFramesTopFirst): a TextureView's frames and the WebView's pages of an app set to Mesa.
+        const bool upright = topFirst || glFramesTopFirst();
+        const Matrix3x2F turned = upright ? cv->matrix : Matrix3x2F::Scale(1.0f, -1.0f, D2D1::Point2F(0.0f, (t + b) / 2.0f)) * cv->matrix;
         target->setMatrix(turned);
         target->rt->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const D2D1_RECT_F onto = D2D1::RectF(l, t, r, b);
@@ -4448,18 +4671,8 @@ bool present(void*, void* canvas, int x, int y, int width, int height) {
                     s.windowCanvas = cv->serial;
                 }
                 if (fresh) part = base.bounds();
-                // A video under the views that this drawing of them did not draw where it drew is no longer there (its view
-                // scrolled away, or was hidden): every view in a part drawn again is drawn again, its TextureView too. It no
-                // longer goes under them, nor over another video put there since.
-                for (size_t i = comp.videos.size(); i-- > 0;) {
-                    const Composition::Video& v = comp.videos[i];
-                    Box both = v.clip;
-                    both.intersect(part);
-                    if (v.seen == comp.cycle || both.empty()) continue;
-                    comp.pending.include(v.clip);
-                    comp.videos.erase(comp.videos.begin() + std::ptrdiff_t(i));
-                }
-                comp.cycle++;
+                // The videos under the views where this drawing of them put them, as the views get their holes.
+                takePlaces(comp, part);
                 const D2D1_POINT_2U at = D2D1::Point2U(UINT32(part.l), UINT32(part.t));
                 const D2D1_RECT_U source = D2D1::RectU(UINT32(part.l), UINT32(part.t), UINT32(part.r), UINT32(part.b));
                 const HRESULT hr = comp.views->CopyFromBitmap(&at, base.gpu.get(), &source);
@@ -7713,18 +7926,23 @@ int GfxHost::showVideoFrame(int id, ID3D11Texture2D* picture, int width, int hei
             t.have = true;
             shown = 1;
         }
-        // A video under the views already (drawTexture placed it): composed with them as present last showed them, and
-        // shown, nothing of the views drawn or shown again.
+        // A video under the views already (drawTexture placed it, and present showed the views with its hole): composed with
+        // them as present last showed them, at the place they have its hole -- not at one a drawing of them under way took,
+        // shown at that drawing's present -- and shown, nothing of the views drawn or shown again.
         Composition& c = composition();
         std::lock_guard<std::mutex> lock(c.mutex);
         for (const Composition::Video& v : c.videos) {
             if (v.id != id) continue;
             if (c.haveViews && showComposed(v.clip, false)) {
                 shown = 2;
-                ++s.videosComposed;
+                ++s.videoCount[State::videoComposed];
+                for (const Composition::Video& p : c.placing)
+                    if (p.id == id && (p.rect.l != v.rect.l || p.rect.t != v.rect.t || p.rect.r != v.rect.r || p.rect.b != v.rect.b))
+                        ++s.videoCount[State::videoAhead];
             }
             break;
         }
+        if (shown == 1) ++s.videoCount[State::videoLeft];
     });
     if (shown == 2) noteDrawing();
     return shown;
@@ -7889,6 +8107,7 @@ GfxHost::Counts GfxHost::counts() {
     c.throughMemory = s.throughMemory;
     c.keptMade = s.keptMade;
     c.keptReused = s.keptReused;
+    c.glTurnWaited = s.glTurnWaited;
     if (c.started && s.gpu) snprintf(c.device, sizeof(c.device), "%s", s.gpuName.c_str());
     return c;
 }

@@ -62,10 +62,13 @@ static mg_lock g_mount_lock = MG_LOCK_INIT;        /* held by whoever changes th
 #define MOUNT_AT(i) (&g_mount_blocks[(i) / MOUNT_BLOCK][(i) % MOUNT_BLOCK])
 enum { MOUNT_LINK = 1, MOUNT_READ_ONLY = 2, MOUNT_OTHER = 4, MOUNT_HOST_FILE = 8 };
 static char g_package[160] = "com.example.app";
+/* The Android process the app runs as (mg_fs_set_process), where it is not the package's own: what /proc/self says. */
+static char g_process[200];
 static char g_internal[256] = "/data/data/com.example.app";
 static char g_external[64] = EXTERNAL;
 static char g_cwd[512] = "/";
 static char *g_space_dir;              /* a host folder on the volume everything is kept on: what statfs asks about */
+static char *g_lib_dir;                /* the app's library folder on the host, "<data folder>/lib/": its files are executable (exec_bit) */
 
 static const struct {
     const char *path;
@@ -196,6 +199,70 @@ static const char *font_ext(const char *path)
     return ".ttf";
 }
 
+/* Whether a font's langs (tags with spaces between) have this tag. */
+static bool font_langs_have(const char *langs, const char *tag)
+{
+    size_t n = strlen(tag);
+    const char *p = langs;
+    while (p && *p) {
+        if (!strncmp(p, tag, n) && (p[n] == ' ' || !p[n])) return true;
+        p = strchr(p, ' ');
+        if (p) p++;
+    }
+    return false;
+}
+
+/*
+ * Android's own file names for the fonts of Chinese, Japanese and Korean, which apps open by path to draw such text
+ * themselves (FreeType), each the host's font of that language. Shattered Pixel Dungeon (libGDX's FreeType) looks for
+ * NotoSansCJK-Regular.ttc, then NotoSansSC-Regular.otf or NotoSansHans-Regular.otf, NotoSansJP-Regular.otf,
+ * NotoSansKR-Regular.otf and the fallback DroidSansFallback.ttf (Android 6's names), found none, and drew no Chinese at
+ * all (issue #25). A name of a single font is opened at its first face: the host's file is given as it is -- a collection
+ * too, whose first face is its family's (Microsoft YaHei for Microsoft YaHei UI, its second). NotoSansCJK-Regular.ttc is
+ * not given: it is one collection of the four, and apps open it at the face of their language by its number there (0
+ * Japanese, 1 Korean, 2 Simplified Chinese, 3 Traditional), which no file of the host's has -- Shattered Pixel Dungeon
+ * opens its face 2, which Microsoft YaHei's collection of two has not, and FreeType's refusal would end the game where
+ * the names below give it its fonts.
+ */
+static const struct {
+    const char *lang, *name;
+} k_android_font_names[] = {
+    { "zh-Hans", "NotoSansSC-Regular.otf" }, { "zh-Hans", "NotoSansHans-Regular.otf" },
+    { "zh-Hant", "NotoSansTC-Regular.otf" }, { "zh-Hant", "NotoSansHant-Regular.otf" },
+    { "ja", "NotoSansJP-Regular.otf" }, { "ko", "NotoSansKR-Regular.otf" },
+    /* Android's fallback for these before 7, the first of the four the host has. */
+    { "", "DroidSansFallback.ttf" }, { "", "DroidSansFallbackFull.ttf" },
+};
+static const char *const k_fallback_langs[] = { "zh-Hans", "zh-Hant", "ja", "ko" };
+static const mount *mount_of(const char *g);
+static char *host_of_normal(const char *g);
+
+/* Each of those names under <guest_root>/fonts, unless the root has a file of its own by that name. */
+static void mount_android_font_names(const char *guest_root, const mg_fs_font *fonts, int count)
+{
+    size_t i, k;
+    int j;
+    for (i = 0; i < MG_COUNT(k_android_font_names); i++) {
+        const char *path = NULL;
+        char *guest, *host;
+        const mount *m;
+        mg_stat st;
+        for (k = 0; k < MG_COUNT(k_fallback_langs) && !path; k++) {
+            const char *lang = k_android_font_names[i].lang[0] ? k_android_font_names[i].lang : k_fallback_langs[k];
+            for (j = 0; j < count && !path; j++)
+                if (fonts[j].path && font_langs_have(fonts[j].langs, lang)) path = fonts[j].path;
+            if (k_android_font_names[i].lang[0]) break;
+        }
+        if (!path) continue;
+        guest = mg_sprintf("%s/fonts/%s", guest_root, k_android_font_names[i].name);
+        m = mount_of(guest);
+        host = m && !strcmp(m->guest, guest) ? NULL : host_of_normal(guest);
+        if (!host || !mg_path_stat(host, &st, NULL)) mount_put(guest, path, MOUNT_READ_ONLY | MOUNT_HOST_FILE);
+        free(host);
+        free(guest);
+    }
+}
+
 int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made, const mg_fs_font *fonts, int count, char *said, size_t said_size)
 {
     static const char end[] = "</familyset>";
@@ -205,6 +272,7 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
     char *out, *guest;
     bool found = false;
     int i, used = 0;
+    mg_fs_font *usable;
     if (said && said_size) said[0] = 0;
     if (!guest_root || !list || !made || !fonts || count <= 0) return 0;
     xml = mg_file_read_all(list, &size);
@@ -222,6 +290,7 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
     }
     cap = size + (size_t)count * 320 + 160;
     out = (char *)mg_alloc(cap);
+    usable = (mg_fs_font *)mg_alloc((size_t)count * sizeof(*usable));
     memcpy(out, xml, head);
     n = head;
     n += (size_t)snprintf(out + n, cap - n, "    <!-- The host's own fonts (megler_run_config.host_fonts). -->\n");
@@ -240,9 +309,10 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
         if (said && said_n + 2 < said_size)
             said_n += (size_t)snprintf(said + said_n, said_size - said_n, "%s%s", used ? ", " : "", f->langs);
         if (said && said_n >= said_size) said_n = said_size - 1;
-        used++;
+        usable[used++] = *f;
     }
     if (!used) {
+        free(usable);
         free(out);
         free(xml);
         return 0;
@@ -268,7 +338,9 @@ int mg_fs_host_fonts(const char *guest_root, const char *list, const char *made,
         guest = mg_sprintf("%s/etc/fonts.xml", guest_root);
         mount_put(guest, made, MOUNT_READ_ONLY);
         free(guest);
+        mount_android_font_names(guest_root, usable, used);
     }
+    free(usable);
     return used;
 }
 
@@ -303,6 +375,8 @@ void mg_fs_configure(const char *package, const char *internal_dir, const char *
     free(p);
     mg_strlcpy(g_cwd, g_internal, sizeof(g_cwd));
     if (!g_space_dir) g_space_dir = mg_strdup(internal_dir);
+    /* (The one before is not freed: a thread may be reading it in exec_bit.) */
+    g_lib_dir = mg_sprintf("%s/lib/", internal_dir);
 }
 
 void mg_fs_shared_storage(const char *shared_dir, const mg_fs_link *links, int count)
@@ -408,15 +482,16 @@ static void others_mount(void)
 
 /*
  * Another app's APK, /data/app/<package>-1/base.apk, is in no mount until a path asks for something of that folder:
- * `g_apk_find` then says where that app's APK is on the host (mg_fs_other_apks), and it is mounted there to be read.
+ * `g_apk_find` then says where that app's APK is on the host (mg_fs_other_apks), and it is mounted there to be read. A
+ * split of it, split_<name>.apk beside it, likewise once a path names it.
  */
 #define APPS_DIR "/data/app/"
 #define APPS_DIR_LEN 10
-static char *(*g_apk_find)(const char *package, void *user);
+static char *(*g_apk_find)(const char *package, const char *file, void *user);
 static void *g_apk_user;
 static mg_lock g_apk_lock = MG_LOCK_INIT;
 
-void mg_fs_other_apks(char *(*find)(const char *package, void *user), void *user)
+void mg_fs_other_apks(char *(*find)(const char *package, const char *file, void *user), void *user)
 {
     mg_lock_acquire(&g_apk_lock);
     g_apk_find = find;
@@ -424,11 +499,11 @@ void mg_fs_other_apks(char *(*find)(const char *package, void *user), void *user
     mg_lock_release(&g_apk_lock);
 }
 
-/* The APK of the app whose folder a normalized path in /data/app names, mounted if it is another app's that has one and
-   was not mounted yet: true when it was mounted now. */
+/* The APK of the app whose folder a normalized path in /data/app names -- or the split the path names in it --, mounted if
+   it is another app's that has one and was not mounted yet: true when it was mounted now. */
 static bool other_apk_mount(const char *g)
 {
-    const char *name = g + APPS_DIR_LEN, *end = strchr(name, '/');
+    const char *name = g + APPS_DIR_LEN, *end = strchr(name, '/'), *file = "base.apk";
     size_t n = end ? (size_t)(end - name) : strlen(name);
     char package[160], *guest, *host;
     bool mounted = false;
@@ -436,9 +511,10 @@ static bool other_apk_mount(const char *g)
     memcpy(package, name, n - 2);
     package[n - 2] = 0;
     if (!strcmp(package, g_package)) return false;
-    guest = mg_sprintf(APPS_DIR "%s-1/base.apk", package);
+    if (end && !strncmp(end + 1, "split_", 6) && !strchr(end + 1, '/')) file = end + 1;
+    guest = mg_sprintf(APPS_DIR "%s-1/%s", package, file);
     mg_lock_acquire(&g_apk_lock);
-    if (g_apk_find && !mount_find(guest) && (host = g_apk_find(package, g_apk_user)) != NULL) {
+    if (g_apk_find && !mount_find(guest) && (host = g_apk_find(package, file, g_apk_user)) != NULL) {
         mount_put(guest, host, MOUNT_READ_ONLY);
         free(host);
         mounted = true;
@@ -451,6 +527,20 @@ static bool other_apk_mount(const char *g)
 const char *mg_fs_internal_dir(void) { return g_internal; }
 const char *mg_fs_external_dir(void) { return g_external; }
 const char *mg_fs_package(void) { return g_package; }
+
+/*
+ * The Android process the app runs as, named as its manifest names it ("<package>:googleapp"): the process of the activity it
+ * was started for, where that is not the package's own (megler.Processes.own, before any code of the app's runs). Android
+ * names the process so in /proc/self/cmdline and the main thread so in /proc/self/status, and the app's code that reads
+ * them is told the name Application.getProcessName tells: the Google app chooses the object graph of the process it runs
+ * in by it. Said once, on the app's main thread.
+ */
+void mg_fs_set_process(const char *process)
+{
+    mg_strlcpy(g_process, process && strcmp(process, g_package) ? process : "", sizeof(g_process));
+}
+
+static const char *process_name(void) { return g_process[0] ? g_process : g_package; }
 
 /* A path that begins with one of the shared storage's other names, said with its own; else the path as it is. Takes `g`. */
 static char *without_alias(char *g)
@@ -979,7 +1069,7 @@ static char *synthetic(const char *g, size_t *size)
         memcpy(t.s, words, n * sizeof(gulong));
         t.n = n * sizeof(gulong);
     } else if (!strcmp(g, "/proc/self/cmdline")) {
-        tb_add(&t, "%s", g_package);
+        tb_add(&t, "%s", process_name());
         t.n++;                 /* the terminating NUL is part of the file */
     } else if (!strcmp(g, "/proc/self/status")) {
         /* The memory lines as the kernel writes them: what the process uses (Windows' count of it) is its resident and
@@ -990,7 +1080,7 @@ static char *synthetic(const char *g, size_t *size)
         if (rss > hwm_kb) hwm_kb = rss;
         hwm = hwm_kb > rss ? hwm_kb : rss;
         tb_add(&t, "Name:\t%.15s\nState:\tR (running)\nTgid:\t4242\nPid:\t4242\nPPid:\t1\nTracerPid:\t0\nUid:\t10100\t10100\t10100\t10100\n"
-                   "Gid:\t10100\t10100\t10100\t10100\n", g_package);
+                   "Gid:\t10100\t10100\t10100\t10100\n", process_name());
         tb_add(&t, "VmPeak:\t%8u kB\nVmSize:\t%8u kB\nVmLck:\t%8u kB\nVmPin:\t%8u kB\nVmHWM:\t%8u kB\nVmRSS:\t%8u kB\n"
                    "RssAnon:\t%8u kB\nRssFile:\t%8u kB\nRssShmem:\t%8u kB\nVmData:\t%8u kB\nVmStk:\t%8u kB\nVmExe:\t%8u kB\n"
                    "VmLib:\t%8u kB\nVmPTE:\t%8u kB\nVmPMD:\t%8u kB\nVmSwap:\t%8u kB\nThreads:\t1\n",
@@ -1153,6 +1243,108 @@ static u8 g_cloexec[MAX_FDS];
 static mg_lock g_io_lock = MG_LOCK_INIT;
 static bool g_io_inited;
 static u32 file_ino(const char *host_path);
+
+/*
+ * A file's execute bit, which Windows has nowhere to keep. Android makes an app's files without one (FileOutputStream's
+ * 0666 under the app's umask, 077), and access(X_OK) -- File.canExecute -- says no of such a file; here it said yes of
+ * every file there was, though stat never gave one an execute bit. Facebook's apps load a module they downloaded only
+ * when File.canWrite and File.canExecute say no of it and File.canRead yes: Messenger 586 on 0.1.0.734 made its language
+ * pack read-only (which works since 0.1.0.672) and still said "Downloaded module file must be read only: ... download.zip
+ * exists: true, read only:false / NoSplitFile" at every start, and the pack never loaded.
+ *
+ * What chmod gives a file -- its owner's execute bit, which is what access goes by for the app that owns it -- is kept
+ * here, by the file's path on the host, for as long as the process runs: a rename takes it along (a directory's renamed
+ * takes those of its files), an unlink drops it, and so does a file made anew at the path. A new start finds such a file
+ * as Android makes one, without. The files of the app's own library folder have one, as Android's package manager gives
+ * the libraries it puts there 0755. A directory has its own (0771): it may be searched.
+ */
+static mg_lock g_exec_lock = MG_LOCK_INIT;
+static char **g_exec;
+static volatile i32 g_nexec;
+static i32 g_exec_cap;
+
+static i32 exec_find(const char *h)
+{
+    i32 i;
+    for (i = 0; i < g_nexec; i++) {
+        if (!strcmp(g_exec[i], h)) return i;
+    }
+    return -1;
+}
+
+static void exec_drop(i32 i)
+{
+    free(g_exec[i]);
+    g_exec[i] = g_exec[g_nexec - 1];
+    g_nexec = g_nexec - 1;
+}
+
+/* Whether the file at the host path `h` (not a directory's) has an execute bit. */
+static bool exec_bit(const char *h)
+{
+    bool yes;
+    if (g_lib_dir && !strncmp(h, g_lib_dir, strlen(g_lib_dir))) return true;
+    if (!g_nexec) return false;
+    mg_lock_acquire(&g_exec_lock);
+    yes = exec_find(h) >= 0;
+    mg_lock_release(&g_exec_lock);
+    return yes;
+}
+
+/* The file at the host path `h` given an execute bit, or its bit taken away (chmod; an unlink; a file made anew). */
+static void exec_set(const char *h, bool on)
+{
+    i32 i;
+    if (!on && !g_nexec) return;
+    mg_lock_acquire(&g_exec_lock);
+    i = exec_find(h);
+    if (on && i < 0) {
+        if (g_nexec == g_exec_cap) {
+            g_exec_cap = g_exec_cap ? g_exec_cap * 2 : 8;
+            g_exec = (char **)mg_realloc(g_exec, (size_t)g_exec_cap * sizeof(*g_exec));
+        }
+        g_exec[g_nexec] = mg_strdup(h);
+        g_nexec = g_nexec + 1;
+    } else if (!on && i >= 0) {
+        exec_drop(i);
+    }
+    mg_lock_release(&g_exec_lock);
+}
+
+/* The host path `a` renamed to `b`: what was at `b` is gone, and `a`'s bit goes along, and those of the files under `a`. */
+static void exec_renamed(const char *a, const char *b)
+{
+    size_t n = strlen(a);
+    i32 i;
+    if (!g_nexec || !strcmp(a, b)) return;
+    mg_lock_acquire(&g_exec_lock);
+    i = exec_find(b);
+    if (i >= 0) exec_drop(i);
+    for (i = 0; i < g_nexec; i++) {
+        if (!strncmp(g_exec[i], a, n) && (g_exec[i][n] == 0 || g_exec[i][n] == '/')) {
+            char *moved = mg_sprintf("%s%s", b, g_exec[i] + n);
+            free(g_exec[i]);
+            g_exec[i] = moved;
+        }
+    }
+    mg_lock_release(&g_exec_lock);
+}
+
+/*
+ * exec_bit of a file by its guest path (normalized), the host's asked for only where a bit may be. A descriptor the core
+ * opened by a host path (mg_fd_open_host: a ParcelFileDescriptor's file, an APK's) has no guest path, and no bit.
+ */
+static bool exec_bit_of(const char *g)
+{
+    char *h;
+    bool yes;
+    if (!g) return false;
+    if (!g_nexec && !strstr(g, "/lib/")) return false;
+    h = host_of_normal(g);
+    yes = h && exec_bit(h);
+    free(h);
+    return yes;
+}
 
 /*
  * The descriptors' lock is never taken by a thread that holds the mappings' lock (mg_libc_mem.c). A thread that holds this
@@ -1608,6 +1800,8 @@ static int g_open(const char *path, int flags, int mode)
             if (acc) why = GE_ISDIR;
             else o->type = OBJ_DIRFD;
         }
+        /* (A file made where there was none has no execute bit, whatever one that was there once had.) */
+        if (!why && o->type == OBJ_FILE && (flags & G_O_CREAT) && !existed) exec_set(h, false);
         free(h);
         if (why) {
             obj_destroy(o);
@@ -2541,6 +2735,7 @@ static void file_unlinked(const char *h, const char *g)
 {
     u32 key = path_hash(h);
     int open;
+    exec_set(h, false);
     mg_lock_acquire(&g_io_lock);
     open = ino_open(ino_of_key(key));
     if (open) inos_set(key, ino_fresh(key));
@@ -2573,7 +2768,7 @@ static void file_renamed(const char *a, const char *b, const char *ga, const cha
         mg_warn("files: the database %s was replaced by a rename of %s while %d descriptor(s) of it are open", gb, ga, replaced);
 }
 
-static void fill_stat(g_stat *out, const mg_stat *st, u32 ino)
+static void fill_stat(g_stat *out, const mg_stat *st, u32 ino, bool exec)
 {
     memset(out, 0, sizeof(*out));
     out->st_dev = 0x801;
@@ -2581,8 +2776,8 @@ static void fill_stat(g_stat *out, const mg_stat *st, u32 ino)
 #if !MG_GUEST_LP64
     out->st_ino32 = (u32)out->st_ino;              /* (the kernel's stat64 has it twice) */
 #endif
-    /* (A file made read-only by chmod -- its write bits taken away, mg_path_set_writable -- says so.) */
-    out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | (st->read_only ? 0440 : 0660));
+    /* (A file made read-only by chmod -- its write bits taken away, mg_path_set_writable -- says so; one given an execute bit too, exec_bit.) */
+    out->st_mode = st->is_dir ? (G_S_IFDIR | 0771) : (G_S_IFREG | (st->read_only ? 0440 : 0660) | (exec ? 0110 : 0));
     out->st_nlink = 1;
     out->st_uid = out->st_gid = 10100;
     out->st_size = (i64)st->size;
@@ -2602,7 +2797,7 @@ static void fill_special(g_stat *out, u32 mode, u64 size, const char *gpath)
     memset(&st, 0, sizeof(st));
     st.size = size;
     st.mtime_ns = st.atime_ns = st.ctime_ns = (i64)mg_time_realtime_ns();
-    fill_stat(out, &st, path_hash(gpath));
+    fill_stat(out, &st, path_hash(gpath), false);
     out->st_mode = mode;
 }
 
@@ -2662,7 +2857,7 @@ static int g_stat_path(const char *path, g_stat *out)
         return -1;
     }
     /* (A directory's is its guest path's, as fstat of one opened has it.) */
-    fill_stat(out, &st, st.is_dir ? path_hash(g) : file_ino(h));
+    fill_stat(out, &st, st.is_dir ? path_hash(g) : file_ino(h), !st.is_dir && exec_bit(h));
     free(h);
     free(g);
     return 0;
@@ -2707,7 +2902,7 @@ static int g_fstat(int fd, g_stat *out)
             mg_set_errno(GE_IO);
             r = -1;
         } else {
-            fill_stat(out, &st, o->ino ? o->ino : path_hash(o->path));
+            fill_stat(out, &st, o->ino ? o->ino : path_hash(o->path), !st.is_dir && exec_bit_of(o->path));
         }
         break;
     case OBJ_MEM:
@@ -2753,10 +2948,15 @@ static int g_fstatat(int dirfd, const char *path, g_stat *out, int flags)
  * Everything that is there can be read. What cannot be written is what lies in a link the shell marked so, and a file whose
  * mode has no write bit: one made read-only by chmod (File.setReadOnly), or one of the system's (/proc's, 0444). Facebook
  * makes each module it downloads read-only and checks File.canWrite before it loads one: "Downloaded module file must be read
- * only", and no language pack of its own ever loaded.
+ * only", and no language pack of its own ever loaded. What can be executed is a directory (searched), and a file whose mode has
+ * an execute bit (exec_bit): Facebook asks File.canExecute of the module too.
  */
 static int access_of(const char *path, int mode, int r, const g_stat *st)
 {
+    if (r == 0 && (mode & 1) && st && (st->st_mode & 0170000u) != G_S_IFDIR && !(st->st_mode & 0111u)) {
+        mg_set_errno(GE_ACCES);
+        return -1;
+    }
     if (r == 0 && (mode & 2)) {
         char *g = normalize(path);
         bool no = in_read_only(g) || (st && (st->st_mode & 0170000u) != G_S_IFDIR && !(st->st_mode & 0222u));
@@ -2780,9 +2980,9 @@ static int g_faccessat(int dirfd, const char *path, int mode, int flags)
     g_stat st;
     int r = g_fstatat(dirfd, path, &st, flags);
     /* (A path relative to a directory other than the current one is not looked up again: such a one is only said to be there --
-       but a file of it with no write bit is not writable.) */
+       but a file of it with no write bit is not writable, nor one with no execute bit executable.) */
     if (dirfd == -100 || (path && path[0] == '/')) return access_of(path, mode, r, &st);
-    if (r == 0 && (mode & 2) && (st.st_mode & 0170000u) != G_S_IFDIR && !(st.st_mode & 0222u)) {
+    if (r == 0 && (st.st_mode & 0170000u) != G_S_IFDIR && (((mode & 2) && !(st.st_mode & 0222u)) || ((mode & 1) && !(st.st_mode & 0111u)))) {
         mg_set_errno(GE_ACCES);
         return -1;
     }
@@ -2959,7 +3159,10 @@ static int g_rename(const char *from, const char *to)
     if (g_ino_watches && a && b && strcmp(ga, gb)) replaced = mg_path_stat(b, &st, NULL);
     /* (Between a link and anything else the host layer says EXDEV, as between two file systems: the app copies and removes.) */
     ok = a && b && mg_path_rename(a, b, &err);
-    if (ok) file_renamed(a, b, ga, gb);
+    if (ok) {
+        file_renamed(a, b, ga, gb);
+        exec_renamed(a, b);
+    }
     if (!ok) mg_set_errno(why ? why : a && b ? mg_errno_of(err) : GE_ACCES);
     if (ok && g_ino_watches && strcmp(ga, gb)) ino_renamed(ga, gb, mg_path_stat(b, &st, NULL) && st.is_dir, replaced);
     free(ga);
@@ -4819,8 +5022,9 @@ static int g_eventfd_read(int fd, u64 *value) { return g_read(fd, value, 8) == 8
 static int g_eventfd_write(int fd, u64 value) { return g_write(fd, &value, 8) == 8 ? 0 : -1; }
 /*
  * chmod, fchmodat and fchmod: of a file's mode its owner's write bit is kept (mg_path_set_writable: Windows' read-only
- * attribute, the owner's write bit on a POSIX host), which stat, access and open then go by; the rest of the mode is not
- * kept, and a directory's not at all. File.setReadOnly and setWritable come here: Facebook makes each module it downloads read-only and
+ * attribute, the owner's write bit on a POSIX host), which stat, access and open then go by, and its owner's execute bit
+ * (exec_bit: for the process's life), which stat and access go by; the rest of the mode is not kept, and a directory's not at
+ * all. File.setReadOnly, setWritable and setExecutable come here: Facebook makes each module it downloads read-only and
  * loads only one that is ("Downloaded module file must be read only"), and Android 14 loads code only from a file so. A file
  * that is not there is ENOENT; one of the system's (made up here) and a link the shell marked read-only are left as they
  * are. libc++'s std::filesystem::permissions calls fchmodat (Zalo's libc++_shared.so and libzinstant.so).
@@ -4839,6 +5043,12 @@ static int chmod_normal(const char *g, unsigned mode)
     }
     /* (The owner's write bit: the app owns its files, and Linux gives an owner without it no writing, whatever the group's.) */
     ok = in_read_only(g) || mg_path_set_writable(h, (mode & 0200u) != 0, &err);
+    /* And its execute bit, the owner's too (exec_bit): a directory's is its own. */
+    if (ok && !in_read_only(g)) {
+        mg_stat st;
+        if (!(mode & 0100u)) exec_set(h, false);
+        else if (mg_path_stat(h, &st, NULL) && !st.is_dir) exec_set(h, true);
+    }
     if (ok && g_ino_watches) {
         mg_stat st;
         ino_path(g, G_IN_ATTRIB, 0, mg_path_stat(h, &st, NULL) && st.is_dir);

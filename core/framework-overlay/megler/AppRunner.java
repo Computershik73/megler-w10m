@@ -18,7 +18,10 @@
 // installer first (megler.Installs), as Android hands it to its package installer, rather than to an activity of the app's
 // that takes the content or file scheme. And an intent for an activity of another app the phone has goes to the shell,
 // which starts that app (megler.PhoneApps). Started for a result, its result comes back to the caller as the caller is in
-// front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account.
+// front again (megler.AppResults): Play Store hears so that microG's sign-in, in microG's app, added the account. And an
+// implicit intent with data -- a link, an address, a file of a type -- is resolved as Android resolves it, among the app's
+// activities and the other apps' (megler.Resolver): a web link to the apps approved for its domain, else to the default
+// browser; "Open with" where several take it.
 //
 // And the app's components are made by the factory its manifest names (android:appComponentFactory), as Android 9's
 // ActivityThread makes them: the factory is made with the app's class loader and asked for the class loader first
@@ -77,6 +80,18 @@
 // asked once the app is in front again (hostPause), to the one made again in its place where it was (relaunch); and the
 // provider of what was picked is the app's from its start (run).
 //
+// And the app runs as the Android process its manifest names for the activity it is started for (run, megler.Processes.own):
+// the Google app's launcher activity is in ":googleapp", whose Application builds that process's object graph; told the
+// package's own process, it built that one and GoogleAppActivity ended its start with "Cannot cast tdd to bkxw". An activity
+// of another of the app's processes is made in that process's class scope, with its Application (make), as its services are.
+//
+// And Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER) is Megler's (megler.RingtonePicker), over the app,
+// its answer the caller's result: it threw ActivityNotFoundException, and WhatsApp ended at its "Notification tone".
+//
+// And an app that loads its splits in isolation (android:isolatedSplits, megler.Splits) has the base alone in its class loader,
+// as Android's LoadedApk makes it; an activity or a content provider its feature split declares is made by the split's class
+// loader and given the split's context, as ActivityThread makes them. Chrome 158's browser is in its split "chrome".
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -115,7 +130,8 @@ public final class AppRunner {
         try {
             StringBuilder path = new StringBuilder(Native.apkPath());
             String[] splits = Native.splitPaths();
-            if (splits != null) for (String sp : splits) path.append(java.io.File.pathSeparatorChar).append(sp);
+            // (none of the splits for an app that loads them in isolation: each feature split has a loader of its own, Splits)
+            if (splits != null && !Splits.isolated()) for (String sp : splits) path.append(java.io.File.pathSeparatorChar).append(sp);
             sLoader = (ClassLoader) Class.forName("dalvik.system.PathClassLoader").getConstructor(String.class, String.class, ClassLoader.class)
                     .newInstance(path.toString(), android.content.pm.ApplicationInfo.self().nativeLibraryDir, AppRunner.class.getClassLoader());
             Native.setAppClassLoader(sLoader);
@@ -165,6 +181,13 @@ public final class AppRunner {
         if (Thread.getDefaultUncaughtExceptionHandler() == null) Thread.setDefaultUncaughtExceptionHandler(uncaught);
         Manifest.read();
         Screen.started();
+        // The process the app runs as, named before any of its code runs (megler.Processes.started): the one the manifest names
+        // for the activity it is started for -- the one another app asked for, else its launcher activity -- as Android starts
+        // that process for it. The Google app's launcher activity is in ":googleapp", and its Application builds the object
+        // graph of the process it is told it runs in.
+        String request = Native.requestedActivity();
+        Manifest.Component first = request != null && !request.startsWith(PlaySplits.MARKER) ? askedFor(request) : null;
+        Processes.started(first != null ? first : Manifest.activity(activityClass));
         installClassLoader();
         // (the flag cronet-netlog: Cronet's own network log of an app that carries Cronet, hooked before any of its code runs)
         CronetNetLog.install(classLoader());
@@ -172,6 +195,9 @@ public final class AppRunner {
         ContextImpl base = ContextImpl.app();
         // As Android's handleBindApplication, before the app's code can make anything of TLS: its network security configuration.
         android.security.net.config.NetworkSecurityConfigProvider.install(base);
+        // The security providers are as a fresh process of the app's has them: its other processes, each with a list of its
+        // own here, begin with them so (megler.Processes.providersReady).
+        Processes.providersReady();
         String appCls = applicationClass != null ? applicationClass : Manifest.applicationClass;
         // The Application is made and attached by the process's Instrumentation, as Android's LoadedApk.makeApplication has
         // it made (android.app.Instrumentation.newApplication, overlaid: the component factory makes it, applicationMade
@@ -211,8 +237,10 @@ public final class AppRunner {
         // is the app's first, with the intent the other app wrote, as Android starts the process for it -- not the launcher
         // activity and then it. Total Commander wakes its plug-ins by their LoadingActivity, and each opened with its main screen
         // as well. A request for nothing this app exports, or for an activity that was not made, leaves the start the launcher's:
-        // startActivity makes the activity from the main loop, so the launcher's turn comes there too, after it.
-        String request = Native.requestedActivity();
+        // startActivity makes the activity from the main loop, so the launcher's turn comes there too, after it. (The request
+        // was taken before the Application was made, which runs in that activity's process; one that came while it was made
+        // is taken now, as before, and its activity runs in its own process's scope where that is another.)
+        if (request == null) request = Native.requestedActivity();
         // (An app's requests for its feature modules, which the Play Store is started for, are no activity: taken up from
         // the main loop after the launcher's activity, as they were before, megler.PlaySplits.)
         if (request != null && request.startsWith(PlaySplits.MARKER)) {
@@ -269,7 +297,7 @@ public final class AppRunner {
                 return;
             }
             logged = e;
-            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName() + "\nProcess: " + Native.packageName() + ", PID: " + android.os.Process.myPid(), e);
+            android.util.Log.e("AndroidRuntime", "FATAL EXCEPTION: " + t.getName() + "\nProcess: " + Processes.own() + ", PID: " + android.os.Process.myPid(), e);
         }
     }
     static final Thread.UncaughtExceptionHandler SERVICE_THREAD_ENDS = (t, e) ->
@@ -290,15 +318,17 @@ public final class AppRunner {
         for (Manifest.Component p : ordered) {
             if (!p.enabled) continue;
             try {
-                ContentProvider cp = sFactory.instantiateProvider(classLoader(), p.name);
+                // (one of an isolated split's: made by the split's class loader, on the split's context, as installProvider makes it)
+                ContentProvider cp = sFactory.instantiateProvider(Splits.loaderOf(p), p.name);
                 ProviderInfo info = new ProviderInfo();
                 info.name = p.name; info.authority = p.authorities; info.packageName = Native.packageName(); info.exported = p.exported; info.metaData = p.metaData; info.grantUriPermissions = p.grantUriPermissions;
+                info.splitName = p.split;
                 info.applicationInfo = app.getApplicationInfo();
                 // As the manifest says them: android:readPermission and writePermission, else android:permission for both
                 // (Android's SearchIndexablesProvider refuses to start without READ_SEARCH_INDEXABLES there).
                 info.readPermission = p.readPermission != null ? p.readPermission : p.permission;
                 info.writePermission = p.writePermission != null ? p.writePermission : p.permission;
-                cp.attachInfo(app, info);
+                cp.attachInfo(Splits.contextOf(app, p), info);
                 ContentResolver.register(p.authorities, cp);
             } catch (Throwable t) {
                 android.util.Log.w("Megler", "content provider " + p.name + " did not start", t);
@@ -403,10 +433,24 @@ public final class AppRunner {
         // does). The other two are other processes' on Android: the app's Instrumentation neither makes them nor is called
         // at the steps of their life (Activity.meglerOtherProcess).
         boolean gms = MicroG.hosts(info), screen = SystemScreens.isScreen(cls);
+        // An activity the manifest puts in another process than the one the app runs as (megler.Processes.own) is made in that
+        // process's class scope, on a context of that process and with its Application (megler.Processes), as its services
+        // are; the app's Instrumentation, the own process's, is not asked for it or called at the steps of its life. The
+        // Google app's ":googleapp" opens Gemini's screens in ":search", whose Application builds that process's object graph.
+        // Its intent's objects are made again by that scope's classes, as a Parcel between two processes makes them.
+        Processes.Scope process = gms || screen || info == null ? null : Processes.ofActivity(info);
+        if (process != null) {
+            Activity a = (Activity) process.classLoader().loadClass(cls).getDeclaredConstructor().newInstance();
+            a.meglerOtherProcess();
+            a.meglerAttach(process.activityBase(), process.application(), Processes.forLoader(intent, process.classLoader()), info, caller, request);
+            return a;
+        }
+        // An activity of an isolated split's is made by the split's class loader and has the split's context as its base, as
+        // ActivityThread.performLaunchActivity makes it on ContextImpl.createActivityContext (megler.Splits).
         Activity a = screen ? (Activity) Class.forName(cls).newInstance()
-                : gms ? MicroG.newActivity(cls) : android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
+                : gms ? MicroG.newActivity(cls) : android.app.ActivityThread.meglerInstrumentation().newActivity(Splits.loaderOf(info), cls, intent);
         if (gms || screen) a.meglerOtherProcess();
-        Context base = gms ? MicroG.activityBase() : ContextImpl.forActivity();
+        Context base = gms ? MicroG.activityBase() : screen ? ContextImpl.forActivity() : ContextImpl.forActivity(info);
         a.meglerAttach(base, gms ? MicroG.activityApplication() : sApp, intent, info, caller, request);
         return a;
     }
@@ -523,9 +567,9 @@ public final class AppRunner {
         // (An <activity-alias> runs the activity it names, as launch does.)
         String cls = "activity-alias".equals(info.kind) && info.parentActivity != null ? info.parentActivity : info.name;
         android.util.Log.d("Megler", "child " + cls + " of " + parent.getClass().getName());
-        Activity a = android.app.ActivityThread.meglerInstrumentation().newActivity(classLoader(), cls, intent);
+        Activity a = android.app.ActivityThread.meglerInstrumentation().newActivity(Splits.loaderOf(info), cls, intent);
         a.meglerSetParent(parent);
-        a.meglerAttach(ContextImpl.forActivity(), sApp, intent, info, null, -1);
+        a.meglerAttach(ContextImpl.forActivity(info), sApp, intent, info, null, -1);
         return a;
     }
     /** The component an activity was started as: its class, or the alias it was reached through. */
@@ -552,10 +596,19 @@ public final class AppRunner {
      * has the files to send in), else the plain one for the class; null, with a line in the log, for an activity the manifest
      * does not have or does not export.
      */
+    /* The activity of the manifest another app's request names ("<class>" or "<class>~<its intent's file>"), where the app
+       exports it (as requested below starts it); null otherwise. Read before the request's intent is. */
+    private static Manifest.Component askedFor(String request) {
+        int at = request.indexOf('~');
+        Manifest.Component c = Manifest.activity(at < 0 ? request : request.substring(0, at));
+        return c != null && c.exported ? c : null;
+    }
     private static Intent requested(String request) {
         Object[] asked = PhoneApps.asked(request, classLoader());
         String cls = (String) asked[0];
-        Manifest.Component c = Manifest.activity(cls);
+        // (the component the intent reached: the activity, or an <activity-alias> of it, whose android:exported is the one
+        // Android looks at)
+        Manifest.Component c = Manifest.activity(((Intent) asked[1]).getComponent().getClassName());
         if (c == null || !c.exported) {
             android.util.Log.w("Megler", "another app asked for " + cls + ", which this app " + (c == null ? "does not have" : "does not export"));
             return null;
@@ -650,61 +703,14 @@ public final class AppRunner {
         // Android's screens about the Bluetooth radio (BluetoothAdapter.ACTION_REQUEST_ENABLE and the like): the phone's
         // Bluetooth settings, the result as the radio turns out (megler.Bluetooth.request).
         if (Bluetooth.request(from instanceof Activity ? (Activity) from : top(), i, request)) return;
+        // A link, an address, a file of a type, for no package (megler.Resolver): the activity of this app's or of another
+        // app's that takes it, as Android resolves it -- a web link to the apps approved for its domain, else to the browser
+        // --, or "Open with" where several do. Nothing taking it, it goes on below as before.
+        if (Resolver.start(from, i, request)) return;
         Manifest.Component c = Manifest.resolve(i);
         android.util.Log.d("Megler", "startActivity " + i + (c != null ? " -> " + c.name : " (not an activity of this app)"));
         if (c != null) {
-            final Activity caller = from instanceof Activity ? (Activity) from : top();
-            final Intent intent = new Intent(i);
-            if (intent.getComponent() == null) intent.setComponent(new ComponentName(Native.packageName(), c.name));
-            sHandler.post(() -> {
-                try {
-                    // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's,
-                    // whose launch mode is the one that counts
-                    String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
-                    Manifest.Component realInfo = real.equals(c.name) ? c : Manifest.activity(real);
-                    int mode = realInfo != null ? realInfo.launchMode : c.launchMode;
-                    /*
-                     * FLAG_ACTIVITY_CLEAR_TOP, or an activity of launch mode singleTask (2) or singleInstance (3): one of it
-                     * already on the stack is brought back with the intent and the activities above it go, as Android does
-                     * with an instance of it in its task -- the app's stack is its one task here, and taskAffinity is not
-                     * looked at. Viber's RegistrationActivity (singleTask) was made anew at every start, four of it in one
-                     * session (0.1.0.699), where Android gives the one there onNewIntent.
-                     */
-                    if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 || mode == 2 || mode == 3) {
-                        // not one that is finishing, as Android passes over those: Instagram's main activity, finished in
-                        // its onCreate, was started again (onRestart, onStart) and failed for the state it never made
-                        for (int k = sStack.size() - 1; k >= 0; k--) if (!sStack.get(k).isFinishing() && sStack.get(k).getClass().getName().equals(real)) {
-                            Activity existing = sStack.get(k);
-                            while (top() != existing) finishNow(top(), false);
-                            if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode != 0) {
-                                // singleTop, singleTask, singleInstance, or asked for: the intent comes to it, as Android brings it
-                                // back -- onRestart and onStart when it was stopped, onNewIntent, then onResume
-                                boolean up = existing.isResumedMegler();
-                                // (meeting the screen as it is now first: made again, the intent goes to the new one)
-                                if (!up) existing = ensureConfiguration(existing, TO_STARTED);
-                                if (!up && !existing.meglerVisible()) { existing.meglerRestart(); existing.meglerStart(); }
-                                existing.meglerNewIntent(intent);
-                                if (!up) existing.meglerResume();
-                                updateOrientation();
-                                return;
-                            }
-                            // standard: it goes, and the activity is started again with this intent (below)
-                            finishNow(existing, false);
-                            break;
-                        }
-                    }
-                    if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode == 1) {
-                        Activity t = top();
-                        if (t != null && !t.isFinishing() && startedAs(t).equals(intent.getComponent().getClassName())) { t.meglerNewIntent(intent); return; }
-                    }
-                    // an <activity-alias> starts the activity it names; the intent keeps the alias as its component, as on Android
-                    launch("activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name, intent, caller, request, c);
-                } catch (Throwable t) {
-                    android.util.Log.e("Megler", "starting " + c.name + " failed", t);
-                    if (t instanceof RuntimeException) throw (RuntimeException) t;
-                    throw new RuntimeException(t);
-                }
-            });
+            startOwn(from, i, request, c);
             return;
         }
         // The phone's home screen (ACTION_MAIN with CATEGORY_HOME, of no activity of the app's own): the app goes to the back, as
@@ -728,6 +734,9 @@ public final class AppRunner {
             return;
         }
         if ("android.intent.action.CHOOSER".equals(action)) { Intent inner = i.getParcelableExtra("android.intent.extra.INTENT"); if (inner != null) startActivity(from, inner, request, opts); return; }
+        // Android's sound picker (RingtoneManager.ACTION_RINGTONE_PICKER, the system's SoundPicker): Megler's, over the app
+        // (megler.RingtonePicker). WhatsApp's "Notification tone" ended the app on the ActivityNotFoundException below.
+        if (RingtonePicker.start(from, i, request)) return;
         // A screen of Android's Settings that Megler has (megler.SystemScreens): shown on top of the app.
         final String screen = SystemScreens.screenFor(i);
         if (screen != null) {
@@ -759,6 +768,67 @@ public final class AppRunner {
             return;
         }
         throw new ActivityNotFoundException("No Activity found to handle " + i);
+    }
+    /** An activity of the app's own, `c`, started with the intent: brought back where it is on the stack and its launch mode or
+     *  the intent's flags say so, made anew otherwise (megler.Resolver starts one so too). */
+    static void startOwn(Context from, Intent i, int request, Manifest.Component c) {
+        final Activity caller = from instanceof Activity ? (Activity) from : top();
+        final Intent intent = new Intent(i);
+        if (intent.getComponent() == null) intent.setComponent(new ComponentName(Native.packageName(), c.name));
+        sHandler.post(() -> {
+            try {
+                // the activity itself, as Android compares realActivity: one started through an <activity-alias> is its target's,
+                // whose launch mode is the one that counts
+                String real = "activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name;
+                Manifest.Component realInfo = real.equals(c.name) ? c : Manifest.activity(real);
+                int mode = realInfo != null ? realInfo.launchMode : c.launchMode;
+                /*
+                 * FLAG_ACTIVITY_CLEAR_TOP, or an activity of launch mode singleTask (2) or singleInstance (3): one of it
+                 * already on the stack is brought back with the intent and the activities above it go, as Android does
+                 * with an instance of it in its task -- the app's stack is its one task here, and taskAffinity is not
+                 * looked at. Viber's RegistrationActivity (singleTask) was made anew at every start, four of it in one
+                 * session (0.1.0.699), where Android gives the one there onNewIntent.
+                 */
+                if ((intent.getFlags() & Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0 || mode == 2 || mode == 3) {
+                    // not one that is finishing, as Android passes over those: Instagram's main activity, finished in
+                    // its onCreate, was started again (onRestart, onStart) and failed for the state it never made
+                    for (int k = sStack.size() - 1; k >= 0; k--) if (!sStack.get(k).isFinishing() && sStack.get(k).getClass().getName().equals(real)) {
+                        Activity existing = sStack.get(k);
+                        while (top() != existing) finishNow(top(), false);
+                        if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode != 0) {
+                            // singleTop, singleTask, singleInstance, or asked for: the intent comes to it, as Android brings it
+                            // back -- onRestart and onStart when it was stopped, onNewIntent, then onResume
+                            boolean up = existing.isResumedMegler();
+                            // (meeting the screen as it is now first: made again, the intent goes to the new one)
+                            if (!up) existing = ensureConfiguration(existing, TO_STARTED);
+                            if (!up && !existing.meglerVisible()) { existing.meglerRestart(); existing.meglerStart(); }
+                            existing.meglerNewIntent(intent);
+                            if (!up) existing.meglerResume();
+                            updateOrientation();
+                            return;
+                        }
+                        // standard: it goes, and the activity is started again with this intent (below)
+                        finishNow(existing, false);
+                        break;
+                    }
+                }
+                if ((intent.getFlags() & 0x20000000 /* SINGLE_TOP */) != 0 || mode == 1) {
+                    Activity t = top();
+                    if (t != null && !t.isFinishing() && startedAs(t).equals(intent.getComponent().getClassName())) { t.meglerNewIntent(intent); return; }
+                }
+                // an <activity-alias> starts the activity it names; the intent keeps the alias as its component, as on Android
+                launch("activity-alias".equals(c.kind) && c.parentActivity != null ? c.parentActivity : c.name, intent, caller, request, c);
+            } catch (Processes.Ended e) {
+                // Its process ended as its Application was made (megler.Processes): on Android that process crashed, the
+                // activity was never made, and the one that asked for a result hears RESULT_CANCELED; the app goes on.
+                android.util.Log.e("Megler", "starting " + c.name + " failed: " + e.getMessage());
+                if (request >= 0 && caller != null) sHandler.post(() -> caller.meglerActivityResult(request, Activity.RESULT_CANCELED, null));
+            } catch (Throwable t) {
+                android.util.Log.e("Megler", "starting " + c.name + " failed", t);
+                if (t instanceof RuntimeException) throw (RuntimeException) t;
+                throw new RuntimeException(t);
+            }
+        });
     }
     /** Activity.finish: the one below comes back (with the result when it asked for one). */
     public static void finish(Activity a) { sHandler.post(() -> finishNow(a, true)); }
@@ -1026,6 +1096,8 @@ public final class AppRunner {
         ArrayList<ComponentCallbacks2> to = new ArrayList<>(sStack);
         to.addAll(Services.running());
         if (sApp != null) to.add(sApp);
+        // (and the Applications of the app's other processes, megler.Processes: theirs are hidden too)
+        to.addAll(Processes.applications());
         android.util.Log.i("Megler", "the window is hidden: onTrimMemory(" + level + ") to " + to.size() + " component(s)");
         for (ComponentCallbacks2 c : to) {
             try {

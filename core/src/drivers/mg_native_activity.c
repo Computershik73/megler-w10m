@@ -25,21 +25,9 @@
 #include "../run/mg_run.h"
 #include "mg_driver.h"
 
-/* android/native_activity.h: the app's callbacks are guest code, called through MG_GFN. */
-typedef struct g_callbacks {
-    mg_addr onStart, onResume, onSaveInstanceState, onPause, onStop, onDestroy, onWindowFocusChanged, onNativeWindowCreated,
-        onNativeWindowResized, onNativeWindowRedrawNeeded, onNativeWindowDestroyed, onInputQueueCreated, onInputQueueDestroyed,
-        onContentRectChanged, onConfigurationChanged, onLowMemory;
-} g_callbacks;
-
-typedef struct g_activity {
-    g_callbacks *callbacks;
-    void *vm, *env, *clazz;
-    const char *internalDataPath, *externalDataPath;
-    i32 sdkVersion;
-    void *instance, *assetManager;
-    const char *obbPath;
-} g_activity;
+/* android/native_activity.h (mg_driver.h): the app's callbacks are guest code, called through MG_GFN. */
+typedef mg_na_callbacks g_callbacks;
+typedef mg_na_activity g_activity;
 
 enum { REQ_NONE = 0, REQ_PAUSE, REQ_RESUME, REQ_FOCUS, REQ_BLUR, REQ_STOP, REQ_RESIZE };
 
@@ -231,25 +219,38 @@ const mg_driver mg_driver_native_activity = {
     "native-activity", na_start, na_touch, na_key, na_set_paused, na_set_focused, na_stop, NULL, na_resize,
 };
 
-/* ------------------------------------------- what the app calls back with */
+/* ------------------------------------------- what the app calls back with
+ *
+ * The same functions for both activities: this driver's, and the framework's NativeActivity under the Java driver, which
+ * does what is asked on its main thread as Android's does (mg_java_ndk.c).
+ */
 
 static void g_na_finish(g_activity *a)
 {
-    (void)a;
+    if (a != &N.activity && mg_java_native_activity_ask(a, MG_NA_FINISH, 0, 0)) return;
     if (!N.finishing) {
         N.finishing = true;
         mg_info("native-activity: the app asked to finish");
         request(REQ_STOP);
     }
 }
-static void g_na_set_window_format(g_activity *a, int format) { (void)a; (void)format; }
-static void g_na_set_window_flags(g_activity *a, u32 add, u32 remove) { (void)a; (void)add; (void)remove; }
+static void g_na_set_window_format(g_activity *a, int format)
+{
+    if (a != &N.activity) mg_java_native_activity_ask(a, MG_NA_WINDOW_FORMAT, format, 0);
+}
+static void g_na_set_window_flags(g_activity *a, u32 add, u32 remove)
+{
+    if (a != &N.activity) mg_java_native_activity_ask(a, MG_NA_WINDOW_FLAGS, (i32)add, (i32)remove);
+}
 static void g_na_show_soft_input(g_activity *a, u32 flags)
 {
-    (void)a; (void)flags;
+    if (a != &N.activity && mg_java_native_activity_ask(a, MG_NA_SHOW_IME, (i32)flags, 0)) return;
     mg_note_once("native-activity: the on-screen keyboard is not connected yet");
 }
-static void g_na_hide_soft_input(g_activity *a, u32 flags) { (void)a; (void)flags; }
+static void g_na_hide_soft_input(g_activity *a, u32 flags)
+{
+    if (a != &N.activity) mg_java_native_activity_ask(a, MG_NA_HIDE_IME, (i32)flags, 0);
+}
 
 const mg_sym mg_tab_native_activity[] = {
     MG_WRAP("ANativeActivity_finish", g_na_finish),

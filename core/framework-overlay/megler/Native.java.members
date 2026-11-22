@@ -115,6 +115,9 @@
      * megler.AppRunner.startRequested would get next; null when there is none. megler.AppRunner.run asks as the app starts.
      */
     public static native String requestedActivity();
+    /** The Android process the app runs as (megler.Processes.own: its first activity's), for /proc/self's cmdline and status to
+     *  say it (core/src/drivers/mg_java.c). */
+    public static native void setProcessName(String process);
     /**
      * The apps the phone has (megler_run_config.apps_dir), a line for each: package, launcher activity, label, version name,
      * version code, separated by tabs; null when the shell told none. megler.PhoneApps reads it.
@@ -128,6 +131,11 @@
     /** That app's services another app may bind, described with its activities: the bytes of its services.json, UTF-8; null
      *  when it has none. megler.PhoneApps reads it, megler.HostedApps binds them. */
     public static native byte[] appServices(String packageName);
+    /** A file of the apps folder every package of Megler's shares, by its name (lower-case letters, digits and '-', then
+     *  ".ini"): defaults.ini (megler.Defaults), links-verified.ini (megler.AssetLinks); null when there is none. */
+    public static native byte[] appsFile(String name);
+    /** That file written whole, replacing the one there at once; false when it could not be or there is no apps folder. */
+    public static native boolean writeAppsFile(String name, byte[] bytes);
     /** The picture of that app's icon resource `id` (one its activities name), a PNG; null when there is none. */
     public static native byte[] appResIcon(String packageName, int id);
     /** What Megler last wrote of the APK it was handed under `name` (installApk): installs/<name>.txt of the same folder,
@@ -141,6 +149,9 @@
      * split from its next start.
      */
     public static native String addSplit(String packageName, String path, boolean add);
+    /** The splits of another app the phone has, by their names, sorted (split_<name>.apk beside its APK, which addSplit adds
+     *  to): none for an app in one APK; null when where its APK is, is not known here. megler.PhoneApps names them. */
+    public static native String[] appSplits(String packageName);
     /** Another app the phone has, to uninstall (megler_system_host.uninstall_app): true when the shell asks the user. */
     public static native boolean uninstallApp(String packageName);
     /** Whether the app may have what a dangerous permission group guards (megler_system_host.permission, megler.Permissions):
@@ -191,3 +202,10 @@
     /** The name the Google Play services this app hosts go by (megler_run_config.gms_package): com.google.android.gms, or a
      *  microG of another name, ReVanced's MicroG RE's app.revanced.android.gms (megler.GooglePackages.GMS). */
     public static native String gmsPackage();
+    /** Whether this app is one of the platform's own: its manifest's sharedUserId is android.uid.system, as Android's
+     *  Settings' is (android.os.ServiceManager gives it a binder for every service it names). */
+    public static native boolean platformApp();
+    /** Another app's data, or its cache, cleared when that app next starts; an app of the platform's own alone may ask (Android's
+     *  Settings, an app's App info). False when it could not be asked. */
+    public static native boolean askClearDataOf(String packageName);
+    public static native boolean askClearCacheOf(String packageName);

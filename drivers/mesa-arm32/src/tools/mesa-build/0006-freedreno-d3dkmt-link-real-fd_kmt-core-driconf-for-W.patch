@@ -1,0 +1,202 @@
+From 2f6c66b26f8d1ee73c5873e6ca4d3a8cfa0882ec Mon Sep 17 00:00:00 2001
+From: anon <>
+Date: Thu, 19 Nov 2026 00:23:21 +0700
+Subject: [PATCH 06/15] freedreno/d3dkmt: link real fd_kmt core, driconf for
+ WGL screen, params, crash diagnostics
+
+---
+ src/freedreno/drm/d3dkmt/d3dkmt_pipe.c        |  6 ++
+ src/gallium/drivers/freedreno/meson.build     |  2 +
+ src/gallium/targets/wgl/wgl.c                 | 69 +++++++++++++++++++
+ .../freedreno/d3dkmt/fd_d3dkmt_winsys.c       | 32 +++++++++
+ .../winsys/freedreno/d3dkmt/meson.build       |  3 +-
+ 5 files changed, 111 insertions(+), 1 deletion(-)
+
+diff --git a/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c b/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+index 41de4b5..2b4bc54 100644
+--- a/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
++++ b/src/freedreno/drm/d3dkmt/d3dkmt_pipe.c
+@@ -34,8 +34,14 @@ d3dkmt_pipe_get_param(struct fd_pipe *pipe, enum fd_param_id param,
+    case FD_VA_SIZE:
+       *value = d->info.va_size;
+       return 0;
++   case FD_MAX_FREQ:
++      /* TODO: lay tu KMD; Adreno 530 toi da ~624 MHz. */
++      *value = 624000000;
++      return 0;
+    case FD_TIMESTAMP:
+       return fd_kmt_get_timestamp(d->kmt, value);
++   case FD_UCHE_TRAP_BASE:
++      return -1; /* khong ho tro: screen dung mac dinh theo gen (a5xx = 0) */
+    case FD_CTX_FAULTS:
+    case FD_GLOBAL_FAULTS:
+    case FD_SUSPEND_COUNT:
+diff --git a/src/gallium/drivers/freedreno/meson.build b/src/gallium/drivers/freedreno/meson.build
+index b04379b..11c8e3c 100644
+--- a/src/gallium/drivers/freedreno/meson.build
++++ b/src/gallium/drivers/freedreno/meson.build
+@@ -280,6 +280,8 @@ libfreedreno = static_library(
+ 
+ driver_freedreno = declare_dependency(
+   compile_args : '-DGALLIUM_FREEDRENO',
++  # Windows: loi fd_kmt that (khi freedreno-d3dkmt-stub=false)
++  link_args : get_variable('fd_kmt_link_args', []),
+   link_with : [
+     libfreedrenowinsys,
+     libfreedreno,
+diff --git a/src/gallium/targets/wgl/wgl.c b/src/gallium/targets/wgl/wgl.c
+index 12cf697..83c35f9 100644
+--- a/src/gallium/targets/wgl/wgl.c
++++ b/src/gallium/targets/wgl/wgl.c
+@@ -121,9 +121,78 @@ wgl_screen_create_by_name(HDC hDC, const char* driver, struct sw_winsys *winsys)
+ static bool use_freedreno = false;
+ #endif
+ 
++#ifdef STW_COREWINDOW
++#include <signal.h>
++#include <stdio.h>
++/* /MT: moi module co CRT rieng. Handler nay in backtrace (module+offset) khi CRT
++ * gap tham so sai (vd fopen tra NULL roi fprintf) - neu khong process chet im
++ * lang (__fastfail). Map offset bang llvm-symbolizer + .pdb.
++ */
++static void
++wgl_dump_backtrace(const char *why, void *const *frames, USHORT n);
++
++static void
++wgl_invalid_parameter(const wchar_t *expr, const wchar_t *func,
++                      const wchar_t *file, unsigned line, uintptr_t reserved)
++{
++   void *frames[24];
++   USHORT n = RtlCaptureStackBackTrace(0, 24, frames, NULL);
++   wgl_dump_backtrace("CRT invalid parameter", frames, n);
++   abort();
++}
++
++static void
++wgl_on_abort(int sig)
++{
++   void *frames[24];
++   USHORT n = RtlCaptureStackBackTrace(0, 24, frames, NULL);
++   wgl_dump_backtrace("SIGABRT", frames, n);
++}
++
++static LONG WINAPI
++wgl_veh(EXCEPTION_POINTERS *ep)
++{
++   DWORD code = ep->ExceptionRecord->ExceptionCode;
++   /* bo qua exception "binh thuong" (debug print, C++ throw, thread name) */
++   if (code == 0x40010006 || code == 0x4001000A || code == 0xE06D7363 ||
++       code == 0x406D1388)
++      return EXCEPTION_CONTINUE_SEARCH;
++   void *frames[24];
++   frames[0] = ep->ExceptionRecord->ExceptionAddress;
++   USHORT n = 1 + RtlCaptureStackBackTrace(0, 23, frames + 1, NULL);
++   char why[64];
++   snprintf(why, sizeof(why), "exception 0x%08lx", (unsigned long)code);
++   wgl_dump_backtrace(why, frames, n);
++   return EXCEPTION_CONTINUE_SEARCH;
++}
++
++static void
++wgl_dump_backtrace(const char *why, void *const *frames, USHORT n)
++{
++   fprintf(stderr, "MESA: %s, backtrace:\n", why);
++   for (USHORT i = 0; i < n; i++) {
++      HMODULE mod = NULL;
++      char name[MAX_PATH] = "?";
++      if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
++                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++                             (LPCSTR)frames[i], &mod))
++         GetModuleFileNameA(mod, name, sizeof(name));
++      const char *base = strrchr(name, '\\');
++      fprintf(stderr, "  #%u %s+0x%x\n", i, base ? base + 1 : name,
++              (unsigned)((uintptr_t)frames[i] - (uintptr_t)mod));
++   }
++   fflush(stderr);
++}
++#endif
++
+ static struct pipe_screen *
+ wgl_screen_create(HDC hDC)
+ {
++#ifdef STW_COREWINDOW
++   _set_invalid_parameter_handler(wgl_invalid_parameter);
++   signal(SIGABRT, wgl_on_abort);
++   AddVectoredExceptionHandler(1, wgl_veh);
++#endif
+ #ifdef GALLIUM_FREEDRENO
+    /* Windows 10 Mobile: Adreno qua D3DKMT. Khong co GDI nen khong tao
+     * gdi sw winsys.
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+index 40ccb1c..f7d0061 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
++++ b/src/gallium/winsys/freedreno/d3dkmt/fd_d3dkmt_winsys.c
+@@ -5,16 +5,48 @@
+ 
+ #include "fd_d3dkmt_public.h"
+ 
++#include "pipe/p_screen.h"
++#include "util/driconf.h"
+ #include "util/u_debug.h"
+ #include "util/u_inlines.h"
++#include "util/xmlconfig.h"
+ 
+ #include "freedreno/freedreno_screen.h"
+ #include "drm/freedreno_drmif.h"
+ #include "drm/d3dkmt/fd_kmt.h"
+ 
++/* Giong pipe-loader: option gallium chung + option rieng cua freedreno. */
++static const driOptionDescription fd_d3dkmt_driconf[] = {
++#include "pipe-loader/driinfo_gallium.h"
++#include "freedreno/driinfo_freedreno.h"
++};
++
++static driOptionCache fd_option_info;
++static driOptionCache fd_option_cache;
++
+ struct pipe_screen *
+ fd_d3dkmt_screen_create(const struct pipe_screen_config *config)
+ {
++   struct pipe_screen_config local_config;
++
++   if (!config) {
++      /* WGL/EGL tren Windows khong qua pipe-loader: tu dung driconf. */
++      static bool parsed;
++      if (!parsed) {
++         driParseOptionInfo(&fd_option_info, fd_d3dkmt_driconf,
++                            ARRAY_SIZE(fd_d3dkmt_driconf));
++         driParseConfigFiles(&fd_option_cache, &fd_option_info,
++                             &(driConfigFileParseParams){
++                                .driverName = "msm",
++                             });
++         parsed = true;
++      }
++      local_config.driver_name_is_inferred = false;
++      local_config.options = &fd_option_cache;
++      local_config.options_info = &fd_option_info;
++      config = &local_config;
++   }
++
+    struct fd_kmt *kmt = NULL;
+    int ret = fd_kmt_open(&kmt);
+    if (ret || !kmt) {
+diff --git a/src/gallium/winsys/freedreno/d3dkmt/meson.build b/src/gallium/winsys/freedreno/d3dkmt/meson.build
+index 1d27b59..f0a8b91 100644
+--- a/src/gallium/winsys/freedreno/d3dkmt/meson.build
++++ b/src/gallium/winsys/freedreno/d3dkmt/meson.build
+@@ -4,10 +4,11 @@
+ # Winsys freedreno cho Windows (D3DKMT). Cung ten bien voi winsys/drm de
+ # driver_freedreno link khong doi.
+ _fd_winsys_files = files('fd_d3dkmt_public.h', 'fd_d3dkmt_winsys.c', 'fd_renderonly_stub.c')
+-_fd_winsys_deps = [idep_mesautil]
++_fd_winsys_deps = [idep_mesautil, idep_xmlconfig]
+ _fd_winsys_incs = [
+   inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_drivers,
+   inc_freedreno, include_directories('../../../../freedreno'),
++  include_directories('../../../auxiliary'), include_directories('../../../drivers'),
+ ]
+ 
+ if get_option('wgl-corewindow')
+-- 
+2.35.1.windows.2
+

@@ -37,3 +37,9 @@
         if (standard != 0) w.meglerProps.put("WifiStandard", Integer.valueOf(standard));
         return w;
     }
+    // Android 9's hidden fields of the connection's packet rates (packets a second, as the phone's Wi-Fi service averages them),
+    // which Android's own Settings (AOSP 9) reads of the network it is connected to: none is counted here.
+    public double txBadRate;
+    public double txRetriesRate;
+    public double txSuccessRate;
+    public double rxSuccessRate;

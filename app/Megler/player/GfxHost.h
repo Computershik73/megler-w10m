@@ -236,9 +236,10 @@ public:
     /// graphics processor, so the caller may reuse its texture at once.
     /// 0 where it cannot be (the caller then has it read back); 1 kept, for
     /// the view to draw; 2 shown already: the id's video is under the views
-    /// (draw_texture put it there, setVideoUnder) and the window has been
-    /// composed of the new picture and the views as they were last shown,
-    /// so the view need not be drawn again.
+    /// (draw_texture put it there and present showed the views with its
+    /// hole, setVideoUnder) and the window has been composed of the new
+    /// picture and the views as they were last shown, the video where they
+    /// have its hole, so the view need not be drawn again.
     int showVideoFrame(int id, ID3D11Texture2D* picture, int width, int height);
     /// Whether a TextureView's video drawn onto the window's own canvas,
     /// upright, opaque and whole, goes under the views as a layer of the
@@ -297,6 +298,7 @@ public:
         uint64_t throughMemory = 0; // ... and by this file's arithmetic, read back and uploaded again
         uint64_t keptMade = 0;     // bitmaps of the core's uploaded to be kept
         uint64_t keptReused = 0;   // ... and drawn again from there
+        uint64_t glTurnWaited = 0; // OpenGL ES frames in turn from a surface's textures (Mesa's ring), the copy of the frame before waited for
         char device[128] = {};     // the graphics processor's name, and Direct3D's feature level
     };
     Counts counts();

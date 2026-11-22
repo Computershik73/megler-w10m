@@ -28,11 +28,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JDK="${MEGLER_JDK:-/c/Program Files/Java/jdk1.8.0_202}"
 SDK="${MEGLER_ANDROID_SDK:-$USERPROFILE/Documents}"
 JAR="$SDK/platforms/android-29/android.jar"
-D8="$SDK/build-tools/29.0.3/lib/d8.jar"
+D8="$SDK/build-tools/${MEGLER_BUILD_TOOLS_VERSION:-29.0.3}/lib/d8.jar"
 OUT="$ROOT/build/shared-libraries"
 m() { cygpath -m "$1"; }
 [ -x "$JDK/bin/javac" ] || [ -f "$JDK/bin/javac.exe" ] || { echo "no javac in $JDK (MEGLER_JDK)" >&2; exit 1; }
-[ -f "$JAR" ] && [ -f "$D8" ] || { echo "no platforms/android-29/android.jar or build-tools/29.0.3/lib/d8.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
+[ -f "$JAR" ] && [ -f "$D8" ] || { echo "no platforms/android-29/android.jar or build-tools/${MEGLER_BUILD_TOOLS_VERSION:-29.0.3}/lib/d8.jar in $SDK (MEGLER_ANDROID_SDK)" >&2; exit 1; }
 mkdir -p "$OUT"
 for lib in "$ROOT"/core/shared-libraries/*/; do
   name="$(basename "$lib")"

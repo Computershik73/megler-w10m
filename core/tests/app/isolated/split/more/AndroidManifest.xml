@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The feature split "more" of megler.test.isolated, which uses the split "browser": its class loader's parent is that split's. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="megler.test.isolated" split="more" android:versionCode="1"
+          android:isFeatureSplit="true">
+    <uses-split android:name="browser" />
+    <application android:hasCode="true" />
+</manifest>

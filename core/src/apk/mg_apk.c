@@ -327,6 +327,7 @@ static bool arsc_raw(const arsc *a, u32 id, u8 *type, u32 *data, char *text, siz
 #define ATTR_TARGET_SDK 0x01010270u
 #define ATTR_MAX_SDK 0x01010271u
 #define ATTR_PERMISSION 0x01010006u
+#define ATTR_ISOLATED_SPLITS 0x0101054bu
 #define ATTR_IS_FEATURE_SPLIT 0x0101055bu
 #define ATTR_IS_SPLIT_REQUIRED 0x01010591u
 #define ATTR_REQUIRED_SPLIT_TYPES 0x0101064eu
@@ -438,6 +439,7 @@ static void start_element(manifest_ctx *c, const char *tag, const attr *attrs, i
             if (!attrs[i].id && !strcmp(attrs[i].name, "split")) mg_strlcpy(info->split, attrs[i].text, sizeof(info->split));
             if (!attrs[i].id && !strcmp(attrs[i].name, "configForSplit")) mg_strlcpy(info->config_for_split, attrs[i].text, sizeof(info->config_for_split));
             if (attrs[i].id == ATTR_IS_FEATURE_SPLIT && attrs[i].type == 0x12) info->feature_split = attrs[i].data != 0;
+            if (attrs[i].id == ATTR_ISOLATED_SPLITS && attrs[i].type == 0x12) info->isolated_splits = attrs[i].data != 0;
             if (attrs[i].id == ATTR_IS_SPLIT_REQUIRED && attrs[i].type == 0x12 && attrs[i].data) info->split_required = true;
             if (attrs[i].id == ATTR_REQUIRED_SPLIT_TYPES && attrs[i].text[0]) {
                 mg_strlcpy(info->required_split_types, attrs[i].text, sizeof(info->required_split_types));
@@ -896,15 +898,13 @@ done:
  * Whether the library android.app.lib_name names exports NativeActivity's entry -- android.app.func_name, else
  * ANativeActivity_onCreate --, in whichever of the app's APKs has it, stored or deflated: 1 yes, 0 no, -1 not known (no
  * such library, not this processor's ELF, damaged). (A deflated library is inflated as far as its dynamic section, past its
- * code; the first 32 MB of it are kept for the tables, which come before.) The flag native-entry-at-start leaves the
- * library unread, not known: the start then loads it and asks it (core/src/run/mg_run.c).
+ * code; the first 32 MB of it are kept for the tables, which come before.)
  */
 static int native_entry(mg_zip *const *zips, int nzips, const mg_apk_info *info)
 {
     char path[160];
     const char *want = info->func_name[0] ? info->func_name : "ANativeActivity_onCreate";
     int k, found = -1;
-    if (mg_flag("native-entry-at-start")) return -1;
     snprintf(path, sizeof(path), "lib/%s/lib%s.so", info->abi, info->native_library);
     for (k = 0; k < nzips && found < 0; k++) {
         const mg_zip_entry *e = mg_zip_find(zips[k], path);
@@ -983,16 +983,18 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     else if (w.has[L_FLUTTER] && info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else if (w.has[L_FLUTTER]) strcpy(info->engine, "flutter");
     /*
-     * android.app.lib_name on an activity of the app's own is a subclass of NativeActivity's -- unless the library has no
-     * NativeActivity entry: then the activity is one that loads the library and starts it through JNI itself, and the app
-     * is a Java one. Qt's QtActivity names its library so: 2GIS (libv4android.so, 277 MB) was taken for a NativeActivity,
-     * and its start ended in "has no ANativeActivity_onCreate: it is not a NativeActivity library" (package 576; and again
-     * in 681, its dynamic section being past the part of the library that was read). Where the library cannot be looked
-     * into (native_entry -1), it is a NativeActivity here and the start asks the library itself (core/src/run/mg_run.c).
+     * The NativeActivity driver runs an app whose activity is Android's own NativeActivity, or that has no code of its own:
+     * its activity is a stand-in with a name, and no Java runs. An activity of the app's own that names its library with
+     * android.app.lib_name is the app's Java code, on top of NativeActivity or not, and the Java driver runs it, as Android
+     * does: a subclass of NativeActivity loads the library and calls its entry through the framework's NativeActivity, and
+     * the library's JNI calls on the activity are the app's own Java. Under the NativeActivity driver every such call
+     * returned zero: KOReader's launcher (org.koreader.launcher.MainActivity) asks its activity to extractAssets() and ended
+     * at its start, the answer false (issue #23). An activity that loads its library and starts it through JNI itself, as
+     * Qt's QtActivity does (2GIS, libv4android.so, 277 MB, taken for a NativeActivity until package 576), is a Java app
+     * all the more. Whether the library has NativeActivity's entry is still looked at, for the report's note (native_entry).
      */
     else if (!strcmp(info->activity, "android.app.NativeActivity") || (!info->has_code && w.count) ||
-             (info->native_library[0] &&
-              !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex") && (info->native_entry = native_entry(zips, nzips, info)) == 0)))
+             (info->native_library[0] && !(info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex"))))
         strcpy(info->engine, "native-activity");
     /*
      * And an SDL app: SDLActivity (or the app's own on top of it) is an activity that loads libSDL2.so and the app's
@@ -1016,6 +1018,9 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     else if (info->activity[0] && mg_zip_find(zips[0], "classes.dex")) strcpy(info->engine, "java");
     else strcpy(info->engine, "unknown");
     info->supported = mg_driver_supported(info->engine);
+    /* For the note below: whether the library of an activity of the app's own is a NativeActivity's. */
+    if (!strcmp(info->engine, "java") && info->native_library[0] && info->has_code && info->activity[0] && mg_zip_find(zips[0], "classes.dex"))
+        info->native_entry = native_entry(zips, nzips, info);
 
     /* A NativeActivity with no android.app.lib_name loads "main". */
     if (!strcmp(info->engine, "native-activity") && !info->native_library[0]) strcpy(info->native_library, "main");
@@ -1111,6 +1116,9 @@ static void classify(mg_apk_info *info, mg_zip *const *zips, int nzips, char (*b
     if (!strcmp(info->engine, "native-activity") && info->has_code && strcmp(info->activity, "android.app.NativeActivity"))
         note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity. That Java code is not run here: the app starts, and gets as far as it can without it.",
              info->activity);
+    if (!strcmp(info->engine, "java") && info->native_entry == 1)
+        note(info, "Its activity (%s) is the app's own Java class on top of NativeActivity: it runs as a Java app, its native code (lib%s.so) started by Android's NativeActivity.",
+             info->activity, info->native_library);
     /* A base alone that says it needs its splits, and runs all the same as far as anyone can tell from here. */
     if (!info->split[0] && !abi_split_missing && info->split_required && !in_parts)
         note(info, "This APK is only the base of an app that comes in several APKs (its manifest says it needs them): pictures for some screen densities, some languages or other parts of it may be missing. If it came in a bundle (.apks or .xapk), add the bundle instead.");
@@ -1194,7 +1202,20 @@ bool mg_apk_read_app(const char *apk_path, const char *const *splits, int nsplit
             free(zips[nz]);
             continue;
         }
+        info->split_feature[info->nsplits] = part->feature_split;
         mg_strlcpy(info->splits[info->nsplits++], part->split, sizeof(info->splits[0]));
+        /*
+         * A feature split declares components of its own, which Android's package parser adds to the app's: Chrome 158
+         * (isolatedSplits) has three activities in its base and the browser, ChromeTabbedActivity with its launcher alias
+         * com.google.android.apps.chrome.Main, in its split "chrome". The base naming no activity to start, the split's is the
+         * app's (Chrome was refused as an app whose native code no Java starts).
+         */
+        if (!info->activity[0] && part->activity[0]) {
+            mg_strlcpy(info->activity, part->activity, sizeof(info->activity));
+            info->orientation = part->orientation;
+            if (!info->native_library[0]) mg_strlcpy(info->native_library, part->native_library, sizeof(info->native_library));
+            if (!info->func_name[0]) mg_strlcpy(info->func_name, part->func_name, sizeof(info->func_name));
+        }
         given[nz++] = k + 1;
     }
     free(part);
@@ -1867,6 +1888,25 @@ bool megler_apk_icon(const char *apk_path, uint8_t **data, size_t *size) { retur
 #define ATTR_MIME_TYPE 0x01010026u
 #define ATTR_SCHEME 0x01010027u
 #define ATTR_HOST 0x01010028u
+#define ATTR_PORT 0x01010029u
+#define ATTR_PATH 0x0101002au
+#define ATTR_PATH_PREFIX 0x0101002bu
+#define ATTR_PATH_PATTERN 0x0101002cu
+#define ATTR_PATH_SUFFIX 0x0101061eu
+#define ATTR_PATH_ADVANCED 0x01010620u
+#define ATTR_SSP 0x010103e3u
+#define ATTR_SSP_PREFIX 0x010103e4u
+#define ATTR_SSP_PATTERN 0x010103e5u
+#define ATTR_SSP_SUFFIX 0x0101061fu
+#define ATTR_SSP_ADVANCED 0x01010621u
+#define ATTR_PRIORITY 0x0101001cu
+#define ATTR_AUTO_VERIFY 0x010104eeu
+
+/* A <data> path or scheme-specific part of a filter, as Android's PatternMatcher has it: its kind and its text. */
+typedef struct acts_part {
+    const char *kind; /* "literal", "prefix", "glob" (android:pathPattern), "advanced", "suffix" */
+    char value[160];
+} acts_part;
 
 typedef struct acts_ctx {
     char package[200];
@@ -1874,10 +1914,14 @@ typedef struct acts_ctx {
     mg_jbuf out, act, filters;  /* the description; the activity or the service being read; its filters */
     mg_jbuf services;           /* the services another app may bind, which have a file of their own */
     bool in_application, in_activity, in_filter, began, listed, exported_given, exported, is_service;
+    bool split_pass;            /* reading a split's manifest: its components only, added to the base's */
     int nfilters, nservices;
     /* the filter being read */
     char actions[16][160], categories[16][160], schemes[8][32], hosts[8][160], types[8][96];
-    int nactions, ncategories, nschemes, nhosts, ntypes;
+    int ports[8]; /* each host's, -1 for none: Android's AuthorityEntry is a <data>'s host with its port */
+    acts_part paths[16], ssps[8];
+    int nactions, ncategories, nschemes, nhosts, ntypes, npaths, nssps, priority;
+    bool auto_verify;
     /* the icons the app and its activities name, each once */
     u32 icons[64];
     int nicons;
@@ -1936,7 +1980,10 @@ static void acts_start(void *user, const char *tag, const attr *attrs, int nattr
     int i;
     for (i = 0; i < nattrs; i++)
         if (attrs[i].id == ATTR_NAME || (!attrs[i].id && !strcmp(attrs[i].name, "name"))) name = &attrs[i];
-    if (!strcmp(tag, "manifest")) {
+    if (c->split_pass && (!strcmp(tag, "manifest") || !strcmp(tag, "application"))) {
+        /* A split's own manifest and application say nothing more of the app: its components go on the base's list. */
+        if (!strcmp(tag, "application") && c->listed) c->in_application = true;
+    } else if (!strcmp(tag, "manifest")) {
         for (i = 0; i < nattrs; i++)
             if (!attrs[i].id && !strcmp(attrs[i].name, "package")) mg_strlcpy(c->package, attrs[i].text, sizeof(c->package));
         mg_jraw(&c->out, "{");
@@ -1999,19 +2046,73 @@ static void acts_start(void *user, const char *tag, const attr *attrs, int nattr
         }
     } else if (c->in_activity && !strcmp(tag, "intent-filter")) {
         c->in_filter = true;
-        c->nactions = c->ncategories = c->nschemes = c->nhosts = c->ntypes = 0;
+        c->nactions = c->ncategories = c->nschemes = c->nhosts = c->ntypes = c->npaths = c->nssps = c->priority = 0;
+        c->auto_verify = false;
+        for (i = 0; i < nattrs; i++) {
+            if (attrs[i].id == ATTR_PRIORITY && attrs[i].type >= 0x10 && attrs[i].type <= 0x11) c->priority = (int)attrs[i].data;
+            if (attrs[i].id == ATTR_AUTO_VERIFY && attrs[i].type == 0x12) c->auto_verify = attrs[i].data != 0;
+        }
     } else if (c->in_filter && !strcmp(tag, "action") && name && c->nactions < (int)MG_COUNT(c->actions)) {
         mg_strlcpy(c->actions[c->nactions++], name->text, sizeof(c->actions[0]));
     } else if (c->in_filter && !strcmp(tag, "category") && name && c->ncategories < (int)MG_COUNT(c->categories)) {
         mg_strlcpy(c->categories[c->ncategories++], name->text, sizeof(c->categories[0]));
     } else if (c->in_filter && !strcmp(tag, "data")) {
+        /* Each attribute's text, a string resource's where it names one (Shazam's scheme is "@string/..."), as Android's
+           package parser reads them; a port goes with the host of its <data>, and one without a host is not looked at. */
+        char host[160] = "", port[16] = "";
         for (i = 0; i < nattrs; i++) {
             const attr *a = &attrs[i];
-            if (a->id == ATTR_SCHEME && c->nschemes < (int)MG_COUNT(c->schemes)) mg_strlcpy(c->schemes[c->nschemes++], a->text, sizeof(c->schemes[0]));
-            if (a->id == ATTR_HOST && c->nhosts < (int)MG_COUNT(c->hosts)) mg_strlcpy(c->hosts[c->nhosts++], a->text, sizeof(c->hosts[0]));
-            if (a->id == ATTR_MIME_TYPE && c->ntypes < (int)MG_COUNT(c->types)) mg_strlcpy(c->types[c->ntypes++], a->text, sizeof(c->types[0]));
+            const char *kind = NULL;
+            acts_part *parts = NULL;
+            int *n = NULL, cap = 0;
+            char text[160];
+            if (a->id == ATTR_PORT && a->type >= 0x10 && a->type <= 0x11) snprintf(text, sizeof(text), "%u", (unsigned)a->data);
+            else if (a->type == 0x03 || a->type == 0x01) acts_label(c, a, text, sizeof(text));
+            else continue;
+            if (!text[0]) continue;
+            if (a->id == ATTR_SCHEME && c->nschemes < (int)MG_COUNT(c->schemes)) mg_strlcpy(c->schemes[c->nschemes++], text, sizeof(c->schemes[0]));
+            else if (a->id == ATTR_HOST) mg_strlcpy(host, text, sizeof(host));
+            else if (a->id == ATTR_PORT) mg_strlcpy(port, text, sizeof(port));
+            else if (a->id == ATTR_MIME_TYPE && c->ntypes < (int)MG_COUNT(c->types)) mg_strlcpy(c->types[c->ntypes++], text, sizeof(c->types[0]));
+            else if (a->id == ATTR_PATH) kind = "literal", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_PREFIX) kind = "prefix", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_PATTERN) kind = "glob", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_ADVANCED) kind = "advanced", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_PATH_SUFFIX) kind = "suffix", parts = c->paths, n = &c->npaths, cap = (int)MG_COUNT(c->paths);
+            else if (a->id == ATTR_SSP) kind = "literal", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_PREFIX) kind = "prefix", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_PATTERN) kind = "glob", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_ADVANCED) kind = "advanced", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            else if (a->id == ATTR_SSP_SUFFIX) kind = "suffix", parts = c->ssps, n = &c->nssps, cap = (int)MG_COUNT(c->ssps);
+            if (kind && *n < cap) {
+                parts[*n].kind = kind;
+                mg_strlcpy(parts[*n].value, text, sizeof(parts[0].value));
+                (*n)++;
+            }
+        }
+        if (host[0] && c->nhosts < (int)MG_COUNT(c->hosts)) {
+            c->ports[c->nhosts] = port[0] ? atoi(port) : -1;
+            mg_strlcpy(c->hosts[c->nhosts++], host, sizeof(c->hosts[0]));
         }
     }
+}
+
+/* `n` paths or scheme-specific parts as a member that is an array of { "kind", "value" }. */
+static void acts_parts(mg_jbuf *j, const char *key, const acts_part *parts, int n)
+{
+    int k;
+    mg_jkey(j, key, false);
+    mg_jraw(j, "[");
+    for (k = 0; k < n; k++) {
+        if (k) mg_jraw(j, ",");
+        mg_jraw(j, "{");
+        mg_jkey(j, "kind", true);
+        mg_jstr(j, parts[k].kind);
+        mg_jkey(j, "value", false);
+        mg_jstr(j, parts[k].value);
+        mg_jraw(j, "}");
+    }
+    mg_jraw(j, "]");
 }
 
 static void acts_end(void *user, const char *tag)
@@ -2029,6 +2130,26 @@ static void acts_end(void *user, const char *tag)
         acts_array(j, "schemes", c->schemes[0], c->nschemes, sizeof(c->schemes[0]));
         acts_array(j, "hosts", c->hosts[0], c->nhosts, sizeof(c->hosts[0]));
         acts_array(j, "types", c->types[0], c->ntypes, sizeof(c->types[0]));
+        {
+            int k;
+            mg_jkey(j, "ports", false);
+            mg_jraw(j, "[");
+            for (k = 0; k < c->nhosts; k++) {
+                if (k) mg_jraw(j, ",");
+                mg_jint(j, c->ports[k]);
+            }
+            mg_jraw(j, "]");
+        }
+        acts_parts(j, "paths", c->paths, c->npaths);
+        acts_parts(j, "ssps", c->ssps, c->nssps);
+        if (c->priority) {
+            mg_jkey(j, "priority", false);
+            mg_jint(j, c->priority);
+        }
+        if (c->auto_verify) {
+            mg_jkey(j, "autoVerify", false);
+            mg_jraw(j, "true");
+        }
         mg_jraw(j, "}");
     } else if ((!strcmp(tag, "activity") || !strcmp(tag, "activity-alias") || !strcmp(tag, "service")) && c->in_activity &&
                c->is_service == !strcmp(tag, "service")) {
@@ -2242,6 +2363,20 @@ bool megler_apk_describe_activities(const char *apk_path, const char *splits_dir
     w.end = acts_end;
     w.user = c;
     if (manifest && xml_walk(manifest, (u32)msize, &w) && c->began) {
+        /*
+         * And the components each split declares, as Android's package parser adds a feature split's to the app's: Chrome
+         * 158's browser activity and its launcher alias are in its split "chrome" (isolatedSplits).
+         */
+        for (k = 1; k < a->n && c->listed; k++) {
+            const mg_zip_entry *se = mg_zip_find(&a->zips[k], "AndroidManifest.xml");
+            size_t ssize = 0;
+            u8 *split = se ? mg_zip_read(&a->zips[k], se, 16u << 20, &ssize) : NULL;
+            c->split_pass = true;
+            c->in_application = c->in_activity = c->in_filter = false;
+            if (split) xml_walk(split, (u32)ssize, &w);
+            free(split);
+        }
+        c->split_pass = false;
         if (!c->listed) {
             mg_jkey(&c->out, "activities", false);
             mg_jraw(&c->out, "[");

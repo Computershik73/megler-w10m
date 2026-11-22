@@ -259,6 +259,15 @@ public class Resources {
     }
     /** The API level of the framework-res.apk in the Android root: Android 9's. It must follow that file (see the head of this file). */
     static final int PLATFORM_RESOURCES_SDK = 28;
+    /** After the core's number of the app's last split: its splits are APKs 2 on, as many as it is run with (Native.splitPaths). */
+    private static int sSplitsEnd = -1;
+    private static int splitsEnd() {
+        if (sSplitsEnd < 0) {
+            String[] splits = megler.Native.splitPaths();
+            sSplitsEnd = 2 + (splits != null ? splits.length : 0);
+        }
+        return sSplitsEnd;
+    }
     /** The app's tables and the platform's, read once (ResourcesImpl). */
     static void meglerLoadTables() { loadTables(); }
     private static void loadTables() {
@@ -267,7 +276,7 @@ public class Resources {
                 ResTable t = tableOf(0, 0);
                 sApp = t != null ? t : new ResTable(emptyTable());
                 // a Play install's split APKs (config.xxhdpi, config.en, feature splits) carry their own tables for the same package
-                for (int k = 2; k < 12; k++) {
+                for (int k = 2; k < splitsEnd(); k++) {
                     try {
                         ResTable st = tableOf(k, 0);
                         if (st != null) sApp.merge(st);
@@ -551,6 +560,11 @@ public class Resources {
         TypedValue v = new TypedValue();
         for (int i = 0; i < n; i++) {
             int name = t.bagItem(e, i, v);
+            // (An array's item is keyed by its place, 0x02000000 + its index, as aapt writes it; aapt2 as the platform's own
+            // build runs it writes 0 for every item, and the items, keyed alike, were one: Android's own Settings (AOSP 9) read
+            // its arrays a single item long -- the battery's bolt, a list preference's entries -- and ended on them. Android
+            // reads an array's items in their order, whatever their keys.)
+            if (name == 0) name = 0x02000000 | i;
             // (An app's style item that names one of Android 12's system colours is that colour, as in meglerValue.)
             if (t != sFramework && v.type == TypedValue.TYPE_REFERENCE && megler.SystemColors.has(v.data)) {
                 v.data = megler.SystemColors.color(v.data);
@@ -801,7 +815,7 @@ public class Resources {
         byte[] d = megler.Native.readApkFile(apk, path);
         if (d == null && apk == 0) {
             // a split APK may hold it
-            for (int k = 2; k < 12 && d == null; k++) d = megler.Native.readApkFile(k, path);
+            for (int k = 2; k < splitsEnd() && d == null; k++) d = megler.Native.readApkFile(k, path);
         }
         // and another package's split (Google Play services': a density's pictures are in its split alone), as the app's own
         if (d == null && apk != 0 && apk == mResourcesImpl.mAssets.meglerPackageApk())

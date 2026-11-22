@@ -39,6 +39,7 @@ public class MediaPlayer implements AudioRouting {
     private long mClockNs;
     private boolean mClockAudio;
     private byte[] mBytes; private int mFd = -1; private long mFdOff, mFdLen;
+    private FileDescriptor mOwnFd;   /* our dup of the app's descriptor, as Android's own setDataSource keeps one: closed at reset */
     private long mDec; private int mRate, mChannels, mDuration;
     private int mTrack = -1;
     private Thread mThread;
@@ -97,8 +98,14 @@ public class MediaPlayer implements AudioRouting {
     public void setDataSource(FileDescriptor fd) throws java.io.IOException { setDataSource(fd, 0, -1); }
     public void setDataSource(FileDescriptor fd, long offset, long length) throws java.io.IOException {
         checkIdle();
-        int n = megler.Audio.fdOf(fd);
-        if (n < 0) throw new java.io.IOException("not a file descriptor Megler can read");
+        /* Android's setDataSource dups the descriptor: cocos2d-x's Cocos2dxMusic closes its FileInputStream right after
+           (Metal Slug 3's background music), and prepare() read from a closed one -- "unsupported or damaged media source". */
+        FileDescriptor own = null;
+        try { own = (FileDescriptor) Class.forName("android.system.Os").getMethod("dup", FileDescriptor.class).invoke(null, fd); } catch (Throwable t) { own = null; }
+        int n = megler.Audio.fdOf(own != null ? own : fd);
+        if (n < 0) { closeOwnFd(own); throw new java.io.IOException("not a file descriptor Megler can read"); }
+        closeOwnFd(mOwnFd);
+        mOwnFd = own;
         mFd = n; mFdOff = offset; mFdLen = length; mState = INITIALIZED;
     }
     public void setDataSource(AssetFileDescriptor afd) throws java.io.IOException {
@@ -290,7 +297,10 @@ public class MediaPlayer implements AudioRouting {
         }
     }
     public void reset() {
-        synchronized (mLock) { stop(); mBytes = null; mUrl = null; mHeaders = null; mFd = -1; mWidth = mHeight = 0; mState = IDLE; mSeekTo = -1; }
+        synchronized (mLock) { stop(); mBytes = null; mUrl = null; mHeaders = null; mFd = -1; closeOwnFd(mOwnFd); mOwnFd = null; mWidth = mHeight = 0; mState = IDLE; mSeekTo = -1; }
+    }
+    private static void closeOwnFd(FileDescriptor fd) {
+        if (fd != null) try { Class.forName("android.system.Os").getMethod("close", FileDescriptor.class).invoke(null, fd); } catch (Throwable ignored) {}
     }
     public void release() { synchronized (mLock) { reset(); mState = END; mSurface = null; mOnCompletion = null; mOnPrepared = null; mOnError = null; mOnSeek = null; mOnInfo = null; mOnVideoSize = null; } }
     public boolean isPlaying() { return mState == STARTED; }

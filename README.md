@@ -27,6 +27,11 @@ release notes say how to install it.
   compatibility (STATUS.md), and some still end with errors that are being fixed.
 - **A modern WebView.** Android's System WebView, Chromium 128, runs inside the app, and
   draws its pages on the graphics processor.
+- **Two ways to draw OpenGL ES.** ANGLE over Direct3D 11, on every phone; or, chosen per app
+  in Settings, Graphics, Mesa's freedreno on the phone's Adreno itself (Linh's work, below).
+  **Mesa is experimental and has been tested only on the Snapdragon 820** (Adreno 530, the
+  HP Elite x3) so far; other processors will follow. On another phone, keep ANGLE for an app
+  that draws wrongly or ends with Mesa.
 - **The phone's own hardware and services.** Windows Hello answers Android's
   `BiometricPrompt`; text messages reach apps that wait for a code; cameras, media
   controls on the lock screen, H.264/H.265/AAC/MP3 decoding by Media Foundation, the
@@ -85,7 +90,7 @@ What stands where Android would stand:
 | The dynamic linker | its own linker: loads `armeabi-v7a` libraries straight out of the APK, relocates them, and rewrites the few instructions Windows does not allow an app (reading the thread pointer, ARM-mode PLT entries) |
 | ART, Android's Java runtime | its own Dalvik runtime: an interpreter, a method JIT to Thumb-2 on code pages that are writable and executable at once where the phone allows it, a concurrent garbage collector, JNI |
 | libcore and the framework | Android 9's libcore with its native libraries built for ARMv7, and an Android framework that answers as API 34 (Android 14) |
-| HWUI and SurfaceFlinger | views record display lists; a RenderThread plays them through Direct2D on the graphics processor; OpenGL ES runs on ANGLE over Direct3D 11; frames of a `TextureView`, a `SurfaceView` and the WebView stay on the graphics processor as shared Direct3D textures |
+| HWUI and SurfaceFlinger | views record display lists; a RenderThread plays them through Direct2D on the graphics processor; OpenGL ES runs on ANGLE over Direct3D 11, or, where an app is set to it, on Mesa's freedreno (tested on the Snapdragon 820 only so far); frames of a `TextureView`, a `SurfaceView` and the WebView stay on the graphics processor as shared Direct3D textures |
 | Separate processes and Binder | an app's other processes (`android:process`) as class scopes of its own APK, with their own statics and Application; Google Play services as a scope of its own |
 | The package manager and installer | Megler's library: APK, `.apks`, `.xapk`, and Google Play's `PackageInstaller` sessions; an app can be its own Windows package |
 | The keystore, biometrics, telephony, media | an `AndroidKeyStore` provider kept in the app's data; Windows Hello; the phone's message store; XAudio2, Media Foundation, `Windows.Media.Capture`, the system media controls |
@@ -235,6 +240,20 @@ another project (GPL-2.0-or-later) and is licensed here under the GPL-3.0, as
 - [Telegram channel @cmplog](https://t.me/cmplog)
 - [Donate](https://pay.cloudtips.ru/p/83821e32) (within the CIS for now; from
   outside the CIS, send a message to the Telegram channel)
+
+## Thanks
+
+- **Linh ([thaihoangduylinh](https://github.com/thaihoangduylinh))**: Mesa's freedreno on the
+  Adreno of Windows 10 Mobile through D3DKMT, without ANGLE. Megler's Mesa DLLs
+  ([drivers/mesa-arm32](drivers/mesa-arm32)) are built from their D3DKMT core and their patches to
+  Mesa. Their [pull request #34](https://github.com/Computershik73/megler-w10m/pull/34) also brought
+  the build with Visual Studio 2017, sound fixes, Install Data from ZIP and app fixes found with Mesa.
+- **mayconus**: video and streaming apps on a Lumia 950 XL
+  ([docs/LUMIA-950XL.md](docs/LUMIA-950XL.md)).
+- **zemonkamin**, WinArchive's developer: installing apps the Store's way, so Windows 10 Mobile's limit of 20
+  developer packages doesn't stop them.
+- Everyone who reports what goes wrong on GitHub (wukenadela, DimaSWE, JOHN-decm, Jevil7452,
+  Xaker-USSR, dascaluvlad01-ux, msydh, sur-f0x) and everyone who sends logs from their phones.
 
 ## License
 

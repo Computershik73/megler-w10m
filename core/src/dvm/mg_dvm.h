@@ -82,6 +82,13 @@ void mg_dvm_set_app_loader(mg_jobj *loader);
  * that was not named here is read then, and its classes join the path.
  */
 void mg_dvm_dex_source_added(const char *guest_path);
+/*
+ * Says that a feature split of an app with android:isolatedSplits is known to the app under this (guest) path and is the
+ * file at host_path: it is not on the app's class path, and a class loader that opens it (the split's, which the framework
+ * makes over it with the loader of the split it uses or the base's as its parent) gets a class scope of its own, its parent's
+ * classes first (mg_dvm_art.c, DexFile).
+ */
+void mg_dvm_isolated_split(const char *guest_path, const char *host_path);
 
 /* Whether libcore's own native libraries are loaded (mg_dvm_start_android loads them where they are and can run). */
 bool mg_dvm_libcore_natives(void);
@@ -105,6 +112,10 @@ bool mg_dvm_running(void);
 bool mg_dvm_add_dex(const void *data, size_t size, const char *label);
 /* The same for a .dex file read whole. */
 bool mg_dvm_add_dex_file(const char *path);
+/* While on, a DEX file added gives its interfaces the place of earlier ones of their names that declare no method (Megler's
+   generated stand-ins), where those are not linked yet: for an app of the platform's own, whose Android 9 framework's
+   interfaces Megler's framework has empty (mg_dvm_class.c). */
+void mg_dvm_fill_empty_interfaces(bool on);
 /* Every classesN.dex of an APK or a jar (mg_dvm_apk.c; needs zip/mg_zip.c). Returns how many were added. */
 int mg_dvm_add_apk(const char *path);
 

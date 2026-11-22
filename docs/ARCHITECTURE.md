@@ -643,6 +643,111 @@ works, the app's own first.
 
 There is no Vulkan on Windows 10 Mobile, so apps that need it cannot run.
 
+### Mesa's freedreno, chosen per app
+
+Windows 10 Mobile's package (`tools/build-appx.sh arm`; not Windows RT's, the desktop's or the Xbox's) carries a second
+OpenGL ES beside ANGLE: Mesa's freedreno over D3DKMT (`drivers/mesa-arm32`, built by `tools/build-mesa-arm32.cmd` from
+OpenGLES-For-Windows-Phone's source beside it, `drivers/mesa-arm32/src`, and Mesa 26.2.7), which draws
+on the phone's Adreno itself through Windows 10 Mobile's kernel-mode graphics driver instead of turning OpenGL ES into
+Direct3D 11. Which of the two an app draws with is a setting, **Graphics** (`megler.gles`, `app/Megler/shell/Graphics.h`,
+`ui/SettingsScreen.cpp`): Megler's for every app, and each app's own over it ("As in Megler" at its top), shown only where
+Megler's package has Mesa. ANGLE is the default; a package built with `MEGLER_GLES=mesa` makes Mesa the default
+(`gles-default.txt` in it), one built with `MEGLER_GLES=angle` has no Mesa and no setting.
+
+- **Side by side.** ANGLE's DLLs keep their names at the package's root; Mesa's are `libEGL_mesa.dll`,
+  `libGLESv2_mesa.dll` and their driver `libgallium_wgl.dll`, which the other two import and Windows finds beside them.
+  Not a folder of their own with the same names: Windows takes a DLL asked for by name for any module of that name loaded
+  already, and ANGLE's `libEGL.dll` imports `libGLESv2.dll` by name, so a Mesa loaded first would have stood in for
+  ANGLE's. With names of their own a Mesa that loaded and then failed can stay loaded (a driver that has begun is not
+  let go of safely) while ANGLE loads as ever.
+- **One per process, chosen at the start.** The shell reads the app's choice as it starts it
+  (`player/Session.cpp`) and gives it to the core (`megler_run_config.gles`); the core loads that library at the first use
+  of EGL (`ndk/mg_egl.c`, `mesa_load`). A process cannot have both: an app's libraries bind their OpenGL ES functions to
+  the host's as they are loaded, before they ask for a display. So Mesa is taken only once it has passed everything that
+  can fail -- its three DLLs in the package, a graphics processor that is an Adreno (Qualcomm's vendor id 0x5143 or
+  "Adreno" in the name DXGI gives; the flag `mesa-any-gpu` leaves that out), both DLLs loaded, its default display made
+  and initialized -- before any function of it is handed out; anything short of that, and the app draws with ANGLE, the
+  log saying why in one line: `egl: Mesa's freedreno was asked for, ANGLE instead: <why>`. Taken, it says
+  `egl: OpenGL ES is Mesa's freedreno, as the app's setting asks: EGL x.y, on <the GPU>`. `megler_gles` tells the shell
+  which it came to.
+- **Mesa's own diagnosis, by the flag `mesa-diag`.** Megler's patch to it (`megler-0025`, drivers/mesa-arm32/README.md)
+  leaves off what the project had always on: a vectored exception handler for the whole process, put in front of
+  Megler's own, which unwound and printed on every guest fault, hardware breakpoint and thread stop Megler takes through
+  exceptions, and log files in `%TEMP%`. The flag (in `LocalState\flags`, or `Pictures\Megler\diag\<package>\flags`)
+  asks for both as `mesa_load` loads Mesa, in the process's environment before its DLLs load (`MESA_CRASH_HANDLERS=1`,
+  `MESA_LOG_DIR` the data folder: `mg_host_setenv`), the log saying so; the driver's `fdkmt.log` (its allocations,
+  submits and waits, a line every 2 s) and `fd_egl_share.log` (the shared pbuffers it could not make) then sit beside
+  `megler.log`, and the package's log copies take them along (`shell/LogMirror.h`: Save All Logs; `shell/PicturesDiag.h`).
+- **GMEM tiles, by the flag `mesa-gmem`.** The project's patch 0017 makes Mesa render every batch in system memory
+  (bypass) on D3DKMT: in GMEM, the tiled rendering an Adreno is made for, the GPU hung in some 25-35 % of dEQP's
+  `color_clear` runs, the KMD ending the packet after 2.5 s (a TDR), and GTA: Vice City within half a minute. The cause
+  was the D3DKMT core's: it gave each piece of a pass's growable command stream its own DMA packet, between which the
+  compositor's work ran; it submits them as one now, and GMEM no longer hangs (drivers/mesa-arm32/src/ISSUES.md, 1). It
+  stays off by default: at 2560x1440 it is still slower than bypass for GTA (ISSUES.md, 2). The flag sets
+  `FD_D3DKMT_GMEM=1` before Mesa loads, the log saying `egl: the flag mesa-gmem: Mesa renders in GMEM tiles ...`: for
+  trying it on a game the GPU keeps waiting on at a high resolution, which bypass costs memory bandwidth (GTA: Vice City
+  at 2560x1440, 22-35 frames a second on Mesa against ANGLE's 30-44). With it, depth and stencil textures are linear
+  again (patch 0020 tiles them in sysmem rendering alone), so one a batch rendered in bypass wrote, then sampled or
+  blitted, may come out scrambled as before 0020.
+- **Mesa's errors in the log, always.** What Mesa says of its errors goes to its C runtime's stderr (`mesa_log`, its
+  D3DKMT core's failures with their NTSTATUS, EGL's warnings), which an app's process has nowhere to go. Its DLLs, which
+  take the standard handles as they load, are given a pipe of the host's as their stderr while `mesa_load` loads them
+  (`mg_host_stderr_to_log_begin`, `_end`), whose lines the log takes as `mesa: <line>` (2000 a process at most, then
+  counted); warnings and errors (`MESA_LOG_LEVEL=warning`; Mesa's default, information too, under `mesa-diag`). A
+  texture GTA: Vice City's map could not be given memory for ended the game, its reason lost (package 745).
+- **Mesa's own switches, by flags `mesa-env-<NAME>=<value>`.** Each sets that variable in the process's environment
+  before Mesa's DLLs load (`FD_MESA_DEBUG=gmem`, `FDKMT_DEBUG=1`, `FD_MAX_BATCH_DRAWS=...`: the switches the project's
+  patches and Mesa read, drivers/mesa-arm32/README.md), the log saying `egl: Mesa's environment: NAME=value`. Set through
+  the Device Portal (`tools/phone-flags.py --app <package> set mesa-env-FD_MESA_DEBUG=gmem`): `=` is not among the
+  characters a flag in `Pictures\Megler\diag` may have.
+- **A build of Mesa tried without a package, by the flag `mesa-local`.** `mesa_load` takes Mesa's three DLLs from the
+  data folder's `mesa\` (`LocalState\mesa`) instead of the package's, by their paths (`mg_dl_open_file`, `LoadLibraryExW`;
+  the driver first, which the other two import by name), where all three are there; the log says which. They get there
+  from the phone's Pictures over USB: the shell copies the files of the newest `Pictures\Megler\diag\<package>\mesa-<n>`
+  (the largest n; a new folder a build, MTP writing no file over another) into `LocalState\mesa` as the app starts, once
+  a folder (`shell/PicturesDiag.cpp`, `placeMesa`; `LocalState\mesa\from.txt` names it).
+- **What goes to the kernel's driver, by the flag `kmt-trace`.** Every call of the graphics kernel's functions the
+  app's process makes from the first use of EGL on -- ANGLE's Direct3D 11 device through Qualcomm's own driver, the
+  shell's, Mesa's D3DKMT core -- with its arguments, its private driver data and the command buffers it submits (and the
+  buffers they call), into `LocalState\kmt-trace.bin` (96 MB at most), and the context creations, escapes, adapter
+  queries and first submits in the log as `kmt: ...` (`host/mg_kmt_trace.c`). Windows 10 Mobile's win32u.dll has one
+  stub a function, `movw r12, #<call>; svc #1; bx lr`, which every caller comes to (gdi32's D3DKMT functions jump to them,
+  dxgi.dll looks gdi32's up by name): each is copied to a page of the trace's and made a jump to the trace's function,
+  which calls the copy. A buffer is read where its allocation was seen mapped for the CPU (`Lock2`, `Lock`) and the GPU
+  (`MapGpuVirtualAddress`, `UpdateGpuVirtualAddress`). `tools/kmt-trace.py` prints the calls and decodes the buffers as
+  PM4 packets with a5xx's register names (Mesa's freedreno XML). For comparing Mesa with Qualcomm's driver, which renders
+  in GMEM tiles without hanging the GPU (drivers/mesa-arm32/src/ISSUES.md, 1).
+- **The shell's composition follows the choice.** Mesa renders a pbuffer's shared Direct3D texture with its rows top
+  first, as Direct3D lays a texture out, where ANGLE's keep OpenGL's bottom row first: the shell turns a frame
+  (`gl_frame`) and a picture (`texture_frame`: a TextureView's, the WebView's pages) the other way up where `megler_gles`
+  says `mesa` (`player/GfxHost.cpp`, `glFramesTopFirst`), not by what files the package has -- the phone's has both. A
+  NativeActivity's window on Mesa is read back and handed over as pixels (`mesa_present`), which knows no such difference.
+- **The WebView follows the app.** Chromium's GPU code runs in the app's process, and its EGL and OpenGL ES calls go to
+  the one library the process has; it cannot be given ANGLE while the app has Mesa. What it needs is asked of whichever
+  it is at run time: a pbuffer whose texture is shared (`mg_java_webview.c`, `wv_pick`; else its pages are drawn in
+  software, and the log says so), fences and images of textures (`EGL_KHR_fence_sync`, `EGL_KHR_gl_texture_2D_image`,
+  both Mesa's). The log's `webview:` line says when Chromium draws on Mesa.
+- **An app's own package carries Mesa only while the app goes by it.** Its package is made of Megler's installed files
+  (docs/PER-APP-PACKAGES.md), and Mesa's are some 20 MB: on the owner's phone's 58 apps that would have been 1.2 GB. So
+  `appPackage::make` leaves them out unless the app's Graphics are Mesa's then, says so in `MeglerApp.ini` (`gles=mesa`
+  or `gles=angle`), and writes down which packages have them (`<shared>\apks\<identity>\graphics.txt`, a line
+  `<full name> mesa|angle` each), since Megler cannot read another package's install folder. An installed app whose
+  package has Mesa where its Graphics no longer ask for it, or lacks it where they do, is "to update" in the Library
+  (`ui/SeparateApps.cpp`; its row says "its Graphics changed", its page says which way): its **Update**, or **Update All**,
+  makes its package again. The setting says so where it is changed. Until then an app set to Mesa whose package lacks it
+  draws with ANGLE, and its log says that its package is to be made again (`session: graphics: ANGLE -- ...`). Megler's
+  own package always has both, and so does an app run in Megler itself (an auto run).
+
+*Proven* on a PC (`tools/build-tests.sh win`): the choice from an app's own setting, Megler's and the default, what an
+app's process starts with where its package lacks Mesa, the record of the packages made with it
+(`core/tests/mg_shell_windows.cpp`, Graphics); and Mesa asked for where it cannot be had -- its DLLs missing, a
+graphics processor that is no Adreno, DLLs that do not load -- each falling back to ANGLE with its one line, ANGLE then
+drawing OpenGL ES 1's scenes as ever (`mg_tests --angle-windows ... mesa-missing|mesa|mesa-any-gpu`); and the flags
+`mesa-diag` and `mesa-gmem` setting Mesa's variables in the process's environment before its DLLs are loaded, and
+nothing setting them without them; and the standard error the DLLs take as they load, a pipe whose lines the log has as `mesa: <line>`,
+put back after. *Not proven here*: anything of Mesa itself, which drives an Adreno alone -- the phone (nor whether its
+DLLs' C runtime takes the pipe as it loads, which a test DLL with a C runtime of its own would show).
+
 ### A Java app's views, on the graphics processor
 
 An app whose user interface is Java draws its views through `megler_gfx_host`
@@ -1613,13 +1718,23 @@ as POSIX's unlink and rename look at the folder, not at the file), and the
 shell removes an app's folders with such files in them (`files::remove`). Facebook makes each module it downloads
 read-only (`File.setReadOnly`) and loads only one that is: "Downloaded module
 file must be read only ... read only:false" (0.1.0.671), and none of its
-language packs loaded. A directory's mode, a file's other bits and the files
-of a link to one of the phone's folders are as they were. A file's times are
+language packs loaded. It asks `File.canExecute` too (a module must be
+`!canWrite && !canExecute && canRead`), and `access` with `X_OK` said yes of
+every file until 0.1.0.748, though `stat` gave none an execute bit: Messenger
+586 still refused its language pack on 0.1.0.734. A file's owner execute bit
+is now kept by the core for as long as the process runs (`exec_bit` in
+`mg_libc_io.c`: by the host path, taken along by a rename, dropped by an
+unlink and by a file made anew), and `stat` (0110 more) and `access` with
+`X_OK` go by it: a file the app makes has none, as Android's have none; a
+directory may always be searched, and the files of the app's library folder
+are executable, as Android's package manager gives its libraries 0755. A new
+start finds a file without it. A directory's mode, a file's other bits and the
+files of a link to one of the phone's folders are as they were. A file's times are
 set as `utimensat` sets them (`mg_path_set_times`: `SetFileTime`, or for a
 file in a link through the handle its owner hands out to write it; a folder
 there is left as it is), so `File.setLastModified` changes the time. `test_file_modes`
-(`mg_storage_tests.c`), and the data app's step `file-read-only` through
-`java.io.File`.
+and `test_file_exec_bits` (`mg_storage_tests.c`), and the data app's steps
+`file-read-only` and `file-execute` through `java.io.File`.
 
 A rename is Linux's where Windows' would refuse it (`mg_host_win32.c`). Over a
 file that is open or mapped, the file in the way is put aside and removed
@@ -1919,30 +2034,35 @@ package name, the data directories, the display, `Build`.
 
 A **driver** (`drivers/`) plays the part of one kind of app's Java shell. There is
 one so far: `NativeActivity`, which is what Android itself provides for apps with no
-Java (`android:hasCode="false"`, or `android.app.lib_name` in the manifest). An
-activity of the app's own that names its library with `android.app.lib_name` is
-taken for NativeActivity's subclass only when the library exports its entry
-(`ANativeActivity_onCreate`, or `android.app.func_name`), looked for among its
-dynamic symbols (`native_entry`, `apk/mg_apk.c`): Qt's QtActivity names its
-library so and starts it through JNI itself, and 2GIS (`libv4android.so`, 277 MB)
-ended in "has no ANativeActivity_onCreate" until it was taken for the Java app
-it is (package 576). The look reads the library where it lies in whichever APK
-has it (`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and
-through its GNU or SysV hash table the bucket, chain, symbol and name the
-dynamic linker would read -- a stored library a few small reads, a deflated one
-inflated as far as its dynamic section, its first 32 MB kept for the tables
-before it. Up to package 681 it read the library's first 32 MB whole, and 2GIS's
-dynamic section, past its code, was not in them: it was a NativeActivity again.
-The bundle tests make the natives app with a library of 40 MB whose dynamic
-section is at 40 MB, stored (a hole in the file) and deflated. Where the look
-cannot tell (the library damaged, or the flag `native-entry-at-start`), the start
-asks the library itself (`run/mg_run.c`): it is loaded -- not started, its
-constructors run when Java loads it -- and, without the entry, the app is started
-by the Java driver instead, where the NativeActivity driver would end at once; the
-natives app's second run under qemu goes that way. The NativeActivity driver
-loads the library, calls `ANativeActivity_onCreate`, and makes the activity's
-callbacks in the framework's order on a thread that stands for Android's main
-thread. Apps built on `android_native_app_glue` run on top of that.
+Java (`android:hasCode="false"`, or Android's own `android.app.NativeActivity` as
+the activity). Its activity object is a stand-in with a name, and no Java runs. An
+activity of the app's own that names its library with `android.app.lib_name` is the
+app's Java code, and the Java driver runs it whether it is NativeActivity's subclass
+or not (issue #23): KOReader's launcher, a NativeActivity of its own, asks its
+activity for `extractAssets()` and some eighty more through JNI on
+`ANativeActivity.clazz`, and under the NativeActivity driver every answer was zero
+and it ended at its start. Under the Java driver the framework's
+`android.app.NativeActivity` (the overlay's, Android 9's) loads the library through
+the app's class loader and calls its entry with an ANativeActivity whose clazz is the
+app's activity (`drivers/mg_java_ndk.c`, "NativeActivity"); the window's surface is
+taken (`Window.takeSurface`: a SurfaceView under the content, the whole of the
+decor) and so is its input (`Window.takeInputQueue`: the decor's touches and keys go
+into the core's AInputQueue, and a key native code leaves unhandled goes on to the
+activity, as on Android). An activity that starts its library through JNI itself, as
+Qt's QtActivity does (2GIS, `libv4android.so`, 277 MB, taken for a NativeActivity
+until package 576), is a Java app likewise. Whether the library exports
+NativeActivity's entry (`ANativeActivity_onCreate`, or `android.app.func_name`) is
+still looked for among its dynamic symbols (`native_entry`, `apk/mg_apk.c`), for the
+report's note: the look reads the library where it lies in whichever APK has it
+(`mg_zip_cursor`, `zip/mg_zip.c`): its headers, its dynamic section, and through
+its GNU or SysV hash table the bucket, chain, symbol and name the dynamic linker
+would read -- a stored library a few small reads, a deflated one inflated as far as
+its dynamic section, its first 32 MB kept for the tables before it. The bundle tests
+make the natives app with a library of 40 MB whose dynamic section is at 40 MB,
+stored (a hole in the file) and deflated. The NativeActivity driver loads the
+library, calls `ANativeActivity_onCreate`, and makes the activity's callbacks in the
+framework's order on a thread that stands for Android's main thread. Apps built on
+`android_native_app_glue` run on top of either.
 
 Engines whose Java shell does more (Unity, Unreal, Godot) each need
 their own driver; cocos2d-x's Cocos2dxActivity, like libGDX's activity, is an

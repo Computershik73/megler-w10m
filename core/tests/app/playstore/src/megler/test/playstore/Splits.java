@@ -92,6 +92,7 @@ public class Splits extends Service {
             boolean owns = owned != null && Arrays.asList(owned).contains(pkg);
             Log.i(T, "startInstall package=" + pkg + " modules=" + modules + " playcore=" + (options != null ? options.getInt("playcore_version_code") : 0)
                      + " caller-owns=" + owns);
+            Log.i(T, "the app's splits as the Play Store sees them: " + splitsOf(pkg));
             if (!owns) {
                 Log.i(T, "refused: Package name " + pkg + " is not owned by caller.");
                 return true;
@@ -100,6 +101,31 @@ public class Splits extends Service {
             return true;
         }
     };
+
+    /**
+     * The splits the app has, as the Play Store reads them to know which modules it has (and installs only the others, and
+     * updates the app with them): PackageInfo's splitNames, the ApplicationInfo's beside them, and whether each file is
+     * there to be read.
+     */
+    private String splitsOf(String pkg) {
+        try {
+            android.content.pm.PackageInfo p = getPackageManager().getPackageInfo(pkg, 0);
+            android.content.pm.ApplicationInfo a = getPackageManager().getApplicationInfo(pkg, 0);
+            // (Megler's PackageInfo has an empty list where Android's has none)
+            if (p.splitNames == null || p.splitNames.length == 0)
+                return "none" + (a.splitNames == null && a.splitSourceDirs == null ? "" : " but the ApplicationInfo's " + Arrays.toString(a.splitNames));
+            boolean same = Arrays.equals(p.splitNames, a.splitNames) && a.splitSourceDirs != null && a.splitSourceDirs.length == p.splitNames.length
+                           && p.splitRevisionCodes != null && p.splitRevisionCodes.length == p.splitNames.length;
+            boolean readable = a.splitSourceDirs != null;
+            if (readable) for (int i = 0; i < a.splitSourceDirs.length; i++) {
+                File f = new File(a.splitSourceDirs[i]);
+                readable &= f.getName().equals("split_" + a.splitNames[i] + ".apk") && f.getParent().equals(new File(a.sourceDir).getParent()) && f.canRead() && f.length() > 0;
+            }
+            return Arrays.toString(p.splitNames) + " same=" + same + " readable=" + readable;
+        } catch (Exception e) {
+            return "not known: " + e;
+        }
+    }
 
     /** Whether `pkg` has a process in front, as the Play Store asks before it downloads for an app. */
     private boolean inFront(String pkg) {

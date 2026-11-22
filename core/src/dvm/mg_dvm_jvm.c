@@ -126,6 +126,8 @@ static void android_get_LD_LIBRARY_PATH(char *buf, size_t n)
 }
 
 static bool load_native(const char *name_or_path, bool runtime, char *why, size_t why_size);
+/* The class scope of the loader a library is being loaded for (JVM_NativeLoad), whose classes its JNI_OnLoad finds: -1 for none. */
+static MG_THREAD_LOCAL int g_loading_for_scope = -1;
 
 /*
  * Runtime.nativeLoad: System.load and System.loadLibrary. The library is
@@ -148,8 +150,11 @@ static mg_jobj *JVM_NativeLoad(void *env, mg_jobj *path, mg_jobj *loader)
     char why[700];
     (void)env;
     if (!name) return NULL;
-    int previous = mg_ld_set_scope(mg_dvm_loader_scope(loader));
+    /* (A library an isolated split's loader loads is the app's to the linker, and its JNI_OnLoad finds the split's classes.) */
+    int scope = mg_dvm_loader_scope(loader), previous = mg_ld_set_scope(mg_dvm_library_scope(scope)), was_loading = g_loading_for_scope;
+    g_loading_for_scope = scope;
     bool loaded = load_native(name, loader == NULL, why, sizeof(why));
+    g_loading_for_scope = was_loading;
     mg_ld_set_scope(previous);
     if (loaded) return NULL;
     /* An exception JNI_OnLoad left is not the answer: the reason is. */
@@ -311,7 +316,7 @@ static bool load_native(const char *name_or_path, bool runtime, char *why, size_
     t->onload_frame = t->top;
     t->onload_running = true;
     t->onload_app = !runtime;
-    t->onload_scope = runtime ? 0 : mg_ld_scope();
+    t->onload_scope = runtime ? 0 : g_loading_for_scope >= 0 ? g_loading_for_scope : mg_ld_scope();
     version = MG_GFN(i32 (*)(void *, void *), onload)(mg_jni_vm(), NULL);
     t->onload_frame = was_frame;
     t->onload_running = was_running;

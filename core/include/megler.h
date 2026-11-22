@@ -186,14 +186,18 @@ MEGLER_API bool megler_apk_icon_splits(const char *apk_path, const char *splits_
  *   { "package": "org.example", "label": "Example", "icon": 2131558400,
  *     "activities": [ { "name": "org.example.Main", "label": "Example", "icon": 2131558401, "enabled": false,
  *                       "exported": true, "filters": [ { "id": 1, "actions": ["android.intent.action.MAIN"],
- *                       "categories": ["android.intent.category.LAUNCHER"], "schemes": [], "hosts": [], "types": [] } ] },
+ *                       "categories": ["android.intent.category.LAUNCHER"], "schemes": [], "hosts": [], "types": [],
+ *                       "ports": [], "paths": [], "ssps": [] } ] },
  *                     { "name": "org.example.Light", "target": "org.example.Main", ... } ],
  *     "certificates": [ "3082..." ] }
  *
  * -- an activity-alias with the activity it stands for ("target"), a label in the phone's language (a resource's, through
  * the splits' tables too), "enabled" only when the manifest says, "exported" as the manifest says or else whether it has an
- * intent filter -- and a picture of each icon the app and its activities name, <id as 8 hex digits>.png: a PNG, a WebP made
- * one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
+ * intent filter; each filter as Android's IntentFilter has it: its hosts, each with its <data>'s port (-1 for none), its
+ * paths and scheme-specific parts as { "kind": "literal" | "prefix" | "glob" (pathPattern) | "advanced" | "suffix",
+ * "value" }, its priority where it has one and "autoVerify": true where it asks for its web links to be verified, every
+ * text a string resource names read -- and a picture of each icon the app and its activities name, <id as 8 hex
+ * digits>.png: a PNG, a WebP made one, an XML one (adaptive, vector) drawn. "certificates" are those the APK is signed with, each its DER in hex digits: the
  * APK Signing Block's v3 signer's, else its v2 one's, else the v1 PKCS#7 file's under META-INF (megler.PhoneApps gives them
  * as the app's signatures; Google Play compares them with its own record). `splits_dir` as megler_apk_report_splits has it.
  *
@@ -227,7 +231,7 @@ MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char 
  *   progress      called now and then with the bytes written so far and how many there will be; may be NULL
  *
  * Kept: the base; the split for 32-bit ARM (armeabi-v7a, else armeabi), never one for another processor; the density
- * and language splits above; every other split (feature splits, asset packs). At most ten splits. Which APK is which is
+ * and language splits above; every other split (feature splits, asset packs). At most 32 splits. Which APK is which is
  * read from their manifests (the base names no split); the splits not wanted are left out by their file names, which
  * keep bundletool's (config.arm64_v8a.apk, split_config.arm64_v8a.apk, splits/base-arm64_v8a.apk), without unpacking
  * them first. The expansion files are written where the app finds them when it runs, its own part of the shared
@@ -249,6 +253,30 @@ MEGLER_API bool megler_apk_describe_activities(const char *apk_path, const char 
  */
 MEGLER_API char *megler_bundle_unpack(const char *bundle_path, const char *apk_path, const char *splits_dir, int density_dpi, const char *languages,
                          void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user);
+
+/*
+ * An app's data from a ZIP file the user picked (its page's Install Data from ZIP): its expansion files and its files in
+ * Android/data, written into the app's own part of Android's storage under `storage_dir` (`storage_dir`/apps/<package>/sdcard,
+ * where the app finds them as /sdcard/Android/obb/<package> and /sdcard/Android/data/<package>). What goes where:
+ *
+ *     Android/obb/<package>/..., Android/data/<package>/...  as it is (also after "sdcard/" or "storage/emulated/0/")
+ *     obb/<package>/..., data/<package>/...                   into Android/obb/<package>, Android/data/<package>
+ *     <package>/...                                           an .obb into Android/obb/<package>, anything else into
+ *                                                             Android/data/<package> as it is in the ZIP
+ *     anything else                                           an .obb into Android/obb/<package>, the rest into
+ *                                                             Android/data/<package>/files (getExternalFilesDir), or
+ *                                                             into Android/data/<package> where it starts with files/
+ *                                                             or cache/
+ *
+ * A folder every file of the ZIP is in, as a ZIP made of a folder has one ("Grand Theft Auto Vice City/" over a game's
+ * files), is left out first, unless it is one of those above (Android, sdcard, storage, obb, data, the package), files or
+ * cache. Another package's folders, and paths that would leave the app's, are left out. Files there already are written
+ * over.
+ * { "ok": true, "files": 3, "obbs": 1, "bytes": 123, "to": "<the app's storage>" } or { "ok": false, "error": "..." }.
+ * Takes as long as the files take to write: not on the UI thread. Freed with megler_free.
+ */
+MEGLER_API char *megler_data_zip_install(const char *zip_path, const char *storage_dir, const char *package,
+                                         void (MEGLER_CB *progress)(void *user, uint64_t done, uint64_t total), void *user);
 
 /* ---------------------------------------------------------------- running
  *
@@ -926,7 +954,8 @@ typedef struct megler_storage_host {
  *                 `share_handle` is the DXGI shared handle of ANGLE's
  *                 Direct3D 11 texture of the surface (an OpenGL ES pbuffer;
  *                 EGL_ANGLE_surface_d3d_texture_2d_share_handle), width x
- *                 height, its rows bottom first as OpenGL has them. The
+ *                 height, its rows bottom first as OpenGL has them (top
+ *                 first where megler_gles says "mesa": Mesa's). The
  *                 frame is finished in it (the layer has called glFinish),
  *                 and the texture may be drawn into again as soon as this
  *                 returns: the shell takes what it keeps first. The window
@@ -1041,9 +1070,12 @@ typedef struct megler_storage_host {
  *      15 OVERLAY   S*(1-Da) + D*(1-Sa) + (2*D <= Da ? 2*S*D : Sa*Da - 2*(Da-D)*(Sa-S))
  *      16 DARKEN    S*(1-Da) + D*(1-Sa) + min(S*Da, D*Sa)
  *      17 LIGHTEN   S*(1-Da) + D*(1-Sa) + max(S*Da, D*Sa)
+ *      18 MULTIPLY  S*(1-Da) + D*(1-Sa) + S*D
  *
  *   Each is for every channel, the alpha too (with Sa for S and Da for D;
- *   the last three then all come to Sa + Da - Sa*Da). 3 is the ordinary case
+ *   the last four then all come to Sa + Da - Sa*Da). 18 is Android's
+ *   BlendMode.MULTIPLY, which is not PorterDuff.Mode.MULTIPLY: that one is
+ *   13, MODULATE, whose alpha is Sa*Da. 3 is the ordinary case
  *   and by far the commonest. A paint's blend is never DST, which draws
  *   nothing; a layer's can be, and such a layer is thrown away at its
  *   restore. Whatever the mode, only pixels inside the shape drawn (and the
@@ -1340,7 +1372,7 @@ enum {
     MEGLER_GFX_BLEND_CLEAR = 0, MEGLER_GFX_BLEND_SRC = 1, MEGLER_GFX_BLEND_DST = 2, MEGLER_GFX_BLEND_SRC_OVER = 3, MEGLER_GFX_BLEND_DST_OVER = 4,
     MEGLER_GFX_BLEND_SRC_IN = 5, MEGLER_GFX_BLEND_DST_IN = 6, MEGLER_GFX_BLEND_SRC_OUT = 7, MEGLER_GFX_BLEND_DST_OUT = 8, MEGLER_GFX_BLEND_SRC_ATOP = 9,
     MEGLER_GFX_BLEND_DST_ATOP = 10, MEGLER_GFX_BLEND_XOR = 11, MEGLER_GFX_BLEND_PLUS = 12, MEGLER_GFX_BLEND_MODULATE = 13, MEGLER_GFX_BLEND_SCREEN = 14,
-    MEGLER_GFX_BLEND_OVERLAY = 15, MEGLER_GFX_BLEND_DARKEN = 16, MEGLER_GFX_BLEND_LIGHTEN = 17
+    MEGLER_GFX_BLEND_OVERLAY = 15, MEGLER_GFX_BLEND_DARKEN = 16, MEGLER_GFX_BLEND_LIGHTEN = 17, MEGLER_GFX_BLEND_MULTIPLY = 18
 };
 enum { MEGLER_GFX_PATH_MOVE = 0, MEGLER_GFX_PATH_LINE = 1, MEGLER_GFX_PATH_QUAD = 2, MEGLER_GFX_PATH_CUBIC = 3, MEGLER_GFX_PATH_CLOSE = 4 };
 enum { MEGLER_GFX_WINDING = 0, MEGLER_GFX_EVEN_ODD = 1 };
@@ -2073,7 +2105,7 @@ typedef struct megler_run_config {
      * An app in several APKs (megler_apk_report_splits): its splits, as a folder whose .apk files they are (the folder
      * megler_bundle_unpack makes), and as a list of paths; either may be left NULL. The app runs as one, as Android runs
      * an installed app with its splits: native libraries out of the split that has them, its resources and assets out of
-     * all of them, the code of feature splits on its class path. At most ten splits are opened for a Java app.
+     * all of them, the code of feature splits on its class path. At most 32 splits are opened for a Java app.
      */
     const char *splits_dir;
     const char *const *split_apks;
@@ -2153,6 +2185,16 @@ typedef struct megler_run_config {
      */
     const megler_host_font *host_fonts;
     int host_font_count;
+    /*
+     * Which OpenGL ES the app draws with, where the package carries two (Windows 10 Mobile's, tools/build-appx.sh): NULL or
+     * "angle", ANGLE -- OpenGL ES over Direct3D 11, libEGL.dll and libGLESv2.dll in megler_config.package_dir; "mesa", Mesa's
+     * freedreno -- OpenGL ES on the phone's Adreno itself, libEGL_mesa.dll and libGLESv2_mesa.dll there with its driver,
+     * libgallium_wgl.dll. Where Mesa cannot be had -- its DLLs not there or not loaded, a graphics processor that is not an
+     * Adreno, its display not made or not initialized -- the app draws with ANGLE, and the log says why in one line ("egl:
+     * Mesa's freedreno was asked for, ANGLE instead: ..."). Taken at megler_run, before anything of OpenGL ES is loaded: a
+     * process has one of them. megler_gles says which it came to.
+     */
+    const char *gles;
     /* The app has ended: by its own exit (status), by a crash (reason names it), or by megler_stop. Called once, from any thread. */
     void (MEGLER_CB *on_exit)(void *user, int status, const char *reason);
     void *user;
@@ -2174,6 +2216,12 @@ MEGLER_API bool megler_run(const megler_run_config *config);
  */
 MEGLER_API bool megler_running(void);
 MEGLER_API const char *megler_last_error(void);
+/*
+ * Which OpenGL ES the app draws with (megler_run_config.gles): "mesa", Mesa's freedreno, whose shared textures
+ * (megler_gfx_host.gl_frame, texture_frame) hold their rows top first, as Direct3D lays a texture out; or "angle", ANGLE,
+ * whose hold them bottom first, as OpenGL has them. NULL until the app first uses EGL. Any thread.
+ */
+MEGLER_API const char *megler_gles(void);
 /*
  * Where another thread of the process stands, in one line: its pc and lr, and the ways back into a module or into Android
  * code its stack holds, as a fault's report says them (not an unwinding: there are no tables for most of it). The thread

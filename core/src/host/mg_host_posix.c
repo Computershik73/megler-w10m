@@ -180,6 +180,15 @@ bool mg_mem_page_state(const void *p, bool *committed, int *prot)
     (void)prot;
     return false;
 }
+int mg_mem_writable(const void *p)
+{
+    int fds[2], w;
+    if (pipe(fds) != 0) return -1;
+    w = write(fds[1], p, 1) != 1 ? 0 : read(fds[0], (void *)p, 1) == 1 ? 1 : 0;
+    close(fds[0]);
+    close(fds[1]);
+    return w;
+}
 #define BEFORE_SYSTEM_WRITE(p, n) do { if (g_before_system_write && (n)) g_before_system_write((p), (n)); } while (0)
 
 void mg_mem_release(void *p, size_t size) { munmap(p, size); }
@@ -1969,6 +1978,11 @@ int mg_net_interfaces(mg_netif *out, int max)
 
 void *mg_dl_open(const char *name) { return dlopen(name, RTLD_NOW | RTLD_LOCAL); }
 void *mg_dl_sym(void *lib, const char *name) { return dlsym(lib, name); }
+void *mg_dl_open_file(const char *path) { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
+bool mg_host_setenv(const char *name, const char *value) { return setenv(name, value, 1) == 0; }
+/* (No DLL of the host's own here has a C runtime of its own to give a standard error to.) */
+bool mg_host_stderr_to_log_begin(const char *prefix) { (void)prefix; return false; }
+void mg_host_stderr_to_log_end(void) {}
 
 bool mg_host_module_at(mg_addr address, char *name, size_t size, mg_addr *base)
 {
@@ -2033,6 +2047,13 @@ u64 mg_host_reserved_in(const void *base, size_t size)
 bool mg_host_gpu_memory(void *device, u32 *budget_mb, u32 *used_mb)
 {
     (void)device; (void)budget_mb; (void)used_mb;
+    return false;
+}
+
+bool mg_host_gpu_adapter(char *name, size_t size, u32 *vendor)
+{
+    if (size) name[0] = 0;
+    *vendor = 0;
     return false;
 }
 

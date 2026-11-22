@@ -55,6 +55,12 @@ constexpr const char* locationPlaceDefault = "55.751244,37.618423";
 /// as ru-RU or en-US; empty: the phone's, from Windows' settings.
 constexpr const char* localeTag = "megler.locale";
 
+/// Graphics: which OpenGL ES an app draws with (shell/Graphics.h) -- "angle", ANGLE, OpenGL ES over Direct3D 11; "mesa",
+/// Mesa's freedreno, OpenGL ES on the phone's Adreno itself, experimental, which an app's own package carries only while the
+/// app goes by it (its package is made again when that changes). Empty: the package's default, ANGLE. Shown only where
+/// Megler's package carries Mesa (Windows 10 Mobile's).
+constexpr const char* gles = "megler.gles";
+
 /// Whether apps are told the phone is dark (Configuration.uiMode's night, player/PhoneState.h): "light", "dark", or
 /// empty: as Windows' theme is.
 constexpr const char* appTheme = "megler.appTheme";
@@ -66,6 +72,10 @@ constexpr const char* googleServices = "megler.googleServices";
 /// Megler's question at its first start (ui/GooglePlay.h): "yes", Google Play wanted -- Megler installs its Google Play
 /// services and Google Play Store, apps running with microG until then; "no", apps run with microG; empty: not asked.
 constexpr const char* googlePlay = "megler.googlePlay";
+
+/// Whether Megler has installed the Android Settings its package brings (ui/AndroidSettings.h): "installed" once it has, after
+/// which it is not installed again by itself (the user may have removed it); empty before.
+constexpr const char* androidSettings = "megler.androidSettings";
 
 /// The package volume Megler's apps' packages are kept on, one for them all (shell/AppPackage.h, appsStorage): its volume's
 /// name, "\\?\Volume{...}", as the user chose it before the first install where there is more than one -- a phone with a

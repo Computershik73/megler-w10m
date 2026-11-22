@@ -372,6 +372,7 @@ struct GpuPool {
         winrt::com_ptr<ID3D11Texture2D> texture;
         winrt::com_ptr<ID3D11VideoProcessorOutputView> view; // made for the decoder's enumerator of that generation
         uint64_t madeFor = 0;
+        HRESULT made = S_OK;                                 // CreateTexture2D's answer where no texture could be made
     };
     std::mutex mutex;
     int width = 0, height = 0;
@@ -409,7 +410,8 @@ struct GpuPool {
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_RENDER_TARGET;
-        if (FAILED(device->CreateTexture2D(&desc, nullptr, s.texture.put()))) s.texture = nullptr;
+        s.made = device->CreateTexture2D(&desc, nullptr, s.texture.put());
+        if (FAILED(s.made)) s.texture = nullptr;
         else gPictureBytes += bytes(w, h);
         return s;
     }
@@ -668,8 +670,14 @@ struct CodecHost::Codec {
             out.madeFor = vpGeneration;
         }
         if (!input || !out.texture || !out.view) {
-            fail(format("a picture of %dx%d on the graphics processor has no %s there: read back instead", visibleWidth, visibleHeight,
-                        !input ? "input view" : !out.texture ? "texture to be turned into" : "output view"));
+            // (With Direct3D's answer and what the pictures held there take: YouTube's Shorts on an HP Elite x3 (748) had a
+            // 720x1280 texture refused after some minutes, at 24 to 31 MB of pictures, the process's free addresses in pieces of
+            // 13 MB at the most; from then on a third of the pictures or more came through the memory, drawn among the views.)
+            fail(format("a picture of %dx%d on the graphics processor has no %s there%s: read back instead", visibleWidth, visibleHeight,
+                        !input ? "input view" : !out.texture ? "texture to be turned into" : "output view",
+                        input && !out.texture ? format(" (CreateTexture2D 0x%08X; every decoder's pictures there take %lld MB)", unsigned(out.made),
+                                                       (long long)(gPictureBytes.load() >> 20)).c_str()
+                                              : ""));
             return false;
         }
         D3D11_VIDEO_PROCESSOR_STREAM stream = {};

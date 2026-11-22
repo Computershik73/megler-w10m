@@ -6,7 +6,8 @@
 // another process (android:process) is made in that process's class scope, with its Application (megler.Processes). And the
 // services running can be listed (running), for a configuration change they hear (megler.Screen). And a service that is
 // none of the app's own nor Google's is asked of megler.HostedApps, which runs another app's service inside this one (Total
-// Commander's plug-ins): one call where each of bind, unbind, start, stop and stopSelf finds none. Everything else is the
+// Commander's plug-ins): one call where each of bind, unbind, start, stop and stopSelf finds none. And a service an isolated
+// split declares is made by the split's class loader, on the split's context (megler.Splits). Everything else is the
 // original's, unchanged.
 package megler;
 
@@ -41,8 +42,10 @@ public final class Services {
                 s = (Service) process.classLoader().loadClass(c.name).getDeclaredConstructor().newInstance();
                 s.meglerAttach(process.application());
             } else {
-                s = AppRunner.componentFactory().instantiateService(AppRunner.classLoader(), c.name, null);
-                s.meglerAttach(AppRunner.application() != null ? AppRunner.application() : ContextImpl.app());
+                // (one of an isolated split's: made by the split's class loader, on the split's context, as handleCreateService
+                // makes it -- megler.Splits)
+                s = AppRunner.componentFactory().instantiateService(Splits.loaderOf(c), c.name, null);
+                s.meglerAttach(Splits.contextOf(AppRunner.application() != null ? AppRunner.application() : ContextImpl.app(), c));
             }
             synchronized (sRunning) { sRunning.put(c.name, s); }
             s.onCreate();
@@ -62,7 +65,9 @@ public final class Services {
         Manifest.Component c = find(i);
         if (c == null) return HostedApps.start(from, i);
         postStart(sLastStart, c.name, id -> {
-            try { Service s = create(c); s.onStartCommand(Processes.forLoader(i, s.getClass().getClassLoader()), 0, id); } catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
+            try { Service s = create(c); s.onStartCommand(Processes.forLoader(i, s.getClass().getClassLoader()), 0, id); }
+            catch (Processes.Ended e) { android.util.Log.w("Megler", "service " + c.name + " not started: " + e.getMessage()); }
+            catch (Throwable t) { android.util.Log.e("Megler", "service " + c.name + " failed", t); }
         });
         return new ComponentName(Native.packageName(), c.name);
     }
@@ -134,7 +139,10 @@ public final class Services {
                 sBound.put(conn, c.name);
                 ComponentName cn = new ComponentName(Native.packageName(), c.name);
                 if (b != null) conn.onServiceConnected(cn, b); else conn.onNullBinding(cn);
-            } catch (Throwable t) { android.util.Log.e("Megler", "binding " + c.name + " failed", t); }
+            }
+            // (its process ended as its Application was made, megler.Processes: on Android the binding never connects)
+            catch (Processes.Ended e) { android.util.Log.w("Megler", "binding " + c.name + " failed: " + e.getMessage()); }
+            catch (Throwable t) { android.util.Log.e("Megler", "binding " + c.name + " failed", t); }
         });
         return true;
     }

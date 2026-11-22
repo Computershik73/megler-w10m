@@ -576,7 +576,7 @@ static bool invoke_native(mg_dvm_thread *t, mg_dvm_method *m, mg_jobj *self, con
     const mg_jvalue *params = cparams;
     u64 native_started = 0, call_started = 0;
     bool is_static = (m->flags & DVM_ACC_STATIC) != 0, outermost, timed = false;
-    int library_scope = mg_ld_set_scope(m->cls->scope);
+    int library_scope = mg_ld_set_scope(mg_dvm_library_scope(m->cls->scope));
     if ((mg_addr)&f < t->c_stack_min) t->c_stack_min = (mg_addr)&f;
     result->j = 0;
     if (!(nat && nat->bound)) {

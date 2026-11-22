@@ -20,7 +20,9 @@
 // onResume and tells its native code the connection's type from that receiver's onReceive and from nowhere else: its native
 // code, never told, took the phone to have no network, never opened a socket, and said "no network" over a loading screen that
 // stood still (package 275), while the game's Java side, which asks ConnectivityManager, reached its server. The intent says
-// what ConnectivityManager says (a connected Wi-Fi network), with the extras Android's has.
+// what ConnectivityManager says (a connected Wi-Fi network), with the extras Android's has. And the Wi-Fi's state likewise:
+// WIFI_STATE_CHANGED_ACTION, sticky on Android, as WifiManager says it is. Android's own Settings (AOSP 9) learns whether the
+// Wi-Fi is on from it alone (settingslib's WifiStatusTracker), and said "Off" under Wi-Fi beside a switch that was on.
 //
 // And it differs in who receives a broadcast (send). An intent that names a component goes to that component alone, as on
 // Android: not to the receivers registered at run time, not to the manifest's receivers whose filters list its action.
@@ -46,6 +48,8 @@
 // And each receiver hears a broadcast with a PendingResult of its own, which says who sent it (Android 14's getSentFromUid
 // and getSentFromPackage) where the sender's options share its identity (BroadcastOptions.setShareIdentityEnabled):
 // Messenger's own receivers refuse a broadcast of its own that comes from no one (sharedSender).
+// And a receiver an isolated split declares is made by the split's class loader and given the split's context (megler.Splits).
+//
 // Everything else is the original's, unchanged.
 package megler;
 
@@ -62,7 +66,7 @@ import java.util.ArrayList;
 public final class Broadcasts {
     private static final ArrayList<Object[]> sReceivers = new ArrayList<>();
     /** The sticky broadcasts Megler keeps, as Android keeps them: one intent for each, the last that was sent. */
-    private static final String[] STICKY = { Intent.ACTION_BATTERY_CHANGED, ConnectivityManager.CONNECTIVITY_ACTION };
+    private static final String[] STICKY = { Intent.ACTION_BATTERY_CHANGED, ConnectivityManager.CONNECTIVITY_ACTION, android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION };
     private Broadcasts() {}
     public static Intent register(Context context, BroadcastReceiver r, IntentFilter f) { return register(context, r, f, null); }
     /** A receiver that hears on the thread of `handler` (the main thread when it is null). */
@@ -75,7 +79,7 @@ public final class Broadcasts {
         Intent first = null;
         if (f != null) for (String action : STICKY) {
             if (!f.hasAction(action)) continue;
-            final Intent b = action.equals(Intent.ACTION_BATTERY_CHANGED) ? battery() : connectivity();
+            final Intent b = action.equals(Intent.ACTION_BATTERY_CHANGED) ? battery() : action.equals(ConnectivityManager.CONNECTIVITY_ACTION) ? connectivity() : wifiState(context);
             /* A sticky broadcast reaches the receiver it was registered with as any broadcast does: later, on its thread, if it is still registered then. Each the filter takes; the first is the value. */
             if (r != null) on.post(() -> { if (registered(r)) r.onReceive(context, b); });
             if (first == null) first = b;
@@ -129,6 +133,14 @@ public final class Broadcasts {
         b.putExtra(ConnectivityManager.EXTRA_NETWORK_TYPE, info != null ? info.getType() : ConnectivityManager.TYPE_NONE);
         if (info == null || !info.isConnected()) b.putExtra(ConnectivityManager.EXTRA_NO_CONNECTIVITY, true);
         b.putExtra(ConnectivityManager.EXTRA_INET_CONDITION, info != null && info.isConnected() ? 100 : 0);
+        return b;
+    }
+    /** The Wi-Fi's state as Android's sticky WIFI_STATE_CHANGED_ACTION says it: WifiManager's, the state before it unknown. */
+    public static Intent wifiState(Context context) {
+        android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) (context != null ? context : AppRunner.application()).getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        Intent b = new Intent(android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION);
+        b.putExtra(android.net.wifi.WifiManager.EXTRA_WIFI_STATE, wm != null ? wm.getWifiState() : android.net.wifi.WifiManager.WIFI_STATE_UNKNOWN);
+        b.putExtra(android.net.wifi.WifiManager.EXTRA_PREVIOUS_WIFI_STATE, android.net.wifi.WifiManager.WIFI_STATE_UNKNOWN);
         return b;
     }
     public static void unregister(BroadcastReceiver r) { synchronized (sReceivers) { for (int i = sReceivers.size() - 1; i >= 0; i--) if (sReceivers.get(i)[0] == r) sReceivers.remove(i); } }
@@ -249,13 +261,15 @@ public final class Broadcasts {
             // empty name is the app's own (Play Store's AccountRemovedBroadcastReceiver says
             // ""). GmsCore's components of its other processes (persistent, ui: nearly all
             // of them) run in its one process here, as in every client that hosts it
-            // (megler.MicroG).
+            // (megler.MicroG). The app's own process is the one of the activity it was started for (megler.Processes.own): the
+            // Google app's ":googleapp", whose receivers are dispatched there, and those of the package's own are not.
             String process = Manifest.processOf(c);
-            if (!process.equals(ctx.getPackageName()) && !GooglePackages.GMS.equals(ctx.getPackageName())) {
+            if (!process.equals(Processes.own()) && !GooglePackages.GMS.equals(ctx.getPackageName())) {
                 android.util.Log.i("Megler", "receiver " + c.name + " belongs to process " + c.process + "; not dispatched in the main process");
                 continue;
             }
-            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(AppRunner.classLoader(), c.name, i), null, ctx, null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
+            // (one of an isolated split's: made by the split's class loader and given the split's context, as handleReceiver does)
+            try { targets.add(new Object[] { AppRunner.componentFactory().instantiateReceiver(Splits.loaderOf(c), c.name, i), null, Splits.contextOf(ctx, c), null }); } catch (Throwable t) { android.util.Log.w("Megler", "receiver " + c.name + ": " + t); }
         }
         // (A stable sort: the registered ones by their filters' priority, higher first, ahead of the manifest's.)
         java.util.Collections.sort(targets, (a, b) -> Integer.compare(b[1] != null ? ((IntentFilter) b[1]).getPriority() : Integer.MIN_VALUE,

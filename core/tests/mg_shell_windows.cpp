@@ -35,7 +35,10 @@
 //     MIME types an app asks for, the flags that answer a request in place of the user (pick-cancel, pick-file-<name>), and
 //     files handed over copied into the request's folder -- a name already there made unique, one missing a failure -- with
 //     the core told (megler_pick_done, stood in for below), and the thunk answering from the flags with no window to show a
-//     picker over. The pickers themselves need a user and an app's window: not here.
+//     picker over. The pickers themselves need a user and an app's window: not here;
+//   - Graphics (shell/Graphics.cpp): which files of a package are Mesa's freedreno, an app's choice of ANGLE or Mesa from
+//     its own setting, Megler's and the package's default, what its process starts with where its package lacks Mesa, and
+//     the record of which packages were made with Mesa.
 //
 // A Lumia 630's Megler 0.1.0.671 was ended at every start while it made those copies on its UI thread before its window
 // was shown (library/Library.cpp); what is tested here is the way they are made since.
@@ -50,6 +53,7 @@
 #include "shell/AppPackage.h"
 #include "shell/BundledApks.h"
 #include "shell/Files.h"
+#include "shell/Graphics.h"
 #include "shell/OwnUpdate.h"
 #include "shell/PackageVersions.h"
 #include "shell/Placement.h"
@@ -1400,6 +1404,98 @@ void testPicker(const std::wstring& root) {
     pickerHost::setFlagSource(L"");
 }
 
+/*
+ * Graphics (shell/Graphics.h): which of Mesa's DLLs a package has and which of its files are Mesa's (what an app's package
+ * leaves out while the app goes by ANGLE), the package's default, an app's choice from its own setting, Megler's and that
+ * default, what its process starts with -- ANGLE, and why, where its package lacks Mesa -- and the record of which packages
+ * were made with Mesa, which the Library tells a package to update by.
+ */
+void testGraphics() {
+    printf("Graphics: ANGLE or Mesa's freedreno, chosen per app, and Mesa's DLLs in an app's package only while it goes by Mesa (shell/Graphics.cpp)\n");
+    std::string missing;
+    // Mesa's files, by name, and none of ANGLE's.
+    check(graphics::isMesaFile(L"libgallium_wgl.dll") && graphics::isMesaFile(L"LIBEGL_MESA.DLL") && graphics::isMesaFile(L"libGLESv2_mesa.dll"),
+          "Mesa's three DLLs are Mesa's, whatever their case");
+    check(!graphics::isMesaFile(L"libEGL.dll") && !graphics::isMesaFile(L"libGLESv2.dll") && !graphics::isMesaFile(L"mozglue.dll") &&
+              !graphics::isMesaFile(L"gles-default.txt"),
+          "ANGLE's DLLs and the default's file are not");
+    // Their licences' folder, which an app's package carries with them alone (AppPackage.cpp, collect), and no other.
+    check(graphics::isMesaFolder(L"mesa-licenses") && graphics::isMesaFolder(L"Mesa-Licenses"), "mesa-licenses is Mesa's folder, whatever its case");
+    check(!graphics::isMesaFolder(L"android") && !graphics::isMesaFolder(L"licenses") && !graphics::isMesaFolder(L"mesa"),
+          "no other folder is");
+    // In a package: none, two of three, all.
+    for (const wchar_t* file : graphics::mesaFiles) files::remove(gInstall + L"\\" + file);
+    bool has = graphics::hasMesaFiles(gInstall, &missing);
+    check(!has && missing == "libgallium_wgl.dll, libGLESv2_mesa.dll, libEGL_mesa.dll", "a package without them: all three missing (" + missing + ")");
+    files::write(gInstall + L"\\libgallium_wgl.dll", "MZ");
+    files::write(gInstall + L"\\libEGL_mesa.dll", "MZ");
+    has = graphics::hasMesaFiles(gInstall, &missing);
+    check(!has && missing == "libGLESv2_mesa.dll", "two of three: the third missing (" + missing + ")");
+    files::write(gInstall + L"\\libGLESv2_mesa.dll", "MZ");
+    has = graphics::hasMesaFiles(gInstall, &missing);
+    check(has && missing.empty() && !graphics::hasMesaFiles(L"", nullptr), "all three: Mesa is there");
+    // The package's default.
+    files::remove(gInstall + L"\\gles-default.txt");
+    check(graphics::packageDefault(gInstall) == "angle", "no gles-default.txt: ANGLE");
+    files::write(gInstall + L"\\gles-default.txt", "mesa\r\n");
+    check(graphics::packageDefault(gInstall) == "mesa", "gles-default.txt of MEGLER_GLES=mesa: Mesa");
+    files::write(gInstall + L"\\gles-default.txt", "angle\r\n");
+    check(graphics::packageDefault(gInstall) == "angle", "gles-default.txt saying angle: ANGLE");
+    files::remove(gInstall + L"\\gles-default.txt");
+    // An app's choice: its own, else Megler's, else the default; Mesa only where it can be chosen.
+    using opt = std::optional<std::string>;
+    check(graphics::resolve(opt("mesa"), opt("angle"), "angle", true) == "mesa" && graphics::resolve(opt("angle"), opt("mesa"), "mesa", true) == "angle",
+          "the app's own over Megler's");
+    check(graphics::resolve(std::nullopt, opt("mesa"), "angle", true) == "mesa" && graphics::resolve(opt(""), opt("mesa"), "angle", true) == "mesa",
+          "none of its own (or an empty one): Megler's");
+    check(graphics::resolve(std::nullopt, std::nullopt, "mesa", true) == "mesa" && graphics::resolve(std::nullopt, opt(""), "angle", true) == "angle",
+          "none at all: the package's default");
+    check(graphics::resolve(opt("mesa"), opt("mesa"), "mesa", false) == "angle" && graphics::resolve(opt("vulkan"), std::nullopt, "angle", true) == "angle",
+          "Mesa where it cannot be chosen, or a word of neither: ANGLE");
+    // Through the settings' files, as an app's own package and Megler read them.
+    files::makeDirectories(gShared);
+    settings::load(gLocal, gShared, "");
+    const std::string app = "org.megler.test.graphics";
+    settings::setMegler(settings::gles, "angle");
+    settings::setApp(app, settings::gles, std::string("mesa"));
+    check(graphics::resolve(settings::app(app, settings::gles), settings::megler(settings::gles), "angle", true) == "mesa",
+          "set to Mesa in its App Settings, Megler's ANGLE: Mesa");
+    settings::setApp(app, settings::gles, std::nullopt);
+    settings::setMegler(settings::gles, "mesa");
+    check(graphics::resolve(settings::app(app, settings::gles), settings::megler(settings::gles), "angle", true) == "mesa",
+          "As in Megler, Megler's Mesa: Mesa");
+    settings::setMegler(settings::gles, "");
+    // What its process starts with.
+    graphics::Start start = graphics::atStart("mesa", true, "", true);
+    check(start.gles == "mesa" && start.why.empty(), "set to Mesa, its package has it: Mesa, nothing to say");
+    start = graphics::atStart("mesa", false, "libgallium_wgl.dll, libGLESv2_mesa.dll, libEGL_mesa.dll", true);
+    check(start.gles == "angle" && start.why.find("made again") != std::string::npos && start.why.find("libgallium_wgl.dll") != std::string::npos,
+          "set to Mesa, its own package made without it: ANGLE, and that its package is to be made again (" + start.why + ")");
+    start = graphics::atStart("mesa", false, "libgallium_wgl.dll", false);
+    check(start.gles == "angle" && !start.why.empty() && start.why.find("made again") == std::string::npos, "Megler's own package without it: ANGLE, said");
+    start = graphics::atStart("angle", true, "", true);
+    check(start.gles == "angle" && start.why.empty(), "ANGLE in a package with Mesa: ANGLE, nothing to say");
+    // The record of the packages made, by full name.
+    const std::string identity = "MeglerApp.org.megler.test.graphics.0123456789ab", a = identity + "_0.1.740.0_arm__7p434m16tbgc6",
+                      b = identity + "_0.1.740.1_arm__7p434m16tbgc6";
+    const std::wstring record = gShared + L"\\apks\\" + widen(identity) + L"\\graphics.txt";
+    files::remove(record);
+    check(!graphics::recordedMesa(gShared, identity, a), "no record: a package without Mesa (made before records, or by a Megler without it)");
+    check(graphics::record(gShared, identity, a, true) && graphics::recordedMesa(gShared, identity, a) && files::exists(record),
+          "made with Mesa, written down in apks\\<identity>\\graphics.txt");
+    check(graphics::record(gShared, identity, b, false) && graphics::recordedMesa(gShared, identity, a) && !graphics::recordedMesa(gShared, identity, b),
+          "the next package without it: each by its full name");
+    check(graphics::record(gShared, identity, a, false) && !graphics::recordedMesa(gShared, identity, a), "a package made again with that name: the last counts");
+    std::string text;
+    check(files::read(record, text) && count(text, a + " ") == 1 && count(text, b + " ") == 1, "one line each");
+    for (int i = 0; i < 20; i++) graphics::record(gShared, identity, identity + format("_0.1.741.%d_arm__7p434m16tbgc6", i), i % 2 == 0);
+    check(files::read(record, text) && count(text, "\r\n") == 16 && count(text, a + " ") == 0 && count(text, b + " ") == 0 &&
+              graphics::recordedMesa(gShared, identity, identity + "_0.1.741.18_arm__7p434m16tbgc6"),
+          "the last 16 kept");
+    check(!graphics::record(L"", identity, a, true) && !graphics::recordedMesa(L"", identity, a), "no shared folder: nothing written, nothing read");
+    for (const wchar_t* file : graphics::mesaFiles) files::remove(gInstall + L"\\" + file);
+}
+
 int wmain(int argc, wchar_t** argv) {
     if (argc < 2) {
         printf("usage: mg_shell_tests <scratch folder>\n");
@@ -1429,6 +1525,7 @@ int wmain(int argc, wchar_t** argv) {
     testTreeSize(root);
     testPermissions();
     testPicker(root);
+    testGraphics();
     shellLog::flush();
     printf("shell: %d checks, %d failed\n", gChecks, gFailed);
     return gFailed ? 1 : 0;

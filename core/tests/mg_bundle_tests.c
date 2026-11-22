@@ -339,7 +339,8 @@ static bool make_bundle(const char *from, const char *to, const char *const *nam
 /* ------------------------------------------------------- the test app */
 
 /* The splits the test app's bundles keep at 320 dpi with English and Russian, by the names their manifests give. */
-static const char *const k_kept[] = { "config.armeabi_v7a", "config.en", "config.mdpi", "config.ru", "config.xxhdpi", "extra", "pack" };
+static const char *const k_kept[] = { "config.armeabi_v7a", "config.en", "config.mdpi", "config.ru", "config.xxhdpi", "extra", "pack", "pack1", "pack2",
+                                      "pack3", "pack4", "pack5" };
 
 static char *unpack(const char *bundle, const char *apk, const char *splits, int dpi, const char *languages, seen_progress *p)
 {
@@ -651,26 +652,26 @@ static void big_library(u8 *head, u8 *tail, bool entry, bool gnu, bool sysv)
 }
 
 /*
- * Whether an app whose activity names its library with android.app.lib_name is a NativeActivity: its library is looked at
- * for ANativeActivity_onCreate (core/src/apk/mg_apk.c, native_entry). 2GIS (Qt: its QtActivity, libv4android.so of 277 MB in
- * the split config.armeabi_v7a) was taken for a NativeActivity, and its start ended in "has no ANativeActivity_onCreate"
- * (package 681): the look read the library's first 32 MB, and its dynamic section was past them. Here the natives test app
- * (lib_name "natives", an activity of its own) with its libnatives.so replaced by a library of 40 MB whose dynamic section is
- * at 40 MB, stored (the file has a hole where the filesystem allows) or deflated (a few kilobytes), its symbols hashed by a
- * GNU table, a SysV one or both: a Java app where the entry is an import, a NativeActivity where it is defined. And the
- * cursor a deflated library is read through: inflated once as far as the dynamic section, its tables then read from what it
- * kept of its head, and inflated again from the start for a read past what is kept.
+ * Whether the library an app's own activity names with android.app.lib_name is a NativeActivity's: it is looked at for
+ * ANativeActivity_onCreate (core/src/apk/mg_apk.c, native_entry), for the report's note. (It decided the driver up to issue
+ * #23: such an app is a Java one now either way.) 2GIS (Qt: its QtActivity, libv4android.so of 277 MB in the split
+ * config.armeabi_v7a) was taken for a NativeActivity, and its start ended in "has no ANativeActivity_onCreate" (package 681):
+ * the look read the library's first 32 MB, and its dynamic section was past them. Here the natives test app (lib_name
+ * "natives", an activity of its own) with its libnatives.so replaced by a library of 40 MB whose dynamic section is at 40 MB,
+ * stored (the file has a hole where the filesystem allows) or deflated (a few kilobytes), its symbols hashed by a GNU table, a
+ * SysV one or both: no entry where it is an import, the entry where it is defined. And the cursor a deflated library is read
+ * through: inflated once as far as the dynamic section, its tables then read from what it kept of its head, and inflated
+ * again from the start for a read past what is kept.
  */
 static void test_big_library(const char *java_dir, const char *scratch)
 {
     static const struct {
         bool deflated, entry, gnu, sysv;
-        const char *engine;
     } variants[] = {
-        { false, false, true, true, "java" },
-        { true, true, true, false, "native-activity" },
-        { true, false, false, true, "java" },
-        { false, true, false, true, "native-activity" },
+        { false, false, true, true },
+        { true, true, true, false },
+        { true, false, false, true },
+        { false, true, false, true },
     };
     char *from = mg_sprintf("%s/natives.apk", java_dir), *dir = mg_sprintf("%s/big-library", scratch);
     static entry_names names;
@@ -720,10 +721,11 @@ static void test_big_library(const char *java_dir, const char *scratch)
         size = size_of(apk);
         memset(&info, 0, sizeof(info));
         read = mg_apk_read_info(apk, &info);
-        say("  %s, its symbols hashed by %s, ANativeActivity_onCreate %s (the APK %.1f MB): %s, %s", variants[v].deflated ? "deflated" : "stored",
+        say("  %s, its symbols hashed by %s, ANativeActivity_onCreate %s (the APK %.1f MB): %s, entry %d, %s", variants[v].deflated ? "deflated" : "stored",
             variants[v].gnu && variants[v].sysv ? "GNU's table and SysV's" : variants[v].gnu ? "GNU's table" : "SysV's table",
-            variants[v].entry ? "defined" : "an import", (double)size / 1048576.0, read ? info.engine : "not read", read ? (info.runnable ? "runnable" : info.reason) : info.error);
-        CHECK(read && !strcmp(info.engine, variants[v].engine) && info.runnable);
+            variants[v].entry ? "defined" : "an import", (double)size / 1048576.0, read ? info.engine : "not read", read ? info.native_entry : -3,
+            read ? (info.runnable ? "runnable" : info.reason) : info.error);
+        CHECK(read && !strcmp(info.engine, "java") && info.native_entry == (variants[v].entry ? 1 : 0) && info.runnable);
         if (read) mg_apk_info_free(&info);
         /* The deflated library read through its cursor, as the look reads it. */
         if (v == 1 && made) {
@@ -837,8 +839,10 @@ typedef struct real_bundle {
     bool runnable;
     const char *const *kept;
     int nkept;
-    const char *left_out;                         /* one of those left out */
+    const char *left_out;                         /* one of those left out; NULL: nothing is */
     const char *reason;                           /* a part of the reason, for one that is not runnable */
+    const char *activity;                         /* the activity it is started with (a launcher alias's target), where it matters */
+    const char *listed;                           /* an activity of a split among those other apps see (activities.json) */
 } real_bundle;
 
 static void test_real(const char *real_dir, const char *scratch, const real_bundle *b)
@@ -864,7 +868,7 @@ static void test_real(const char *real_dir, const char *scratch, const real_bund
     n = names_in(json ? json : "{}", "leftOut", names, 64);
     joined(names, n, text, sizeof(text));
     say("  left out: %s", text);
-    CHECK(has_name(names, n, b->left_out));
+    CHECK(b->left_out ? has_name(names, n, b->left_out) : n == 0);
     megler_free(json);
     report = megler_apk_report_splits(apk, splits);
     say("  report: %s", report ? report : "(none)");
@@ -879,7 +883,22 @@ static void test_real(const char *real_dir, const char *scratch, const real_bund
     }
     CHECK(report && strstr(report, b->runnable ? "\"runnable\":true" : "\"runnable\":false"));
     if (b->reason) CHECK(report && strstr(report, b->reason));
+    if (b->activity) {
+        snprintf(want, sizeof(want), "\"activity\":\"%s\"", b->activity);
+        CHECK(report && strstr(report, want) && strstr(report, "\"engine\":\"java\""));
+    }
     megler_free(report);
+    if (b->listed) {
+        char *out = mg_sprintf("%s/described", dir), *file = mg_sprintf("%s/described/activities.json", dir);
+        size_t size = 0;
+        char *acts = megler_apk_describe_activities(apk, splits, out) ? (char *)mg_file_read_all(file, &size) : NULL;
+        snprintf(want, sizeof(want), "\"name\":\"%s\"", b->listed);
+        say("  activities.json: %u bytes, %s %s", (unsigned)size, b->listed, acts && strstr(acts, want) ? "listed" : "NOT listed");
+        CHECK(acts && strstr(acts, want) && strstr(acts, "\"name\":\"com.google.android.apps.chrome.Main\""));
+        free(acts);
+        free(file);
+        free(out);
+    }
     {
         uint8_t *icon = NULL;
         size_t size = 0;
@@ -897,12 +916,116 @@ done:
     free(splits);
 }
 
+/* ------------------------------------------------- an app's data from a ZIP file */
+
+/* A ZIP of small files by these names, each its own name as its bytes; true when it was written. */
+static bool data_zip_make(const char *path, const char *const *names, int n)
+{
+    zip_out z;
+    int i, ferr = 0;
+    memset(&z, 0, sizeof(z));
+    z.f = mg_file_open(path, MG_O_WRITE | MG_O_CREATE | MG_O_TRUNC, &ferr);
+    if (!z.f) return false;
+    for (i = 0; i < n; i++) zip_add(&z, names[i], (const u8 *)names[i], (u32)strlen(names[i]));
+    zip_end(&z);
+    return true;
+}
+
+/* Whether the app's storage under `storage` has the file `rel` (below its sdcard), with `name` as its bytes. */
+static bool data_zip_has(const char *storage, const char *rel, const char *name)
+{
+    char *path = mg_sprintf("%s/apps/com.example.data/sdcard/%s", storage, rel);
+    size_t size = 0;
+    u8 *bytes = mg_file_read_all(path, &size);
+    bool same = bytes && size == strlen(name) && !memcmp(bytes, name, size);
+    if (!same) say("  not as written: %s", path);
+    free(bytes);
+    free(path);
+    return same;
+}
+
+/*
+ * megler_data_zip_install, the app page's Install Data from ZIP: where each file of a ZIP goes in the app's own storage, a
+ * ZIP of one folder (a game's files, as GTA: Vice City's come: "Grand Theft Auto Vice City/Audio/sfx.RAW") without that
+ * folder, and nothing written outside the app's storage whatever the names say.
+ */
+static void test_data_zip(const char *scratch)
+{
+    static const char *const folder[] = { "Game Folder/", "Game Folder/Audio/sfx.raw", "Game Folder/data/maps/a.ipl",
+                                           "Game Folder/main.3.com.example.data.obb", "Game Folder/../evil.txt",
+                                           "Game Folder/Android/data/com.other/x.txt" };
+    static const char *const whole[] = { "Android/obb/com.example.data/patch.3.com.example.data.obb", "com.example.data/files/save.dat",
+                                         "sdcard/Android/data/com.example.data/files/x.bin", "files/y.bin", "loose.txt",
+                                         "obb/com.example.data/main.1.obb", "/abs.txt", "a\\..\\..\\b.txt", "Android/data/com.other/z.txt",
+                                         "c:/d.txt" };
+    char *dir = mg_sprintf("%s/datazip", scratch), *storage = mg_sprintf("%s/storage", dir), *zip = mg_sprintf("%s/game.zip", dir), *json, *outside;
+    seen_progress p;
+    say("an app's data from a ZIP file");
+    mg_path_mkdirs(storage);
+
+    CHECK(data_zip_make(zip, folder, (int)MG_COUNT(folder)));
+    memset(&p, 0, sizeof(p));
+    json = megler_data_zip_install(zip, storage, "com.example.data", progress, &p);
+    say("  a ZIP of one folder: %s", json ? json : "(nothing)");
+    CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"files\":3") && strstr(json, "\"obbs\":1"));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/Audio/sfx.raw", folder[1]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/data/maps/a.ipl", folder[2]));
+    CHECK(data_zip_has(storage, "Android/obb/com.example.data/main.3.com.example.data.obb", folder[3]));
+    CHECK(p.calls > 0 && !p.backwards && p.last_total == (u64)(strlen(folder[1]) + strlen(folder[2]) + strlen(folder[3])));
+    outside = mg_sprintf("%s/apps/com.example.data/sdcard/Android/data/com.example.data/evil.txt", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    outside = mg_sprintf("%s/apps/com.other", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    megler_free(json);
+
+    CHECK(data_zip_make(zip, whole, (int)MG_COUNT(whole)));
+    json = megler_data_zip_install(zip, storage, "com.example.data", NULL, NULL);
+    say("  a ZIP of the storage's own folders: %s", json ? json : "(nothing)");
+    CHECK(json && strstr(json, "\"ok\":true") && strstr(json, "\"files\":6") && strstr(json, "\"obbs\":2"));
+    CHECK(data_zip_has(storage, "Android/obb/com.example.data/patch.3.com.example.data.obb", whole[0]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/save.dat", whole[1]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/x.bin", whole[2]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/y.bin", whole[3]));
+    CHECK(data_zip_has(storage, "Android/data/com.example.data/files/loose.txt", whole[4]));
+    CHECK(data_zip_has(storage, "Android/obb/com.example.data/main.1.obb", whole[5]));
+    outside = mg_sprintf("%s/abs.txt", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    outside = mg_sprintf("%s/b.txt", dir);
+    CHECK(!exists(outside));
+    free(outside);
+    outside = mg_sprintf("%s/apps/com.other", storage);
+    CHECK(!exists(outside));
+    free(outside);
+    megler_free(json);
+
+    /* Nothing for this app: refused, nothing written. */
+    {
+        static const char *const others[] = { "Android/obb/com.other/main.1.com.other.obb", "../up.txt" };
+        CHECK(data_zip_make(zip, others, (int)MG_COUNT(others)));
+        json = megler_data_zip_install(zip, storage, "com.example.data", NULL, NULL);
+        say("  a ZIP with nothing for the app: %s", json ? json : "(nothing)");
+        CHECK(json && strstr(json, "\"ok\":false"));
+        outside = mg_sprintf("%s/up.txt", dir);
+        CHECK(!exists(outside));
+        free(outside);
+        megler_free(json);
+    }
+    remove_tree(dir);
+    free(zip);
+    free(storage);
+    free(dir);
+}
+
 int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *real_dir)
 {
     static const char *const bip_kept[] = { "config.armeabi_v7a", "config.xxhdpi", "config.xxxhdpi" };
     static const char *const mangadex_kept[] = { "config.en", "config.ru", "config.xxhdpi" };
     static const char *const magnit_kept[] = { "config.en", "config.xhdpi" };
     static const char *const zalo_kept[] = { "config.armeabi_v7a", "config.xxhdpi", "config.xxxhdpi", "mediapipe_faceeffect", "tensorflowLite" };
+    static const char *const chrome_kept[] = { "chrome", "config.ru", "on_demand" };
     static const real_bundle real[] = {
         { "BiP_v.4.2.42-HEAD(4450)(7.0-15.0)(arm7a,arm64-8a,x86,x86-64).apks", "com.turkcell.bip", "4.2.42-HEAD", "armeabi-v7a", true, bip_kept, 3, "config.arm64_v8a", NULL },
         { "MangaDex_1.0.0.0_APKPure.xapk", "org.mangadex.mangadex", "1.0.0.0", NULL, true, mangadex_kept, 3, "config.ja", NULL },
@@ -911,6 +1034,11 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
         { "com.zing.zalo_26.10.02-261002903_APKMirror.apkm", "com.zing.zalo", "26.10.02", "armeabi-v7a", true, zalo_kept, 5, "config.arm64_v8a", NULL },
         { "\xd0\x9c\xd0\xb0\xd0\xb3\xd0\xbd\xd0\xb8\xd1\x82_8.107.1.apks", "ru.tander.magnit", "8.107.1", NULL, false, magnit_kept, 2, "config.arm64_v8a",
           "no 32-bit ARM code: the bundle it came in has native code for arm64-v8a only" },
+        /* Chrome 158 from Google Play (isolatedSplits): its base has three activities and none to start; the browser and its
+           launcher alias are in its feature split "chrome". It was refused as an app whose native code no Java starts. (Made of
+           what the HP Elite x3's Play Store installed: base.apk and its three splits, stored.) */
+        { "com.android.chrome_158.0.8127.42.apks", "com.android.chrome", "158.0.8127.42", "armeabi-v7a", true, chrome_kept, 3, NULL, NULL,
+          "org.chromium.chrome.browser.ChromeTabbedActivity", "org.chromium.chrome.browser.ChromeTabbedActivity" },
     };
     int i;
     g_checks = g_failed = 0;
@@ -934,6 +1062,7 @@ int mg_bundle_tests_run(const char *java_dir, const char *scratch, const char *r
         }
     }
     test_big_library(java_dir, scratch);
+    test_data_zip(scratch);
     if (real_dir)
         for (i = 0; i < (int)MG_COUNT(real); i++) test_real(real_dir, scratch, &real[i]);
     else
